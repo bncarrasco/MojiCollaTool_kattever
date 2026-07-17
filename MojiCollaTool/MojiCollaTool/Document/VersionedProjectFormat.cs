@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Windows.Media.Imaging;
 using System.Xml;
 using System.Xml.Serialization;
 
@@ -55,6 +56,33 @@ namespace MojiCollaTool
     public interface IProjectAssetSink
     {
         void SaveImage(Guid pageId, int imageNumber, string extension, Stream content);
+    }
+
+    /// <summary>
+    /// 複数画像をProjectSessionへ一括反映するsinkです。実装は全件成功時だけ反映する必要があります。
+    /// </summary>
+    public interface IProjectAssetBatchSink
+    {
+        void SaveImages(ProjectDocument project, IReadOnlyList<ProjectAssetRestore> assets);
+    }
+
+    public sealed class ProjectAssetRestore
+    {
+        public ProjectAssetRestore(Guid pageId, int imageNumber, string extension, byte[] content)
+        {
+            PageId = pageId;
+            ImageNumber = imageNumber;
+            Extension = extension ?? throw new ArgumentNullException(nameof(extension));
+            Content = content ?? throw new ArgumentNullException(nameof(content));
+        }
+
+        public Guid PageId { get; }
+
+        public int ImageNumber { get; }
+
+        public string Extension { get; }
+
+        public byte[] Content { get; }
     }
 
     [XmlRoot("Manifest")]
@@ -245,6 +273,50 @@ namespace MojiCollaTool
 
             return canonicalPath;
         }
+
+        internal static bool HasImageMetadata(ImageData? imageData)
+        {
+            return imageData != null && (imageData.OriginalWidth != 0 || imageData.OriginalHeight != 0 || imageData.ModifiedWidth != 0 || imageData.ModifiedHeight != 0);
+        }
+
+        internal static void ValidateImageAsset(int imageNumber, ImageData? imageData, byte[]? content)
+        {
+            var hasMetadata = HasImageMetadata(imageData);
+            var hasAsset = content != null;
+            if (hasMetadata != hasAsset)
+            {
+                throw new InvalidDataException($"Image{imageNumber} metadata and archive asset are inconsistent.");
+            }
+
+            if (!hasMetadata) return;
+            if (imageData!.OriginalWidth <= 0 || imageData.OriginalHeight <= 0)
+            {
+                throw new InvalidDataException($"Image{imageNumber} metadata dimensions are invalid.");
+            }
+
+            ValidateDecodedImage(imageNumber, imageData, content!);
+        }
+
+        private static void ValidateDecodedImage(int imageNumber, ImageData imageData, byte[] content)
+        {
+            try
+            {
+                using var stream = new MemoryStream(content, writable: false);
+                var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                if (decoder.Frames.Count == 0 || decoder.Frames[0].PixelWidth != imageData.OriginalWidth || decoder.Frames[0].PixelHeight != imageData.OriginalHeight)
+                {
+                    throw new InvalidDataException($"Image{imageNumber} dimensions do not match CanvasData.");
+                }
+            }
+            catch (InvalidDataException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException($"Image{imageNumber} could not be decoded.", ex);
+            }
+        }
     }
 
     public sealed class VersionedProjectWriter : IProjectWriter
@@ -269,9 +341,9 @@ namespace MojiCollaTool
             {
                 WriteArchive(temporaryPath, project, assetSource);
 
-                // Read the closed archive before replacing the user's file. This catches malformed XML and
-                // incomplete page manifests while the previous file is still untouched.
-                _ = new VersionedProjectReader().Read(temporaryPath);
+                // Read the closed archive through the writer validation path before replacing the user's file.
+                // This validates image bytes without discarding them through the public sinkless reader API.
+                new VersionedProjectReader().ValidateForWriter(temporaryPath);
                 ReplaceFile(temporaryPath, targetPath, createBackup);
                 temporaryPath = string.Empty;
             }
@@ -319,25 +391,51 @@ namespace MojiCollaTool
             {
                 using var image1 = assetSource?.OpenImage(page, 1);
                 using var image2 = assetSource?.OpenImage(page, 2);
+                var canvas = page.Canvas.ToLegacyData();
+                var preparedImage1 = PrepareImageAsset(page.PageId, 1, canvas.ImageData1, image1);
+                var preparedImage2 = PrepareImageAsset(page.PageId, 2, canvas.ImageData2, image2);
                 var pageFile = new VersionedPageFile
                 {
                     PageId = page.PageId.ToString("D"),
                     Name = page.Name,
                     Order = page.Order,
-                    Canvas = page.Canvas.ToLegacyData(),
-                    Image1Path = CreateAssetPath(page.PageId, 1, image1),
-                    Image2Path = CreateAssetPath(page.PageId, 2, image2),
+                    Canvas = canvas,
+                    Image1Path = preparedImage1?.Path,
+                    Image2Path = preparedImage2?.Path,
                     Objects = page.MojiDatas.Select(PageDocument.CloneMojiData).ToList(),
                 };
                 WriteEntry(archive, VersionedProjectFormat.CanonicalPagePath(page.PageId), VersionedProjectFormat.Serialize(VersionedProjectFormat.PageSerializer, pageFile));
-                WriteAssetEntry(archive, pageFile.Image1Path, image1);
-                WriteAssetEntry(archive, pageFile.Image2Path, image2);
+                WriteAssetEntry(archive, preparedImage1);
+                WriteAssetEntry(archive, preparedImage2);
             }
         }
 
-        private static string? CreateAssetPath(Guid pageId, int imageNumber, ProjectImageAsset? asset)
+        private static PreparedImageAsset? PrepareImageAsset(Guid pageId, int imageNumber, ImageData? imageData, ProjectImageAsset? asset)
         {
-            return asset == null ? null : VersionedProjectFormat.CanonicalAssetPath(pageId, imageNumber, asset.Extension);
+            if (asset == null)
+            {
+                VersionedProjectFormat.ValidateImageAsset(imageNumber, imageData, content: null);
+                return null;
+            }
+
+            if (!VersionedProjectFormat.HasImageMetadata(imageData))
+            {
+                throw new InvalidDataException($"Image{imageNumber} archive asset has no matching CanvasData metadata.");
+            }
+
+            var content = ReadStream(asset.Content);
+            VersionedProjectFormat.ValidateImageAsset(imageNumber, imageData, content);
+            var extension = VersionedProjectFormat.NormalizeAssetExtension(asset.Extension);
+            return new PreparedImageAsset(VersionedProjectFormat.CanonicalAssetPath(pageId, imageNumber, extension), content);
+        }
+
+        private static byte[] ReadStream(Stream source)
+        {
+            if (source.CanSeek) source.Position = 0;
+            using var content = new MemoryStream();
+            source.CopyTo(content);
+            if (content.Length > VersionedProjectFormat.MaxEntrySize) throw new InvalidDataException("Image asset is too large.");
+            return content.ToArray();
         }
 
         private static void WriteEntry(ZipArchive archive, string entryName, byte[] content)
@@ -347,14 +445,13 @@ namespace MojiCollaTool
             stream.Write(content, 0, content.Length);
         }
 
-        private static void WriteAssetEntry(ZipArchive archive, string? entryName, ProjectImageAsset? asset)
+        private static void WriteAssetEntry(ZipArchive archive, PreparedImageAsset? asset)
         {
-            if (entryName == null || asset == null) return;
+            if (asset == null) return;
 
-            var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+            var entry = archive.CreateEntry(asset.Path, CompressionLevel.Optimal);
             using var destination = entry.Open();
-            if (asset.Content.CanSeek) asset.Content.Position = 0;
-            asset.Content.CopyTo(destination);
+            destination.Write(asset.Content, 0, asset.Content.Length);
         }
 
         private static void ReplaceFile(string temporaryPath, string targetPath, bool createBackup)
@@ -396,16 +493,39 @@ namespace MojiCollaTool
                 // Do not hide the original save failure with cleanup failure.
             }
         }
+
+        private sealed class PreparedImageAsset
+        {
+            public PreparedImageAsset(string path, byte[] content)
+            {
+                Path = path;
+                Content = content;
+            }
+
+            public string Path { get; }
+
+            public byte[] Content { get; }
+        }
     }
 
     public sealed class VersionedProjectReader : IProjectReader
     {
         public ProjectDocument Read(string projectFilePath)
         {
-            return Read(projectFilePath, assetSink: null);
+            return ReadCore(projectFilePath, assetSink: null, requireAssetSink: true);
         }
 
         public ProjectDocument Read(string projectFilePath, IProjectAssetSink? assetSink)
+        {
+            return ReadCore(projectFilePath, assetSink, requireAssetSink: true);
+        }
+
+        internal void ValidateForWriter(string projectFilePath)
+        {
+            _ = ReadCore(projectFilePath, assetSink: null, requireAssetSink: false);
+        }
+
+        private ProjectDocument ReadCore(string projectFilePath, IProjectAssetSink? assetSink, bool requireAssetSink)
         {
             if (string.IsNullOrWhiteSpace(projectFilePath)) throw new ArgumentException("Project path is required.", nameof(projectFilePath));
             if (!File.Exists(projectFilePath)) throw new FileNotFoundException("Project file was not found.", projectFilePath);
@@ -422,16 +542,18 @@ namespace MojiCollaTool
                 }
 
                 var result = ReadProject(archive, manifest);
-                if (assetSink != null)
+                if (result.Assets.Count > 0 && assetSink == null && requireAssetSink)
                 {
-                    foreach (var asset in result.Assets)
-                    {
-                        using var content = new MemoryStream(asset.Content, writable: false);
-                        assetSink.SaveImage(asset.PageId, asset.ImageNumber, asset.Extension, content);
-                    }
+                    throw new InvalidDataException("The project contains image assets and requires an asset sink.");
                 }
 
+                ApplyAssets(result, assetSink);
+
                 return result.Project;
+            }
+            catch (ProjectAssetRestoreException ex)
+            {
+                throw new InvalidOperationException("Project image asset restoration failed.", ex.InnerException ?? ex);
             }
             catch (InvalidDataException)
             {
@@ -440,6 +562,36 @@ namespace MojiCollaTool
             catch (Exception ex)
             {
                 throw new InvalidDataException("Versioned project archive could not be read.", ex);
+            }
+        }
+
+        private static void ApplyAssets(VersionedProjectReadResult result, IProjectAssetSink? assetSink)
+        {
+            if (assetSink == null || result.Assets.Count == 0) return;
+            try
+            {
+                if (assetSink is IProjectAssetBatchSink batchSink)
+                {
+                    batchSink.SaveImages(result.Project, result.Assets.Select(asset => new ProjectAssetRestore(asset.PageId, asset.ImageNumber, asset.Extension, asset.Content)).ToArray());
+                    return;
+                }
+
+                if (result.Assets.Count > 1)
+                {
+                    throw new InvalidDataException("Multiple image assets require a batch asset sink to prevent partial restoration.");
+                }
+
+                var asset = result.Assets[0];
+                using var content = new MemoryStream(asset.Content, writable: false);
+                assetSink.SaveImage(asset.PageId, asset.ImageNumber, asset.Extension, content);
+            }
+            catch (ProjectAssetRestoreException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new ProjectAssetRestoreException("Project image asset restoration failed.", ex);
             }
         }
 
@@ -512,11 +664,12 @@ namespace MojiCollaTool
                     throw new InvalidDataException("Page metadata does not match the manifest.");
                 }
 
-                var image1 = ReadAsset(archive, pageFile.Image1Path, pageId, 1);
-                var image2 = ReadAsset(archive, pageFile.Image2Path, pageId, 2);
+                var canvas = pageFile.Canvas ?? throw new InvalidDataException("Page is missing CanvasData.");
+                var image1 = ReadAsset(archive, pageFile.Image1Path, pageId, 1, canvas.ImageData1);
+                var image2 = ReadAsset(archive, pageFile.Image2Path, pageId, 2, canvas.ImageData2);
                 if (image1 != null) assets.Add(image1);
                 if (image2 != null) assets.Add(image2);
-                pageDocuments.Add(new PageDocument(pageId, pageFile.Name ?? manifestPage.Name, pageFile.Canvas, pageFile.Objects ?? Enumerable.Empty<MojiData>()));
+                pageDocuments.Add(new PageDocument(pageId, pageFile.Name ?? manifestPage.Name, canvas, pageFile.Objects ?? Enumerable.Empty<MojiData>()));
             }
 
             if (string.IsNullOrWhiteSpace(manifest.ProjectName))
@@ -527,17 +680,23 @@ namespace MojiCollaTool
             return new VersionedProjectReadResult(new ProjectDocument(projectId, manifest.ProjectName, pageDocuments), assets);
         }
 
-        private static VersionedProjectAssetContent? ReadAsset(ZipArchive archive, string? path, Guid pageId, int imageNumber)
+        private static VersionedProjectAssetContent? ReadAsset(ZipArchive archive, string? path, Guid pageId, int imageNumber, ImageData? imageData)
         {
             var canonicalPath = VersionedProjectFormat.ValidateAssetPath(path, pageId, imageNumber);
-            if (canonicalPath == null) return null;
+            if (canonicalPath == null)
+            {
+                VersionedProjectFormat.ValidateImageAsset(imageNumber, imageData, content: null);
+                return null;
+            }
 
             var entry = FindUniqueEntry(archive, canonicalPath);
             var extension = VersionedProjectFormat.NormalizeAssetExtension(Path.GetExtension(canonicalPath));
             using var stream = entry.Open();
             using var content = new MemoryStream();
             stream.CopyTo(content);
-            return new VersionedProjectAssetContent(pageId, imageNumber, extension, content.ToArray());
+            var bytes = content.ToArray();
+            VersionedProjectFormat.ValidateImageAsset(imageNumber, imageData, bytes);
+            return new VersionedProjectAssetContent(pageId, imageNumber, extension, bytes);
         }
 
         private static ZipArchiveEntry FindUniqueEntry(ZipArchive archive, string entryName)
@@ -578,6 +737,14 @@ namespace MojiCollaTool
         public string Extension { get; }
 
         public byte[] Content { get; }
+    }
+
+    internal sealed class ProjectAssetRestoreException : Exception
+    {
+        public ProjectAssetRestoreException(string message, Exception innerException)
+            : base(message, innerException)
+        {
+        }
     }
 
     public sealed class VersionedProjectPersistence : IProjectReader, IProjectWriter

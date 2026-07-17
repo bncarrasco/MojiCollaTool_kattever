@@ -17,11 +17,11 @@ public class VersionedProjectPersistenceTests
     {
         using var scope = TemporaryDirectory.Create();
         var archivePath = Path.Combine(scope.Path, "日本語", "複数ページ.mctzip");
-        var source = CreateProject();
+        var source = CreateImageProject();
         var assets = new TestAssets();
-        assets.Set(source.Pages[0].PageId, 1, "png", new byte[] { 1, 2, 3 });
-        assets.Set(source.Pages[0].PageId, 2, "jpg", new byte[] { 4, 5, 6, 7 });
-        assets.Set(source.Pages[1].PageId, 1, "png", new byte[] { 8, 9 });
+        assets.Set(source.Pages[0].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image1.png"));
+        assets.Set(source.Pages[0].PageId, 2, "jpg", ReadRepoFixture("TestImage/testimage.jpg"));
+        assets.Set(source.Pages[1].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image2.png"));
         var restoredAssets = new TestAssets();
 
         DataIO.WriteVersionedProject(archivePath, source, assets);
@@ -35,9 +35,9 @@ public class VersionedProjectPersistenceTests
         Assert.AreEqual(TextDirection.Tategaki, restored.Pages[0].MojiDatas[0].TextDirection);
         Assert.AreEqual("二枚目のページ", restored.Pages[1].Name);
         Assert.AreEqual("日本語の本文", restored.Pages[1].MojiDatas[0].FullText);
-        CollectionAssert.AreEqual(new byte[] { 1, 2, 3 }, restoredAssets.Get(source.Pages[0].PageId, 1));
-        CollectionAssert.AreEqual(new byte[] { 4, 5, 6, 7 }, restoredAssets.Get(source.Pages[0].PageId, 2));
-        CollectionAssert.AreEqual(new byte[] { 8, 9 }, restoredAssets.Get(source.Pages[1].PageId, 1));
+        CollectionAssert.AreEqual(assets.Get(source.Pages[0].PageId, 1), restoredAssets.Get(source.Pages[0].PageId, 1));
+        CollectionAssert.AreEqual(assets.Get(source.Pages[0].PageId, 2), restoredAssets.Get(source.Pages[0].PageId, 2));
+        CollectionAssert.AreEqual(assets.Get(source.Pages[1].PageId, 1), restoredAssets.Get(source.Pages[1].PageId, 1));
 
         using var archive = ZipFile.OpenRead(archivePath);
         CollectionAssert.AreEquivalent(
@@ -105,15 +105,100 @@ public class VersionedProjectPersistenceTests
     {
         using var scope = TemporaryDirectory.Create();
         var archivePath = Path.Combine(scope.Path, "project.mctzip");
-        var source = CreateProject();
+        var source = CreateImageProject();
         var assets = new TestAssets();
-        assets.Set(source.Pages[0].PageId, 1, "png", new byte[] { 1 });
+        assets.Set(source.Pages[0].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image1.png"));
+        assets.Set(source.Pages[0].PageId, 2, "jpg", ReadRepoFixture("TestImage/testimage.jpg"));
+        assets.Set(source.Pages[1].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image2.png"));
 
         DataIO.WriteVersionedProject(archivePath, source, assets);
-        DataIO.WriteVersionedProject(archivePath, source);
+        DataIO.WriteVersionedProject(archivePath, CreateProject());
 
         using var archive = ZipFile.OpenRead(archivePath);
         Assert.IsFalse(archive.Entries.Any(entry => entry.FullName.Contains("/image", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public void WriterRejectsMetadataWithoutAssetAndAssetWithoutMetadata()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var metadataPath = Path.Combine(scope.Path, "metadata-without-asset.mctzip");
+        Assert.ThrowsException<InvalidOperationException>(() => DataIO.WriteVersionedProject(metadataPath, CreateImageProject()));
+
+        var assetPath = Path.Combine(scope.Path, "asset-without-metadata.mctzip");
+        var assets = new TestAssets();
+        var project = CreateProject();
+        assets.Set(project.Pages[0].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image1.png"));
+        Assert.ThrowsException<InvalidOperationException>(() => DataIO.WriteVersionedProject(assetPath, project, assets));
+    }
+
+    [TestMethod]
+    public void ReaderRejectsMetadataAndAssetMismatches()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var sourcePath = Path.Combine(scope.Path, "valid.mctzip");
+        var missingAssetPath = Path.Combine(scope.Path, "missing-asset.mctzip");
+        var missingMetadataPath = Path.Combine(scope.Path, "missing-metadata.mctzip");
+        var source = CreateImageProject();
+        var assets = new TestAssets();
+        assets.Set(source.Pages[0].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image1.png"));
+        assets.Set(source.Pages[0].PageId, 2, "jpg", ReadRepoFixture("TestImage/testimage.jpg"));
+        assets.Set(source.Pages[1].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image2.png"));
+        DataIO.WriteVersionedProject(sourcePath, source, assets);
+
+        RewriteEntry(sourcePath, missingAssetPath, $"pages/{source.Pages[0].PageId:D}/page.xml", null, page =>
+        {
+            page.Root!.Element("Image1Path")!.Value = string.Empty;
+            return page;
+        });
+        Assert.ThrowsException<InvalidDataException>(() => DataIO.ReadVersionedProject(missingAssetPath, new TestAssets()));
+
+        RewriteEntry(sourcePath, missingMetadataPath, $"pages/{source.Pages[0].PageId:D}/page.xml", null, page =>
+        {
+            var imageData = page.Root!.Element("Canvas")!.Element("ImageData1")!;
+            imageData.Element("OriginalWidth")!.Value = "0";
+            imageData.Element("OriginalHeight")!.Value = "0";
+            imageData.Element("ModifiedWidth")!.Value = "0";
+            imageData.Element("ModifiedHeight")!.Value = "0";
+            return page;
+        });
+        Assert.ThrowsException<InvalidDataException>(() => DataIO.ReadVersionedProject(missingMetadataPath, new TestAssets()));
+    }
+
+    [TestMethod]
+    public void ReaderRejectsCorruptImageAndSinklessAssetArchive()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var sourcePath = Path.Combine(scope.Path, "valid.mctzip");
+        var corruptPath = Path.Combine(scope.Path, "corrupt.mctzip");
+        var source = CreateImageProject();
+        var assets = new TestAssets();
+        assets.Set(source.Pages[0].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image1.png"));
+        assets.Set(source.Pages[0].PageId, 2, "jpg", ReadRepoFixture("TestImage/testimage.jpg"));
+        assets.Set(source.Pages[1].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image2.png"));
+        DataIO.WriteVersionedProject(sourcePath, source, assets);
+
+        Assert.ThrowsException<InvalidDataException>(() => DataIO.ReadVersionedProject(sourcePath));
+        RewriteEntry(sourcePath, corruptPath, $"pages/{source.Pages[0].PageId:D}/image1.png", new string('x', 32), null);
+        Assert.ThrowsException<InvalidDataException>(() => DataIO.ReadVersionedProject(corruptPath, new TestAssets()));
+    }
+
+    [TestMethod]
+    public void BatchSinkFailureDoesNotApplyPartialAssetRestoration()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var archivePath = Path.Combine(scope.Path, "project.mctzip");
+        var source = CreateImageProject();
+        var assets = new TestAssets();
+        assets.Set(source.Pages[0].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image1.png"));
+        assets.Set(source.Pages[0].PageId, 2, "jpg", ReadRepoFixture("TestImage/testimage.jpg"));
+        assets.Set(source.Pages[1].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image2.png"));
+        DataIO.WriteVersionedProject(archivePath, source, assets);
+
+        var sink = new ThrowingBatchSink();
+        Assert.ThrowsException<InvalidOperationException>(() => DataIO.ReadVersionedProject(archivePath, sink));
+        Assert.AreEqual(1, sink.CallCount);
+        Assert.AreEqual(0, sink.AppliedAssetCount);
     }
 
     [TestMethod]
@@ -174,8 +259,12 @@ public class VersionedProjectPersistenceTests
     {
         using var scope = TemporaryDirectory.Create();
         var archivePath = Path.Combine(scope.Path, "project.mctzip");
-        var source = CreateProject();
-        DataIO.WriteVersionedProject(archivePath, source);
+        var source = CreateImageProject();
+        var assets = new TestAssets();
+        assets.Set(source.Pages[0].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image1.png"));
+        assets.Set(source.Pages[0].PageId, 2, "jpg", ReadRepoFixture("TestImage/testimage.jpg"));
+        assets.Set(source.Pages[1].PageId, 1, "png", ReadRepoFixture("tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root/Image2.png"));
+        DataIO.WriteVersionedProject(archivePath, source, assets);
         var original = File.ReadAllBytes(archivePath);
 
         Assert.ThrowsException<InvalidOperationException>(() => DataIO.WriteVersionedProject(archivePath, source, new ThrowingAssets()));
@@ -222,6 +311,29 @@ public class VersionedProjectPersistenceTests
         return new ProjectDocument(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), "保存テスト", new[] { firstPage, secondPage });
     }
 
+    private static ProjectDocument CreateImageProject()
+    {
+        var project = CreateProject();
+        var firstCanvas = project.Pages[0].CanvasData;
+        firstCanvas.ImageData1 = new ImageData(640, 480) { ModifiedWidth = 640, ModifiedHeight = 480 };
+        firstCanvas.ImageData2 = new ImageData(1000, 600) { ModifiedWidth = 320, ModifiedHeight = 480 };
+        var secondCanvas = project.Pages[1].CanvasData;
+        secondCanvas.ImageData1 = new ImageData(320, 240) { ModifiedWidth = 320, ModifiedHeight = 240 };
+        return project;
+    }
+
+    private static byte[] ReadRepoFixture(string relativePath)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null && !File.Exists(Path.Combine(directory.FullName, "global.json")))
+        {
+            directory = directory.Parent;
+        }
+
+        if (directory == null) throw new InvalidOperationException("Repository root was not found.");
+        return File.ReadAllBytes(Path.Combine(directory.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+    }
+
     private static void RewriteEntry(string sourcePath, string destinationPath, string entryName, string? rawContent, Func<XDocument, XDocument>? transform)
     {
         using var source = ZipFile.OpenRead(sourcePath);
@@ -252,7 +364,7 @@ public class VersionedProjectPersistenceTests
         }
     }
 
-    private sealed class TestAssets : IProjectAssetSource, IProjectAssetSink
+    private sealed class TestAssets : IProjectAssetSource, IProjectAssetSink, IProjectAssetBatchSink
     {
         private readonly Dictionary<string, (string Extension, byte[] Content)> _assets = new();
 
@@ -276,6 +388,14 @@ public class VersionedProjectPersistenceTests
             Set(pageId, imageNumber, extension, copy.ToArray());
         }
 
+        public void SaveImages(ProjectDocument project, IReadOnlyList<ProjectAssetRestore> assets)
+        {
+            foreach (var asset in assets)
+            {
+                Set(asset.PageId, asset.ImageNumber, asset.Extension, asset.Content);
+            }
+        }
+
         public byte[] Get(Guid pageId, int imageNumber) => _assets[Key(pageId, imageNumber)].Content;
 
         private static string Key(Guid pageId, int imageNumber) => $"{pageId:D}:{imageNumber}";
@@ -286,6 +406,24 @@ public class VersionedProjectPersistenceTests
         public ProjectImageAsset? OpenImage(PageDocument page, int imageNumber)
         {
             throw new IOException("asset source failure");
+        }
+    }
+
+    private sealed class ThrowingBatchSink : IProjectAssetSink, IProjectAssetBatchSink
+    {
+        public int CallCount { get; private set; }
+
+        public int AppliedAssetCount { get; private set; }
+
+        public void SaveImage(Guid pageId, int imageNumber, string extension, Stream content)
+        {
+            throw new InvalidOperationException("A batch sink is required.");
+        }
+
+        public void SaveImages(ProjectDocument project, IReadOnlyList<ProjectAssetRestore> assets)
+        {
+            CallCount++;
+            throw new InvalidOperationException("restore failed before commit");
         }
     }
 
