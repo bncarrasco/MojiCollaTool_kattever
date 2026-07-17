@@ -14,12 +14,13 @@ namespace MojiCollaTool
     /// 1ページ分のキャンバス、画像、文字オブジェクト、ページ内操作を保持するコントロールです。
     /// MainWindowはプロジェクト入出力などのアプリケーションシェルに集中します。
     /// </summary>
-    public partial class PageEditorControl : UserControl
+    public partial class PageEditorControl : UserControl, IDisposable
     {
         private readonly List<MojiPanel> _mojiPanels = new();
         private readonly ObservableCollection<MojiPanel> _viewMojiPanels = new();
         private CanvasEditWindow? _canvasEditWindow;
         private bool _runEvent;
+        private bool _isDisposed;
 
         public PageEditorControl()
         {
@@ -52,6 +53,7 @@ namespace MojiCollaTool
 
         public void SetCanvasData(CanvasData canvasData)
         {
+            ThrowIfDisposed();
             CanvasData = canvasData ?? throw new ArgumentNullException(nameof(canvasData));
             UpdateCanvas();
         }
@@ -60,6 +62,7 @@ namespace MojiCollaTool
 
         public void AddMojiPanel(MojiPanel mojiPanel)
         {
+            ThrowIfDisposed();
             ArgumentNullException.ThrowIfNull(mojiPanel);
             if (_mojiPanels.Contains(mojiPanel)) return;
 
@@ -79,6 +82,7 @@ namespace MojiCollaTool
             if (!_mojiPanels.Remove(mojiPanel)) return;
 
             _viewMojiPanels.Remove(mojiPanel);
+            mojiPanel.Dispose();
             MainCanvas.Children.Remove(mojiPanel);
         }
 
@@ -108,8 +112,30 @@ namespace MojiCollaTool
 
         public void CloseCanvasEditor()
         {
-            _canvasEditWindow?.Close();
+            var window = _canvasEditWindow;
             _canvasEditWindow = null;
+            window?.Close();
+        }
+
+        /// <summary>
+        /// ページの最終破棄時に、ページが所有するWindowと文字パネルを解放します。
+        /// </summary>
+        public void Dispose()
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+
+            CloseCanvasEditor();
+            foreach (var panel in _mojiPanels.ToArray()) panel.Dispose();
+            _mojiPanels.Clear();
+            _viewMojiPanels.Clear();
+            MainCanvas.Children.Clear();
+            FileDropped = null;
+        }
+
+        internal void OnCanvasEditWindowClosed(CanvasEditWindow window)
+        {
+            if (ReferenceEquals(_canvasEditWindow, window)) _canvasEditWindow = null;
         }
 
         public void ExportImage(string filePath, BitmapEncoder encoder)
@@ -184,6 +210,7 @@ namespace MojiCollaTool
 
         private void CanvasEditButton_Click(object sender, RoutedEventArgs e)
         {
+            ThrowIfDisposed();
             if (_canvasEditWindow == null || !_canvasEditWindow.IsVisible)
             {
                 _canvasEditWindow = new CanvasEditWindow(CanvasData, this);
@@ -216,6 +243,11 @@ namespace MojiCollaTool
                 ? DragDropEffects.All
                 : DragDropEffects.None;
             e.Handled = true;
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_isDisposed) throw new ObjectDisposedException(nameof(PageEditorControl));
         }
     }
 

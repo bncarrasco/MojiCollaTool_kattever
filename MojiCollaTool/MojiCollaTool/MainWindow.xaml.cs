@@ -276,7 +276,12 @@ namespace MojiCollaTool
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             if (PageEditor.HasMojiPanels && !ShowOKCancelDialog("文字データが存在しています。終了しても問題ありませんか？"))
+            {
                 e.Cancel = true;
+                return;
+            }
+
+            PageEditor.Dispose();
         }
 
         private OpenFileDialog CreateOpenFileDialog(string filter) => new()

@@ -42,7 +42,14 @@ namespace MojiCollaTool
 
             InitializeComponent();
 
+            Closed += CanvasEditWindow_Closed;
             UpdateView();
+        }
+
+        private void CanvasEditWindow_Closed(object? sender, EventArgs e)
+        {
+            _pageEditor?.OnCanvasEditWindowClosed(this);
+            _pageEditor = null;
         }
 
         /// <summary>

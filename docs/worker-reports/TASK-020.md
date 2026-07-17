@@ -2,35 +2,31 @@
 
 ## Result
 
-PageEditorControlへのページ内編集機能の抽出を実装しました。MainWindowはプロジェクト入出力とアプリケーションシェルを担当し、キャンバス、画像、文字オブジェクト、ズーム、ドラッグ＆ドロップ、キャンバス設定ダイアログ、文字一覧をPageEditorControlが保持します。
+PageEditorControlへのページ内編集機能の抽出と、ページライフサイクル時のWindow所有解放を実装しました。
 
-## 対応要件
+## 追加修正
 
-- REQ-PAGE-001: 1ページ分の編集状態をPageEditorControlに集約
-- REQ-NFR-MEM-001: 非アクティブなページを保持できるコントロール境界を追加
-- ADR-0002: PageEditorControlをshellから分離する決定に従った
-
-## 修正内容
-
-- ズーム値を`UpDownTextBox.Value`と同じ`int`へ統一し、CS1503を解消
-- `Window_Activated`から`PageEditorControl.RefreshMojiList`を呼び出し、MojiDataの変更通知なしでも一覧を再構築
-- T005の検証済み読込→安全なWorking領域コミット→画面反映の順序と、日本語の外側エラーメッセージを維持
-- T005/T010を統合したT020専用worktreeへ実装を移行
+- 一時的な`Unloaded`ではMojiWindowを閉じず、ページ削除・アプリ終了・`Dispose()`時だけ明示的に破棄
+- Closed済みMojiWindowを`ShowMojiWindow()`で再生成可能に変更
+- PageEditorControlに`IDisposable`と明示的な破棄処理を追加
+- CanvasEditWindowの`Closed`でPageEditorControlへの相互参照を解除
+- STAライフサイクルテストを追加
 
 ## Worktree / integration
 
 - Branch: `feature/TASK-020-page-editor-control`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-020`
-- develop T005 integration commit: `8a1b64f`
-- develop T010 integration merge: `391a0d8`
-- T020 result commit: 実装コミット（HEAD）
+- develop T005 integration: `8a1b64f`
+- develop T010 integration: `391a0d8`
 
 ## Verification
 
 - SDK: .NET 6.0.428 (`C:/Users/user/.dotnet`)
 - Debug build: pass, 0 warnings / 0 errors
 - Release build: pass, 0 warnings / 0 errors
-- Debug tests: 29 passed, 0 failed, 0 skipped
-- Release tests: 29 passed, 0 failed, 0 skipped
-- `git diff --check`: pass（追加ファイルをGit管理下へ追加後に実行）
-- 手動UI確認: Not verified
+- Debug tests: 31 passed, 0 failed, 0 skipped
+- Release tests: 31 passed, 0 failed, 0 skipped
+- `PageEditorLifecycleTests`: 2 passed（Unloaded保持・MojiWindow再生成・Dispose解放・CanvasEditWindow参照解除）
+- `git diff HEAD^ --check`: pass（追加ファイルをGit管理下へ追加済み）
+- UI起動/終了スモーク: pass（WPFプロセスとWindow生成を確認）
+- ページタブの視覚操作: T030の範囲のため未実装。T020では`Unloaded`相当のSTAライフサイクルを確認

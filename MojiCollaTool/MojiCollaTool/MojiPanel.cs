@@ -16,7 +16,7 @@ using System.Windows.Shapes;
 
 namespace MojiCollaTool
 {
-    public class MojiPanel : ContentControl
+    public class MojiPanel : ContentControl, IDisposable
     {
         /// <summary>
         /// 文字のID
@@ -72,6 +72,8 @@ namespace MojiCollaTool
         /// </summary>
         private bool panelDoubleClicked = false;
 
+        private bool _isDisposed;
+
         public MojiPanel(int id, PageEditorControl pageEditor)
         {
             this.pageEditor = pageEditor;
@@ -92,7 +94,7 @@ namespace MojiCollaTool
 
         private void Init()
         {
-            MojiWindow = new MojiWindow(this);
+            CreateMojiWindow();
 
             AddChild(backgroundGrid);
 
@@ -181,12 +183,29 @@ namespace MojiCollaTool
         /// </summary>
         public void ShowMojiWindow()
         {
-            if(MojiWindow != null)
-            {
-                MojiWindow.Topmost = ShowTopmost;
-                MojiWindow.Show();
-                MojiWindow.Activate();
-            }
+            if (_isDisposed) return;
+
+            CreateMojiWindow();
+            MojiWindow!.Topmost = ShowTopmost;
+            MojiWindow.Show();
+            MojiWindow.Activate();
+        }
+
+        private void CreateMojiWindow()
+        {
+            if (_isDisposed || MojiWindow != null) return;
+
+            MojiWindow = new MojiWindow(this);
+            MojiWindow.Closed += MojiWindow_Closed;
+        }
+
+        private void MojiWindow_Closed(object? sender, EventArgs e)
+        {
+            var window = MojiWindow;
+            if (window == null || !ReferenceEquals(sender, window)) return;
+
+            window.Closed -= MojiWindow_Closed;
+            MojiWindow = null;
         }
 
         private void MojiPanel_MouseDown(object sender, MouseButtonEventArgs e)
@@ -198,14 +217,25 @@ namespace MojiCollaTool
 
         private void MojiPanel_Unloaded(object sender, RoutedEventArgs e)
         {
-            if (MojiWindow != null)
-            {
-                //  パネルがアンロード（削除？）されるタイミングで、内部保持のウィンドウに終了フラグを立て、クローズする
-                //  これにより、ウィンドウ保持によるアプリが終わらない問題を回避する
-                MojiWindow.IsHideOnly = false;
-                MojiWindow.Close();
-                MojiWindow = null;
-            }
+            // 一時的なVisualTreeからの離脱では編集Windowを破棄しない。
+            // 永続的な削除・ページ破棄はDispose()から明示的に行う。
+        }
+
+        /// <summary>
+        /// 文字パネルを最終破棄し、所有する編集Windowも終了させます。
+        /// </summary>
+        public void Dispose()
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+
+            var window = MojiWindow;
+            if (window == null) return;
+
+            window.Closed -= MojiWindow_Closed;
+            MojiWindow = null;
+            window.IsHideOnly = false;
+            window.Close();
         }
 
         /// <summary>
