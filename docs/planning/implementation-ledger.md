@@ -6,7 +6,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TASK-000 | Complete | feature/TASK-000-build-baseline | `F:/github/MojiCollaTool-worktrees/TASK-000` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | final handoffに記載 | BUILD,TEST,PERF | - | Debug/Release pass (0 warnings, 0 errors), SDK 6.0.428 fixed | 8 passed; p95 89.387 ms / threshold 500 ms | Smoke起動確認、UI操作はNot verified、fixture互換性確認 | Locally verified; integration pending | なし | TASK-005/010はこの結果統合後に開始可 |
 | TASK-005 | Planned | - | - | - | - | SAVE,COMPAT,ERROR | ADR-0005 | Not run | Not run | Not verified | - | TASK-000 | 000後 |
-| TASK-010 | Planned | - | - | - | - | PAGE,WORKSPACE | ADR-0001 | Not run | Not run | Not verified | - | TASK-000 | 000後 |
+| TASK-010 | Complete | feature/TASK-010-project-page-model | `F:/github/MojiCollaTool-worktrees/TASK-010` | `939c4576884a05b0c265ab8cb42240f8dd1e88ae` | `docs/worker-reports/TASK-010.md`記載 | PAGE,WORKSPACE | ADR-0001 | Not verified: .NET SDK 6.0.428 missing | Not verified: SDK missing（新規6テスト） | UI変更なし、縦横MojiData保持テストを追加 | Pending integration review | SDK 6.0.428未導入 | TASK-020/025/040/060 |
 | TASK-020 | Planned | - | - | - | - | PAGE,MEM | ADR-0002 | Not run | Not run | Not verified | - | TASK-010 | 010後 |
 | TASK-025 | Planned | - | - | - | - | WORKSPACE,DIRTY | ADR-0001 | Not run | Not run | Not verified | - | TASK-010 | 010後 |
 | TASK-030 | Planned | - | - | - | - | PAGE,WORKSPACE,DIRTY,UI | ADR-0001/2 | Not run | Not run | Not verified | - | 020,025,041 | dependency後 |

@@ -18,7 +18,7 @@
 | Japanese path | UNICODE | Debug/Release pass | 8 passed | Not verified | N/A | N/A | N/A | Japanese path archive verified | - | `日本語フォルダー/現行プロジェクト.mctzip` |
 | Corrupt project load | ERROR | Not verified | None | Not verified | N/A | N/A | Error日本語 | Current state loss risk | - | - |
 | Save failure preserves old file | SAVE | Not verified | None | Not verified | N/A | N/A | Not verified | Current code fails design review | - | fault test required |
-| Multiple pages | PAGE | Not implemented | None | Not verified | Not verified | Not verified | Required | New format required | - | TASK-010/030/040 |
+| Multiple pages | PAGE | Not verified: SDK missing | Not verified: ProjectDocumentTests 6 tests（SDK missing） | Not verified | Not verified | Not verified | N/A: UI変更なし | Model-only; format unchanged | TASK-010（integration pending） | Project/Page/Canvas model、CRUD、順序、deep clone、legacy adapterを実装。新形式・tabsはTASK-030/040 |
 | Multiple project tabs | WORKSPACE | Not implemented | None | Not verified | Not verified | Not verified | Required | session isolation | - | two-level tabs |
 | Dirty state | DIRTY | Not implemented | None | Not verified | N/A | N/A | Required | N/A | - | TASK-070/030 |
 | Undo/Redo | UNDO | Not implemented | None | Not verified | Not verified | Not verified | Required | history not saved | - | TASK-070 |
