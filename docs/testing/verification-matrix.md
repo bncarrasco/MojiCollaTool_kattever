@@ -55,6 +55,7 @@ TASK-000で再配布可能性を確認し、以下を固定する。
 | Image-backed save/load | SAVE/COMPAT | Explicit Image1/Image2 copy, archive round-trip, decoder/dimension validation | Pass | Not verified |
 | Image deletion / broken image | SAVE/ERROR | Stale image exclusion, corrupt image rejection, existing Working preservation | Pass | Not verified |
 | Duplicate image extensions | COMPAT/ERROR | Image1/Image1 duplicate-extension archive rejection | Pass | Not verified |
+| Persistence error messages | ERROR/UI | Japanese save/load/Working outer messages; internal exception retained in log builder | Pass | Not verified |
 
 ## Manual baseline procedure
 
