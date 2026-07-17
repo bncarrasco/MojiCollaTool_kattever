@@ -2,7 +2,7 @@
 
 ## Result
 
-実装完了。READMEを「MojiCollaTool 勝手版」として更新し、非公式フォークであること、原作者・公式版との無関係、原作者へ問い合わせない旨、現時点で勝手版のRelease/Wikiを提供していないことを明記した。ColorSelector由来コードについて一次ソースと履歴・実装を照合し、Apache-2.0の第三者 noticeを追加した。製品C#、XAML、solution、csproj、root LICENSEは変更していない。
+文書整備は完了。READMEを「MojiCollaTool 勝手版」として更新し、非公式フォークであること、原作者・公式版との無関係、原作者へ問い合わせない旨、現時点で勝手版のRelease/Wikiを提供していないことを明記した。ColorSelector由来コードについて一次ソースと履歴・実装を照合し、Apache-2.0の第三者 noticeを追加した。ただし配布時のライセンス対応は未完了であり、ライセンス対応全体の完了とは扱わない。製品C#、XAML、solution、csproj、root LICENSEは変更していない。
 
 ## Summary
 
@@ -54,6 +54,14 @@
 
 なし。既存コードの帰属・文書化であり、製品設計や保存形式の判断を追加していない。
 
+## 司令役レビュー後の未完了事項
+
+- ColorSelectorの変更済み4ファイルには、由来・変更通知がまだない。
+- TASK-190Bまたは専用後続タスクで、ファイル単位の由来・変更通知を追加する。
+- 配布ZIPへroot `LICENSE` と `THIRD-PARTY-NOTICES.md` を同梱する。
+- About画面等から第三者ライセンスを確認できる導線を検討する。
+- TASK-190Aは文書整備のみ完了し、配布時のライセンス対応は未完了である。
+
 ## 指示からの逸脱
 
 なし。製品C#、XAML、solution、csproj、root LICENSE、他taskの実装は変更していない。push、merge、rebase、公式作者への連絡も行っていない。
@@ -75,6 +83,7 @@
 ## 既知の問題・未確定事項
 
 - 勝手版のRelease、実行バイナリ、Wikiは未提供であり、TASK-190Bでアプリ内表示・配布物表記を扱うまで、REQ-FORK-001のアプリ側確認は未完了である。
+- 変更済みColorSelector 4ファイルへのファイル単位notice、配布ZIPへのroot `LICENSE` / `THIRD-PARTY-NOTICES.md` 同梱、About等からの第三者ライセンス導線は未対応である。
 - WpfColorPickerの一次ソースLICENSEには著作権者名がないため、`MT224244`をGitHubリポジトリ帰属として記録した。法的な著作権者の追加断定はしていない。
 - GUIによるMarkdown表示確認は未実施である（Not verified）。
 
