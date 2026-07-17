@@ -30,7 +30,7 @@
 | Auto layout | LAYOUT | Not implemented | None | Not verified | Not verified | Not verified | Required | Mode fields | - | TASK-140 |
 | Clipboard image | CLIPBOARD | Not implemented | None | Not verified | N/A | N/A | Required | Background persistence | - | TASK-170 |
 | Current/all page export | EXPORT | Current only | None | Not verified | Not verified | Not verified | Required for all-pages | N/A | - | TASK-050 |
-| Fork identity | FORK | N/A: product code unchanged | N/A: docs-only | README wording/link review completed; app/distribution deferred | N/A | N/A | README Japanese; app deferred to TASK-190B | Root MIT retained; WpfColorPicker Apache-2.0 notice added | TASK-190A (pending commit) | README and notice scope complete; integration review pending |
+| Fork identity | FORK | N/A: product code unchanged | N/A: docs-only | README wording/link review completed; app/distribution deferred | N/A | N/A | README Japanese; app deferred to TASK-190B | Root MIT retained; WpfColorPicker Apache-2.0 notice added | TASK-190A / `d297bb6` | README and notice scope complete; integration review pending |
 
 ## Baseline datasets
 

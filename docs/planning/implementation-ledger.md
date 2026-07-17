@@ -25,7 +25,7 @@
 | TASK-150/160 | Planned | - | - | - | - | BALLOON Could | ADR-0007 | Not run | Not run | Not verified | - | TASK-130 | future |
 | TASK-170 | Planned | - | - | - | - | CLIPBOARD | ADR-0001/4 | Not run | Not run | Not verified | - | 030,070 | dependency後 |
 | TASK-180 | Planned | - | - | - | - | BACKGROUND-FX | - | Not run | Not run | Not verified | - | TASK-140 | future |
-| TASK-190A | In review | feature/TASK-190A-fork-documentation | `F:/github/MojiCollaTool-worktrees/TASK-190A` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | pending | FORK,DEPS | - | N/A: product code unchanged | N/A: docs-only | README/notice reviewed; app branding deferred | Not reviewed | なし | TASK-190B |
+| TASK-190A | In review | feature/TASK-190A-fork-documentation | `F:/github/MojiCollaTool-worktrees/TASK-190A` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | `d297bb6` | FORK,DEPS | - | N/A: product code unchanged | N/A: docs-only | README/notice reviewed; app branding deferred | Not reviewed | なし | TASK-190B |
 | TASK-190B | Planned | - | - | - | - | FORK,UI | - | Not run | Not run | Not verified | - | 020,190A | dependency後 |
 | TASK-200 | Planned | - | - | - | - | UI | - | Not run | Not run | Not verified | - | TASK-190B | 190B後 |
 | TASK-210/220/230 | Planned | - | - | - | - | OPS,SNAP,SELECT,GROUP | ADR-0003/4 | Not run | Not run | Not verified | - | task-breakdown参照 | future |

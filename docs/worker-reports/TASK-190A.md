@@ -22,7 +22,8 @@
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-190A`
 - Base tag: `plan-base-20260717`
 - Base commit: `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a`
-- Result commit: pending（この報告を含むコミット後に記録）
+- Result commit: `d297bb6`（`docs: document unofficial fork attribution`）
+- Report update commit: この報告書・台帳更新を含む後続のローカルコミット
 
 ## 変更ファイル
 
