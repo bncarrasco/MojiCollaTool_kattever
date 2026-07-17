@@ -30,7 +30,7 @@ namespace MojiCollaTool
             foreach (var page in pages)
             {
                 if (page == null) throw new ArgumentException("Page collection contains null.", nameof(pages));
-                AddExistingPage(page.Clone());
+                AddExistingPage(page.Clone(page.PageId));
             }
 
             if (_pages.Count == 0)

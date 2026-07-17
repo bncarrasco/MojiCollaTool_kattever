@@ -51,6 +51,50 @@ public class ProjectDocumentTests
     }
 
     [TestMethod]
+    public void ConstructorPreservesProjectAndPageIdsAndDeepCopiesPages()
+    {
+        var projectId = Guid.NewGuid();
+        var pageId = Guid.NewGuid();
+        var source = new PageDocument(pageId, "保持", new CanvasData { CanvasWidth = 321 }, new[]
+        {
+            new MojiData(9) { FullText = "元データ" },
+        });
+
+        var project = new ProjectDocument(projectId, "プロジェクト", new[] { source });
+
+        Assert.AreEqual(projectId, project.ProjectId);
+        Assert.AreEqual(pageId, project.Pages[0].PageId);
+        Assert.AreEqual(0, project.Pages[0].Order);
+        Assert.AreEqual("元データ", project.Pages[0].MojiDatas[0].FullText);
+
+        source.CanvasData.CanvasWidth = 999;
+        source.MojiDatas[0].FullText = "変更";
+
+        Assert.AreEqual(321, project.Pages[0].Canvas.CanvasWidth);
+        Assert.AreEqual("元データ", project.Pages[0].MojiDatas[0].FullText);
+    }
+
+    [TestMethod]
+    public void ConstructorNormalizesPageOrderAndRejectsDuplicatePageIds()
+    {
+        var pageId = Guid.NewGuid();
+        var first = new PageDocument(pageId, "一", new CanvasData(), Array.Empty<MojiData>());
+        var second = new PageDocument(pageId, "二", new CanvasData(), Array.Empty<MojiData>());
+
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            new ProjectDocument(Guid.NewGuid(), "重複", new[] { first, second }));
+
+        var project = new ProjectDocument(Guid.NewGuid(), "順序", new[]
+        {
+            new PageDocument(Guid.NewGuid(), "A", new CanvasData(), Array.Empty<MojiData>()),
+            new PageDocument(Guid.NewGuid(), "B", new CanvasData(), Array.Empty<MojiData>()),
+            new PageDocument(Guid.NewGuid(), "C", new CanvasData(), Array.Empty<MojiData>()),
+        });
+
+        CollectionAssert.AreEqual(new[] { 0, 1, 2 }, project.Pages.Select(page => page.Order).ToArray());
+    }
+
+    [TestMethod]
     public void ClonePageUsesNewIdAndDeepCopiesLegacyData()
     {
         var project = new ProjectDocument();
