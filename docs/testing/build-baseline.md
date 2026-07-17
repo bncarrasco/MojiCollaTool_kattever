@@ -15,13 +15,19 @@
 
 ```powershell
 dotnet --version
-dotnet build MojiCollaTool/MojiCollaTool.sln --configuration Debug --nologo
-dotnet build MojiCollaTool/MojiCollaTool.sln --configuration Release --nologo
-dotnet test MojiCollaTool/MojiCollaTool.sln --configuration Debug --nologo
+powershell -File eng/build.ps1 -Configuration Debug
+powershell -File eng/build.ps1 -Configuration Release
+powershell -File eng/test.ps1
 ```
 
-TASK-000の実行時点ではSDKが存在しないため、上記コマンドはすべて `Not verified` であり、成功扱いにしない。
+SDK準備前のTASK-000実行時点では、上記コマンドはすべて `Not verified` であり、成功扱いにしなかった。SDK準備後にこれらのscriptを基準コマンドとして実行した。
 
-## 未完了の基準資材
+## TASK-000実行結果
 
-SDKが利用可能になった後、TASK-000の同一作業範囲でテストプロジェクト、Debug/Release/testの最小実行script、現行mctzip root fixture、および `CanvasData`、`ImageData`、`MojiData` XML round-trip characterization testを追加し、検証マトリクスを再更新する。
+- SDK: .NET SDK `6.0.428`（x64、ユーザー領域）
+- Debug build: 成功、0 warnings、0 errors
+- Release build: 成功、0 warnings、0 errors
+- test: 成功、5 tests passed、0 failed、0 skipped
+- Release smoke起動: 3秒間プロセス継続を確認。UI操作自体は未確認
+
+追加した基準資材は `tests/MojiCollaTool.Tests`、`eng/build.ps1`、`eng/test.ps1`、`tests/MojiCollaTool.Tests/Fixtures/current-mctzip-root`、`current-mctzip.mctzip`である。

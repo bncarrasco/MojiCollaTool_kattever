@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CanvasData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <CanvasWidth>640</CanvasWidth>
+  <CanvasHeight>480</CanvasHeight>
+  <ImageData1>
+    <OriginalWidth>640</OriginalWidth>
+    <OriginalHeight>480</OriginalHeight>
+    <ModifiedWidth>640</ModifiedWidth>
+    <ModifiedHeight>480</ModifiedHeight>
+  </ImageData1>
+  <ImageData2>
+    <OriginalWidth>0</OriginalWidth>
+    <OriginalHeight>0</OriginalHeight>
+    <ModifiedWidth>0</ModifiedWidth>
+    <ModifiedHeight>0</ModifiedHeight>
+  </ImageData2>
+  <Image2LocatePosition>Left</Image2LocatePosition>
+  <ImageMarginTop>0</ImageMarginTop>
+  <ImageMarginLeft>0</ImageMarginLeft>
+  <ImageMarginBottom>0</ImageMarginBottom>
+  <ImageMarginRight>0</ImageMarginRight>
+  <CanvasColor>
+    <A>255</A>
+    <R>255</R>
+    <G>255</G>
+    <B>255</B>
+    <ScA>1</ScA>
+    <ScR>1</ScR>
+    <ScG>1</ScG>
+    <ScB>1</ScB>
+  </CanvasColor>
+</CanvasData>

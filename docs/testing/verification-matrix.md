@@ -4,7 +4,7 @@
 
 | Feature | Requirement | Build | Automated test | Manual verification | Vertical | Horizontal | Japanese UI | Compatibility | Verified task/commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| App startup | baseline | Blocked: SDK missing | Blocked: SDK missing | Not verified | N/A | N/A | Not verified | N/A | - | `dotnet --list-sdks`が空。SDK解決前 |
+| App startup | baseline | Debug/Release pass (0 warnings, 0 errors) | 5 passed | Smoke started 3s; UI操作はNot verified | N/A | N/A | Not verified | N/A | - | Locally verified with SDK 6.0.428; integration pending |
 | New edit | baseline | Not verified | None | Not verified | N/A | N/A | Mostly Japanese by inspection | N/A | - | current single page |
 | Load background JPG/PNG | baseline | Not verified | None | Not verified | N/A | N/A | Filter英語 | Current behavior only | - | file/drag-drop pathあり |
 | Add second image | baseline | Not verified | None | Not verified | N/A | N/A | Japanese by inspection | Current format image2 | - | placement 4方向 |
@@ -31,8 +31,8 @@
 | Clipboard image | CLIPBOARD | Not implemented | None | Not verified | N/A | N/A | Required | Background persistence | - | TASK-170 |
 | Current/all page export | EXPORT | Current only | None | Not verified | Not verified | Not verified | Required for all-pages | N/A | - | TASK-050 |
 | Fork identity | FORK | N/A | N/A | README/app/distribution not verified | N/A | N/A | Required | License review open | - | TASK-190A/B |
-| XML round-trip characterization | NFR-TEST/UNICODE | Blocked: SDK missing | Blocked: test project not created | Not verified | Not verified | Not verified | N/A: UI変更なし | Not verified | - | `CanvasData`/`ImageData`/`MojiData` testとfixtureはSDK準備後 |
-| mctzip root fixture | NFR-TEST/COMPAT | Blocked: SDK missing | Not run | Not verified | Not verified | Not verified | N/A: UI変更なし | Not verified | - | 再配布可能fixtureの作成はSDK準備後 |
+| XML round-trip characterization | NFR-TEST/UNICODE | Debug/Release pass | 5 passed (3 XML + 2 fixture) | Not verified | Tategaki fixture verified | Yokogaki fixture verified | N/A: UI変更なし | Current XML fixture verified | - | Locally verified; integration pending。`CanvasData`/`ImageData`/`MojiData`、日本語、改行、surrogate pair、結合濁点、emoji sequence |
+| mctzip root fixture | NFR-TEST/COMPAT | Debug/Release pass | 5 passed | Not verified | N/A | N/A | N/A: UI変更なし | Root entries/XML read/archive verified | - | Locally verified; integration pending。自作fixture。`Info.txt`、`CanvasData.xml`、`MojiData1.xml`、`Image1.png` |
 
 ## Baseline datasets
 

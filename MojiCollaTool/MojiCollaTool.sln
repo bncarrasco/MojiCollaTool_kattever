@@ -5,6 +5,8 @@ VisualStudioVersion = 17.4.33213.308
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MojiCollaTool", "MojiCollaTool\MojiCollaTool.csproj", "{467470C9-F9BB-44C6-9D6B-17BB6D8F0B75}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MojiCollaTool.Tests", "..\tests\MojiCollaTool.Tests\MojiCollaTool.Tests.csproj", "{EFC6D032-7F04-4DC6-8C99-D6D4B5ED6577}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{467470C9-F9BB-44C6-9D6B-17BB6D8F0B75}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{467470C9-F9BB-44C6-9D6B-17BB6D8F0B75}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{467470C9-F9BB-44C6-9D6B-17BB6D8F0B75}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EFC6D032-7F04-4DC6-8C99-D6D4B5ED6577}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EFC6D032-7F04-4DC6-8C99-D6D4B5ED6577}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EFC6D032-7F04-4DC6-8C99-D6D4B5ED6577}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EFC6D032-7F04-4DC6-8C99-D6D4B5ED6577}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
