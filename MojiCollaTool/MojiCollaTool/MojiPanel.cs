@@ -63,7 +63,7 @@ namespace MojiCollaTool
         /// </summary>
         private double previousWidth;
 
-        private MainWindow mainWindow;
+        private PageEditorControl pageEditor;
 
         private Nullable<Point> dragStart = null;
 
@@ -72,18 +72,18 @@ namespace MojiCollaTool
         /// </summary>
         private bool panelDoubleClicked = false;
 
-        public MojiPanel(int id, MainWindow mainWindow)
+        public MojiPanel(int id, PageEditorControl pageEditor)
         {
-            this.mainWindow = mainWindow;
+            this.pageEditor = pageEditor;
 
             MojiData = new MojiData(id);
 
             Init();
         }
 
-        public MojiPanel(MojiData mojiData, MainWindow mainWindow)
+        public MojiPanel(MojiData mojiData, PageEditorControl pageEditor)
         {
-            this.mainWindow = mainWindow;
+            this.pageEditor = pageEditor;
 
             MojiData = mojiData;
 
@@ -122,7 +122,7 @@ namespace MojiCollaTool
         /// </summary>
         public void Reproduction()
         {
-            mainWindow.ReproductionMoji(this);
+            pageEditor.ReproductionMoji(this);
         }
 
         /// <summary>
@@ -130,7 +130,7 @@ namespace MojiCollaTool
         /// </summary>
         public void Remove()
         {
-            mainWindow.RemoveMojiPanel(this);
+            pageEditor.RemoveMojiPanel(this);
         }
 
         private void MojiPanel_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -144,7 +144,7 @@ namespace MojiCollaTool
             if (dragStart != null && e.LeftButton == MouseButtonState.Pressed)
             {
                 var element = (UIElement)sender;
-                var p2 = e.GetPosition(mainWindow.MainCanvas);
+                var p2 = e.GetPosition(pageEditor.Canvas);
 
                 MojiData.X = p2.X - dragStart.Value.X;
                 MojiData.Y = p2.Y - dragStart.Value.Y;
