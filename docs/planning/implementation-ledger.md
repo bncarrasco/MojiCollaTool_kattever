@@ -4,7 +4,7 @@
 
 | Task | Status | Branch | Worktree | Base commit | Result commit | Requirements | ADR | Build | Tests | Manual/UI/Compatibility | Review/Integration | Blocker | Next |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TASK-000 | Ready with blocker | feature/TASK-000-build-baseline | worktree-map参照 | plan base | - | BUILD,TEST,PERF | - | Failed: SDK missing | Not run | Not verified | Not reviewed | .NET SDKなし | SDK準備後に開始 |
+| TASK-000 | Ready with blocker | feature/TASK-000-build-baseline | worktree-map参照 | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | - | BUILD,TEST,PERF | - | Failed: SDK missing | Not run | Not verified | Not reviewed | .NET SDKなし | SDK準備後に開始 |
 | TASK-005 | Planned | - | - | - | - | SAVE,COMPAT,ERROR | ADR-0005 | Not run | Not run | Not verified | - | TASK-000 | 000後 |
 | TASK-010 | Planned | - | - | - | - | PAGE,WORKSPACE | ADR-0001 | Not run | Not run | Not verified | - | TASK-000 | 000後 |
 | TASK-020 | Planned | - | - | - | - | PAGE,MEM | ADR-0002 | Not run | Not run | Not verified | - | TASK-010 | 010後 |
@@ -25,7 +25,7 @@
 | TASK-150/160 | Planned | - | - | - | - | BALLOON Could | ADR-0007 | Not run | Not run | Not verified | - | TASK-130 | future |
 | TASK-170 | Planned | - | - | - | - | CLIPBOARD | ADR-0001/4 | Not run | Not run | Not verified | - | 030,070 | dependency後 |
 | TASK-180 | Planned | - | - | - | - | BACKGROUND-FX | - | Not run | Not run | Not verified | - | TASK-140 | future |
-| TASK-190A | Ready | feature/TASK-190A-fork-documentation | worktree-map参照 | plan base | - | FORK,DEPS | - | N/A: docs-only | N/A | Not verified | Not reviewed | なし | worker開始可 |
+| TASK-190A | Ready | feature/TASK-190A-fork-documentation | worktree-map参照 | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | - | FORK,DEPS | - | N/A: docs-only | N/A | Not verified | Not reviewed | なし | worker開始可 |
 | TASK-190B | Planned | - | - | - | - | FORK,UI | - | Not run | Not run | Not verified | - | 020,190A | dependency後 |
 | TASK-200 | Planned | - | - | - | - | UI | - | Not run | Not run | Not verified | - | TASK-190B | 190B後 |
 | TASK-210/220/230 | Planned | - | - | - | - | OPS,SNAP,SELECT,GROUP | ADR-0003/4 | Not run | Not run | Not verified | - | task-breakdown参照 | future |
