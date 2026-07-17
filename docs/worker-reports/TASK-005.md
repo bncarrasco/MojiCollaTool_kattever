@@ -38,7 +38,7 @@
 
 | Command | Result |
 | --- | --- |
-| `powershell -NoProfile -ExecutionPolicy Bypass -File eng\\test.ps1` | Pass: 12 passed, 0 failed; performance p95 8.704 ms / threshold 500 ms |
+| `powershell -NoProfile -ExecutionPolicy Bypass -File eng\\test.ps1` | Pass: 13 passed, 0 failed; performance p95 8.571 ms / threshold 500 ms |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File eng\\build.ps1 -Configuration Debug` | Pass: 0 warnings, 0 errors |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File eng\\build.ps1 -Configuration Release` | Pass: 0 warnings, 0 errors |
 | `git diff --check` | Pass |

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -52,6 +53,23 @@ public class LegacyPersistenceTests
 
         Assert.IsTrue(File.Exists(Path.Combine(workingPath, "keep.txt")));
         Assert.AreEqual("current session", File.ReadAllText(Path.Combine(workingPath, "keep.txt")));
+    }
+
+    [TestMethod]
+    public void SaveFailureLeavesExistingArchiveUnchanged()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var projectPath = Path.Combine(scope.Path, "existing.mctzip");
+        DataIO.WriteWorkingDirToProjectDataFile(
+            projectPath,
+            new[] { new MojiData(1) { FullText = "old" } },
+            new CanvasData { CanvasWidth = 10, CanvasHeight = 20 });
+        var originalBytes = File.ReadAllBytes(projectPath);
+
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            DataIO.WriteWorkingDirToProjectDataFile(projectPath, ThrowAfterFirstMoji(), new CanvasData()));
+
+        Assert.IsTrue(originalBytes.SequenceEqual(File.ReadAllBytes(projectPath)));
     }
 
     [TestMethod]
@@ -117,5 +135,11 @@ public class LegacyPersistenceTests
         {
             if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
         }
+    }
+
+    private static IEnumerable<MojiData> ThrowAfterFirstMoji()
+    {
+        yield return new MojiData(9) { FullText = "temporary" };
+        throw new IOException("Injected save failure");
     }
 }
