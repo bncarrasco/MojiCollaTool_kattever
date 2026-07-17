@@ -4,7 +4,7 @@
 
 | Feature | Requirement | Build | Automated test | Manual verification | Vertical | Horizontal | Japanese UI | Compatibility | Verified task/commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| App startup | baseline | Debug/Release pass (0 warnings, 0 errors) | 8 passed | Smoke started 3s; UI操作はNot verified | N/A | N/A | Not verified | N/A | - | Locally verified with fixed SDK 6.0.428; integration pending |
+| App startup | baseline | Debug/Release pass (0 warnings, 0 errors) | 8 suite tests passed; startup automationなし | Smoke started 3s; UI操作はNot verified | N/A | N/A | Not verified | N/A | TASK-000 / `939c457` | Fixed SDK 6.0.428; integrated |
 | New edit | baseline | Not verified | None | Not verified | N/A | N/A | Mostly Japanese by inspection | N/A | - | current single page |
 | Load background JPG/PNG | baseline | Not verified | None | Not verified | N/A | N/A | Filter英語 | Current behavior only | - | file/drag-drop pathあり |
 | Add second image | baseline | Not verified | None | Not verified | N/A | N/A | Japanese by inspection | Current format image2 | - | placement 4方向 |
@@ -13,9 +13,9 @@
 | Rotate/resize text | baseline | Not verified | None | Not verified | Not verified | Not verified | Japanese by inspection | Current MojiData | - | - |
 | First/second outline | baseline | Not verified | None | Not verified | Not verified | Not verified | Japanese by inspection | Current MojiData | - | blur性能risk |
 | Background box | baseline | Not verified | None | Not verified | Not verified | Not verified | Japanese by inspection | Current MojiData | - | rounded rectangleあり |
-| Save current project | SAVE/COMPAT | Failed: SDK missing | None | Not verified | Not verified | Not verified | Filter英語 | Risk: non-atomic/stale XML | - | TASK-005対象 |
+| Save current project | SAVE/COMPAT | Debug/Release pass; save未検証 | None | Not verified | Not verified | Not verified | Filter英語 | Risk: non-atomic/stale XML | - | TASK-005対象 |
 | Reload current project | COMPAT | Not verified | None | Not verified | Not verified | Not verified | Filter英語 | Risk: state loss on failure | - | TASK-005/041 |
-| Japanese path | UNICODE | Debug/Release pass | 8 passed | Not verified | N/A | N/A | N/A | Japanese path archive verified | - | `日本語フォルダー/現行プロジェクト.mctzip` |
+| Japanese path | UNICODE | Debug/Release pass | 8 passed | Not verified | N/A | N/A | N/A | Japanese path archive verified | TASK-000 / `939c457` | `日本語フォルダー/現行プロジェクト.mctzip` |
 | Corrupt project load | ERROR | Not verified | None | Not verified | N/A | N/A | Error日本語 | Current state loss risk | - | - |
 | Save failure preserves old file | SAVE | Not verified | None | Not verified | N/A | N/A | Not verified | Current code fails design review | - | fault test required |
 | Multiple pages | PAGE | Not implemented | None | Not verified | Not verified | Not verified | Required | New format required | - | TASK-010/030/040 |
@@ -30,10 +30,10 @@
 | Auto layout | LAYOUT | Not implemented | None | Not verified | Not verified | Not verified | Required | Mode fields | - | TASK-140 |
 | Clipboard image | CLIPBOARD | Not implemented | None | Not verified | N/A | N/A | Required | Background persistence | - | TASK-170 |
 | Current/all page export | EXPORT | Current only | None | Not verified | Not verified | Not verified | Required for all-pages | N/A | - | TASK-050 |
-| Fork identity | FORK | N/A | N/A | README/app/distribution not verified | N/A | N/A | Required | License review open | - | TASK-190A/B |
-| XML round-trip characterization | NFR-TEST/UNICODE | Debug/Release pass | 8 passed (3 XML + 5 fixture/perf) | Not verified | Tategaki fixture verified | Yokogaki fixture verified | N/A: UI変更なし | Current XML fixture verified | - | Locally verified; integration pending。`CanvasData`/`ImageData`/`MojiData`、改行、surrogate pair、結合濁点、emoji sequence |
-| mctzip root fixture | NFR-TEST/COMPAT | Debug/Release pass | 8 passed | Not verified | N/A | N/A | N/A: UI変更なし | Root entries/XML read/archive/Japanese path verified | - | Locally verified; integration pending。baseline/performance自作fixture。Image1/Image2、MojiData1/2/3 |
-| Fixture load performance baseline | NFR-PERF-001 | Debug/Release pass | 1 p95 test passed | Not verified | N/A | N/A | N/A: UI変更なし | Current performance fixture | - | 9 iterations, p95 89.387 ms, threshold ≤500 ms。WPF描画は対象外 |
+| Fork identity | FORK | N/A: product code unchanged | N/A: docs-only | README wording/link review completed; app/distribution deferred | N/A | N/A | README Japanese; app deferred to TASK-190B | Root MIT retained; WpfColorPicker Apache-2.0 notice added。配布対応は未完 | TASK-190A / `2682a0b` | 文書scope統合済み。source notice・配布物同梱・About導線はTASK-190B |
+| XML round-trip characterization | NFR-TEST/UNICODE | Debug/Release pass | 8 passed (3 XML + 5 fixture/perf) | Not verified | Tategaki fixture verified | Yokogaki fixture verified | N/A: UI変更なし | Current XML fixture verified | TASK-000 / `939c457` | Integrated。`CanvasData`/`ImageData`/`MojiData`、改行、surrogate pair、結合濁点、emoji sequence |
+| mctzip root fixture | NFR-TEST/COMPAT | Debug/Release pass | 8 passed | Not verified | N/A | N/A | N/A: UI変更なし | Root entries/XML read/archive/Japanese path verified | TASK-000 / `939c457` | Integrated。baseline/performance自作fixture。Image1/Image2、MojiData1/2/3 |
+| Fixture load performance baseline | NFR-PERF-001 | Debug/Release pass | 1 p95 test passed | Not verified | N/A | N/A | N/A: UI変更なし | Current performance fixture | TASK-000 / `939c457` | 9 iterations, p95 89.387 ms, threshold ≤500 ms。WPF描画は対象外 |
 
 ## Baseline datasets
 
