@@ -310,11 +310,27 @@ namespace MojiCollaTool
         }
 
         /// <summary>
+        /// ページ単位のasset sourceから画像実体を取得して、バージョン化形式へ保存する。
+        /// </summary>
+        public static void WriteVersionedProject(string projectFilePath, ProjectDocument project, IProjectAssetSource? assetSource, bool createBackup = false)
+        {
+            new VersionedProjectWriter().Write(projectFilePath, project, assetSource, createBackup);
+        }
+
+        /// <summary>
         /// バージョン化された複数ページ形式からプロジェクトを読み込む。
         /// </summary>
         public static ProjectDocument ReadVersionedProject(string projectFilePath)
         {
             return new VersionedProjectReader().Read(projectFilePath);
+        }
+
+        /// <summary>
+        /// バージョン化形式を読み込み、画像実体を指定されたasset sinkへ復元する。
+        /// </summary>
+        public static ProjectDocument ReadVersionedProject(string projectFilePath, IProjectAssetSink? assetSink)
+        {
+            return new VersionedProjectReader().Read(projectFilePath, assetSink);
         }
 
         /// <summary>
