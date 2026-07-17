@@ -5,8 +5,8 @@
 | Task | Status | Branch | Worktree | Base commit | Result commit | Requirements | ADR | Build | Tests | Manual/UI/Compatibility | Review/Integration | Blocker | Next |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TASK-000 | Integrated | feature/TASK-000-build-baseline | `F:/github/MojiCollaTool-worktrees/TASK-000` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | `939c4576884a05b0c265ab8cb42240f8dd1e88ae` | BUILD,TEST,PERF | - | Debug/Release pass (0 warnings, 0 errors), SDK 6.0.428 fixed | 8 passed; p95 89.387 ms / threshold 500 ms | Smoke起動確認、UI操作はNot verified、fixture互換性確認 | Reviewed; integrated to develop | なし | TASK-005/010開始可 |
-| TASK-005 | Planned | - | - | - | - | SAVE,COMPAT,ERROR | ADR-0005 | Not run | Not run | Not verified | - | TASK-000 | 000後 |
-| TASK-010 | Planned | - | - | - | - | PAGE,WORKSPACE | ADR-0001 | Not run | Not run | Not verified | - | TASK-000 | 000後 |
+| TASK-005 | Ready | - | - | - | - | SAVE,COMPAT,ERROR | ADR-0005 | Not run | Not run | Not verified | Awaiting assignment | なし | worker指示・worktree作成 |
+| TASK-010 | Ready | - | - | - | - | PAGE,WORKSPACE | ADR-0001 | Not run | Not run | Not verified | Awaiting assignment | なし | worker指示・worktree作成 |
 | TASK-020 | Planned | - | - | - | - | PAGE,MEM | ADR-0002 | Not run | Not run | Not verified | - | TASK-010 | 010後 |
 | TASK-025 | Planned | - | - | - | - | WORKSPACE,DIRTY | ADR-0001 | Not run | Not run | Not verified | - | TASK-010 | 010後 |
 | TASK-030 | Planned | - | - | - | - | PAGE,WORKSPACE,DIRTY,UI | ADR-0001/2 | Not run | Not run | Not verified | - | 020,025,041 | dependency後 |
@@ -26,6 +26,6 @@
 | TASK-170 | Planned | - | - | - | - | CLIPBOARD | ADR-0001/4 | Not run | Not run | Not verified | - | 030,070 | dependency後 |
 | TASK-180 | Planned | - | - | - | - | BACKGROUND-FX | - | Not run | Not run | Not verified | - | TASK-140 | future |
 | TASK-190A | Integrated | feature/TASK-190A-fork-documentation | `F:/github/MojiCollaTool-worktrees/TASK-190A` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | `2682a0bf2734bb362f47388dd64b4ebda4506531` | FORK,DEPS | - | N/A: product code unchanged | N/A: docs-only | README/notice reviewed; file notices and distribution licensing pending | Reviewed; integrated to develop | なし | TASK-190Bでsource notice・配布物同梱・About導線を実施 |
-| TASK-190B | Planned | - | - | - | - | FORK,UI | - | Not run | Not run | Not verified | - | 020,190A | dependency後 |
+| TASK-190B | Planned | - | - | - | - | FORK,UI | - | Not run | Not run | Not verified | - | TASK-020 | 020後。source notice・配布物同梱・About導線 |
 | TASK-200 | Planned | - | - | - | - | UI | - | Not run | Not run | Not verified | - | TASK-190B | 190B後 |
 | TASK-210/220/230 | Planned | - | - | - | - | OPS,SNAP,SELECT,GROUP | ADR-0003/4 | Not run | Not run | Not verified | - | task-breakdown参照 | future |
