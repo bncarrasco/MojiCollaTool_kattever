@@ -1,6 +1,6 @@
 # Worktree台帳
 
-第1陣は共通base `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a`（tag `plan-base-20260717`）から作成し、branch、HEAD、clean状態、AGENTS、worker promptを検証済みである。
+第1陣は共通base `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a`（tag `plan-base-20260717`）から作成し、branch、HEAD、clean状態、AGENTS、worker promptを検証済みである。所有者不一致対策は、ユーザー承認を得て主repositoryと下記2worktreeの正確なpathだけをglobal `safe.directory`へ登録した。
 
 | Task | Branch | Worktree path | Base commit | Dependencies | Worker prompt | Status |
 | --- | --- | --- | --- | --- | --- | --- |

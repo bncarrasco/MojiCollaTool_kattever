@@ -21,7 +21,7 @@
 | origin | `https://github.com/bncarrasco/MojiCollaTool_kattever.git` |
 | upstream | `https://github.com/kuramiya/MojiCollaTool.git` |
 | worktree | 調査開始時は主worktreeのみ |
-| Git注意 | 所有者不一致のため、読み取りコマンドへ一時的な `safe.directory` を指定。global設定は未変更 |
+| Git注意 | 所有者不一致を検出。調査中は一時指定のみを使用し、worktree準備後にユーザー承認を得て主repositoryと第1陣2worktreeの正確な3pathだけをglobal `safe.directory`へ追加 |
 
 ## 3. ビルドと配布
 
