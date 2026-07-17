@@ -28,7 +28,7 @@
 - ブランチ: `feature/TASK-040-versioned-project-format`
 - worktree: `F:/github/MojiCollaTool-worktrees/TASK-040`
 - 基点: `18f01d1` (`feature/TASK-005-safe-legacy-persistence`)
-- 結果コミット: `HEAD`（ページ背景画像実体の保存）
+- 結果コミット: `a592464`, `40b1f0b`, `95426e8`
 
 ## 変更ファイル
 

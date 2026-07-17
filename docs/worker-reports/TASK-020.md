@@ -18,6 +18,7 @@ PageEditorControlへのページ内編集機能の抽出と、ページライフ
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-020`
 - develop T005 integration: `8a1b64f`
 - develop T010 integration: `391a0d8`
+- Result commits: `6fb4094`, `4fb0475`
 
 ## Verification
 
