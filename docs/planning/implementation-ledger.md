@@ -4,6 +4,12 @@
 
 | Task | Status | Branch | Worktree | Base commit | Result commit | Requirements | ADR | Build | Tests | Manual/UI/Compatibility | Review/Integration | Blocker | Next |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+## TASK-005 handoff update
+
+| Task | Status | Branch | Worktree | Base | Requirements | Build | Tests | Compatibility / error handling | Next |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| TASK-005 | Complete | `feature/TASK-005-safe-legacy-persistence` | `F:/github/MojiCollaTool-worktrees/TASK-005` | `939c457` | `REQ-SAVE-001`, `REQ-COMPAT-001`, `REQ-NFR-ERROR-001` | Debug/Release pass, 0 warnings, 0 errors | 12 passed | Temporary workspace, archive validation, safe replace, commit-point preservation, traversal rejection | TASK-040/041 |
 | TASK-000 | Complete | feature/TASK-000-build-baseline | `F:/github/MojiCollaTool-worktrees/TASK-000` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | final handoffに記載 | BUILD,TEST,PERF | - | Debug/Release pass (0 warnings, 0 errors), SDK 6.0.428 fixed | 8 passed; p95 89.387 ms / threshold 500 ms | Smoke起動確認、UI操作はNot verified、fixture互換性確認 | Locally verified; integration pending | なし | TASK-005/010はこの結果統合後に開始可 |
 | TASK-005 | Planned | - | - | - | - | SAVE,COMPAT,ERROR | ADR-0005 | Not run | Not run | Not verified | - | TASK-000 | 000後 |
 | TASK-010 | Planned | - | - | - | - | PAGE,WORKSPACE | ADR-0001 | Not run | Not run | Not verified | - | TASK-000 | 000後 |

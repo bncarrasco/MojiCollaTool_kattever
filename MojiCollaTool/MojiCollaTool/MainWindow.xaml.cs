@@ -324,6 +324,10 @@ namespace MojiCollaTool
         {
             try
             {
+                // 先に一時領域で全entry/XMLを検証する。失敗時は現在の画面とWorkingを変更しない。
+                using var loadedProject = DataIO.ReadProjectData(filePath);
+                DataIO.CommitProjectDataToWorkingDir(loadedProject, DataIO.GetWorkingDirPath());
+
                 //  キャンバス操作画面を閉じる
                 _canvasEditWindow?.Close();
 
@@ -333,12 +337,6 @@ namespace MojiCollaTool
                 //  今の画像の表示を削除する
                 UnloadImage(ImageControl1);
                 UnloadImage(ImageControl2);
-
-                //  作業ディレクトリを初期化する
-                DataIO.InitWorkingDirectory();
-
-                //  プロジェクトファイルを作業ディレクトリに展開する
-                DataIO.ReadProjectDataToWorkingDir(filePath);
 
                 //  画像1を画面に表示する
                 var workingDirImagePath = DataIO.GetWorkingDirImagePath(1);
