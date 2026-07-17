@@ -25,7 +25,7 @@
 - Branch: `feature/TASK-010-project-page-model`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-010`
 - Base: `939c4576884a05b0c265ab8cb42240f8dd1e88ae`（TASK-000基準完了commit）
-- Result commit: `c3040b5`（Implement project and page document model）
+- Result commits: `c3040b5`（model implementation）, `b6e85f7`（clone name semantics）
 
 ## 変更ファイル
 
