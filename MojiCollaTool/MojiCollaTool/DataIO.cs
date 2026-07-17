@@ -302,6 +302,22 @@ namespace MojiCollaTool
         }
 
         /// <summary>
+        /// バージョン化された複数ページ形式でプロジェクトを保存する。
+        /// </summary>
+        public static void WriteVersionedProject(string projectFilePath, ProjectDocument project, bool createBackup = false)
+        {
+            new VersionedProjectWriter().Write(projectFilePath, project, createBackup);
+        }
+
+        /// <summary>
+        /// バージョン化された複数ページ形式からプロジェクトを読み込む。
+        /// </summary>
+        public static ProjectDocument ReadVersionedProject(string projectFilePath)
+        {
+            return new VersionedProjectReader().Read(projectFilePath);
+        }
+
+        /// <summary>
         /// 文字フォーマットデータを出力する
         /// </summary>
         /// <param name="mojiData"></param>

@@ -4,6 +4,8 @@
 
 ### Added
 
+- バージョン化された `.mctzip` 複数ページ形式の読み書きを追加しました。manifest とページ単位 XML、形式バージョン検証、原子的な保存、任意の1世代バックアップに対応します。
+
 ### Changed
 
 - READMEを「MojiCollaTool 勝手版」として明示し、非公式フォークであること、問い合わせ先の注意、現時点の配布状況を記載しました。ColorSelector由来コードのApache-2.0 noticeも追加しました。
