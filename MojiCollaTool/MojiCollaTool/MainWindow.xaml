@@ -1,4 +1,4 @@
-﻿<Window x:Class="MojiCollaTool.MainWindow"
+<Window x:Class="MojiCollaTool.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -12,118 +12,51 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="auto"/>
-        </Grid.ColumnDefinitions>
-        <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="0">
+        <StackPanel Orientation="Horizontal" Grid.Row="0">
             <Button x:Name="InitButton" Margin="5" Click="InitButton_Click">
                 <StackPanel Orientation="Horizontal" Margin="5">
                     <Image Source="/Images/new.png" Margin="5"/>
-                    <StackPanel Orientation="Vertical" VerticalAlignment="Center">
-                        <TextBlock Text="新規作成する"/>
-                    </StackPanel>
+                    <TextBlock Text="新規作成する" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
             <Button x:Name="SwapImageButton" Margin="5" Click="SwapImageButton_Click">
                 <StackPanel Orientation="Horizontal" Margin="5">
                     <Image Source="/Images/image.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">
-                        画像のみ<LineBreak/>
-                        入れ替える
-                    </TextBlock>
+                    <TextBlock VerticalAlignment="Center">画像のみ<LineBreak/>入れ替える</TextBlock>
                 </StackPanel>
             </Button>
             <Button x:Name="MultiImageButton" Margin="5" Click="MultiImageButton_Click" MinWidth="100">
                 <StackPanel Orientation="Horizontal" Margin="5">
                     <Image Source="/Images/multi.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">
-                        画像を<LineBreak/>
-                        並べる
-                    </TextBlock>
+                    <TextBlock VerticalAlignment="Center">画像を<LineBreak/>並べる</TextBlock>
                 </StackPanel>
             </Button>
             <Button x:Name="LoadProjectButton" Margin="5" Click="LoadProjectButton_Click">
                 <StackPanel Orientation="Horizontal" Margin="5">
                     <Image Source="/Images/folder.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">
-                        プロジェクトを<LineBreak/>
-                        読み出す
-                    </TextBlock>
+                    <TextBlock VerticalAlignment="Center">プロジェクトを<LineBreak/>読み出す</TextBlock>
                 </StackPanel>
             </Button>
             <Button x:Name="SaveProjectButton" Margin="5" Click="SaveProjectButton_Click">
                 <StackPanel Orientation="Horizontal" Margin="5">
                     <Image Source="/Images/save.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">
-                        プロジェクトを<LineBreak/>
-                        保存する
-                    </TextBlock>
+                    <TextBlock VerticalAlignment="Center">プロジェクトを<LineBreak/>保存する</TextBlock>
                 </StackPanel>
             </Button>
             <Button x:Name="OutputImageButton" Margin="5" Click="OutputImageButton_Click">
                 <StackPanel Orientation="Horizontal" Margin="5">
                     <Image Source="/Images/mojiimage.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">
-                        文字コラ画像を<LineBreak/>
-                        出力する
-                    </TextBlock>
+                    <TextBlock VerticalAlignment="Center">文字コラ画像を<LineBreak/>出力する</TextBlock>
                 </StackPanel>
             </Button>
-            <StackPanel Orientation="Horizontal" Margin="5">
-                <Label Content="拡大・縮小:" VerticalAlignment="Center"/>
-                <local:UpDownTextBox x:Name="ScalingTextBox" ValueMinLimit="10" Step="10" ValueChanged="ScalingTextBox_ValueChanged"/>
-                <Label Content="%" VerticalAlignment="Center"/>
-            </StackPanel>
+            <Button x:Name="AddTextButton" Margin="5" Click="AddTextButton_Click">
+                <StackPanel Orientation="Horizontal" Margin="5">
+                    <Image Source="/Images/moji.png" Margin="5"/>
+                    <TextBlock Text="文字を追加する" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
         </StackPanel>
-        <Button x:Name="AddTextButton" Grid.Row="0" Grid.Column="1" Margin="5" Click="AddTextButton_Click">
-            <StackPanel Orientation="Horizontal" Margin="5">
-                <Image Source="/Images/moji.png" Margin="5"/>
-                <TextBlock Text="文字を追加する" VerticalAlignment="Center"/>
-            </StackPanel>
-        </Button>
-        <Grid x:Name="CanvasGrid" Grid.Row="1" Grid.RowSpan="2" Grid.Column="0" Background="Gray" AllowDrop="True" Drop="CanvasGrid_Drop" DragOver="CanvasGrid_DragOver" PreviewMouseWheel="CanvasGrid_PreviewMouseWheel">
-            <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Visible" VerticalScrollBarVisibility="Visible">
-                <Canvas x:Name="MainCanvas" Background="Gray" Grid.Column="0">
-                    <Canvas.LayoutTransform>
-                        <ScaleTransform x:Name="CanvasScaleTransform" ScaleX="1" ScaleY="1"/>
-                    </Canvas.LayoutTransform>
-                    <Canvas.CacheMode>
-                        <BitmapCache EnableClearType="True" RenderAtScale="1" SnapsToDevicePixels="False"/>
-                    </Canvas.CacheMode>
-                    <Rectangle x:Name="CanvasBackgroundRect"/>
-                    <Image x:Name="ImageControl1"/>
-                    <Image x:Name="ImageControl2"/>
-                </Canvas>
-            </ScrollViewer>
-        </Grid>
-        <GroupBox Header="文字リスト" Grid.Row="1" Grid.Column="1">
-            <ListView x:Name="MojiListView" Grid.Row="1" Grid.Column="1" HorizontalContentAlignment="Stretch" PreviewMouseLeftButtonUp="MojiListView_PreviewMouseLeftButtonUp">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Border BorderBrush="Gray" BorderThickness="1" Padding="5">
-                            <StackPanel Orientation="Vertical">
-                                <StackPanel Orientation="Horizontal" Grid.Row="0">
-                                    <TextBlock Text="ID:"/>
-                                    <TextBlock Text="{Binding Id}"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding ExampleText}" Grid.Row="1"/>
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-        </GroupBox>
-        <Button x:Name="CanvasEditButton" Grid.Row="2" Grid.Column="1" Margin="5" Click="CanvasEditButton_Click">
-            <StackPanel Orientation="Horizontal" Margin="5">
-                <Image Source="/Images/canvas.png" Margin="5"/>
-                <TextBlock VerticalAlignment="Center">
-                    キャンバスを<LineBreak/>
-                    設定する
-                </TextBlock>
-            </StackPanel>
-        </Button>
+        <local:PageEditorControl x:Name="PageEditor" Grid.Row="1"/>
     </Grid>
 </Window>

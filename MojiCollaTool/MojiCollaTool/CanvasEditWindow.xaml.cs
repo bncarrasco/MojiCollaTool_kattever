@@ -24,7 +24,7 @@ namespace MojiCollaTool
         /// </summary>
         public CanvasData CanvasData { get; set; }
 
-        private MainWindow? _mainWindow;
+        private PageEditorControl? _pageEditor;
 
         private bool _runEvent = true;
 
@@ -35,14 +35,21 @@ namespace MojiCollaTool
             InitializeComponent();
         }
 
-        public CanvasEditWindow(CanvasData canvasData, MainWindow mainWindow)
+        public CanvasEditWindow(CanvasData canvasData, PageEditorControl pageEditor)
         {
             CanvasData = canvasData;
-            _mainWindow = mainWindow;
+            _pageEditor = pageEditor;
 
             InitializeComponent();
 
+            Closed += CanvasEditWindow_Closed;
             UpdateView();
+        }
+
+        private void CanvasEditWindow_Closed(object? sender, EventArgs e)
+        {
+            _pageEditor?.OnCanvasEditWindowClosed(this);
+            _pageEditor = null;
         }
 
         /// <summary>
@@ -110,7 +117,7 @@ namespace MojiCollaTool
 
             UpdateView();
 
-            _mainWindow?.UpdateCanvas();
+            _pageEditor?.UpdateCanvas();
         }
 
         private Color GetCanvasColorButtonColor()
@@ -123,7 +130,7 @@ namespace MojiCollaTool
             ColorSelector.ColorSelectorWindow colorSelectorWindow = new ColorSelector.ColorSelectorWindow(GetCanvasColorButtonColor(), (color) =>
             {
                 CanvasData.CanvasColor = color;
-                _mainWindow?.UpdateCanvas();
+                _pageEditor?.UpdateCanvas();
             });
             colorSelectorWindow.Top = Top;
             colorSelectorWindow.Left = Left;
@@ -138,7 +145,7 @@ namespace MojiCollaTool
             {
                 //  元の色に戻す
                 CanvasData.CanvasColor = ((SolidColorBrush)CanvasColorButton.Background).Color;
-                _mainWindow?.UpdateCanvas();
+                _pageEditor?.UpdateCanvas();
             }
         }
 
@@ -168,7 +175,7 @@ namespace MojiCollaTool
             //  画面に設定を反映させる
             UpdateView();
 
-            _mainWindow?.UpdateCanvas();
+            _pageEditor?.UpdateCanvas();
         }
 
         private void ResetButton_Click(object sender, RoutedEventArgs e)
@@ -180,7 +187,7 @@ namespace MojiCollaTool
             //  画面に設定を反映させる
             UpdateView();
 
-            _mainWindow?.UpdateCanvas();
+            _pageEditor?.UpdateCanvas();
         }
 
     }
