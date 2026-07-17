@@ -22,6 +22,13 @@ using System.IO.Enumeration;
 
 namespace MojiCollaTool
 {
+    internal enum PersistenceErrorKind
+    {
+        Save,
+        Load,
+        WorkingCommit,
+    }
+
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
@@ -322,8 +329,33 @@ namespace MojiCollaTool
         /// <param name="filePath"></param>
         private void LoadProject(string filePath)
         {
+            LegacyProjectData loadedProject;
             try
             {
+                // 先に一時領域で全entry/XMLを検証する。失敗時は現在の画面とWorkingを変更しない。
+                loadedProject = DataIO.ReadProjectData(filePath);
+            }
+            catch (Exception ex)
+            {
+                ShowError(GetPersistenceErrorMessage(PersistenceErrorKind.Load), ex);
+                return;
+            }
+
+            try
+            {
+                DataIO.CommitProjectDataToWorkingDir(loadedProject, DataIO.GetWorkingDirPath());
+            }
+            catch (Exception ex)
+            {
+                loadedProject.Dispose();
+                ShowError(GetPersistenceErrorMessage(PersistenceErrorKind.WorkingCommit), ex);
+                return;
+            }
+
+            using (loadedProject)
+            {
+                try
+                {
                 //  キャンバス操作画面を閉じる
                 _canvasEditWindow?.Close();
 
@@ -333,12 +365,6 @@ namespace MojiCollaTool
                 //  今の画像の表示を削除する
                 UnloadImage(ImageControl1);
                 UnloadImage(ImageControl2);
-
-                //  作業ディレクトリを初期化する
-                DataIO.InitWorkingDirectory();
-
-                //  プロジェクトファイルを作業ディレクトリに展開する
-                DataIO.ReadProjectDataToWorkingDir(filePath);
 
                 //  画像1を画面に表示する
                 var workingDirImagePath = DataIO.GetWorkingDirImagePath(1);
@@ -370,10 +396,11 @@ namespace MojiCollaTool
                 }
 
                 lastUsedDirectory = System.IO.Path.GetDirectoryName(filePath);
-            }
-            catch (Exception ex)
-            {
-                ShowError($"{filePath} プロジェクト読み出しエラー", ex);
+                }
+                catch (Exception ex)
+                {
+                    ShowError(GetPersistenceErrorMessage(PersistenceErrorKind.Load), ex);
+                }
             }
         }
 
@@ -398,8 +425,36 @@ namespace MojiCollaTool
             }
             catch (Exception ex)
             {
-                ShowError("プロジェクト保存エラー", ex);
+                ShowError(GetPersistenceErrorMessage(PersistenceErrorKind.Save), ex);
             }
+        }
+
+        internal static string GetPersistenceErrorMessage(PersistenceErrorKind errorKind)
+        {
+            return errorKind switch
+            {
+                PersistenceErrorKind.Save => "プロジェクト保存処理に失敗しました。",
+                PersistenceErrorKind.Load => "プロジェクト読込処理に失敗しました。",
+                PersistenceErrorKind.WorkingCommit => "プロジェクト作業データの反映に失敗しました。",
+                _ => "プロジェクト処理に失敗しました。",
+            };
+        }
+
+        internal static string BuildErrorLogMessage(string message, Exception? ex)
+        {
+            StringBuilder logMessage = new StringBuilder();
+            logMessage.AppendLine(message);
+            if (ex != null)
+            {
+                logMessage.AppendLine(ex.ToString());
+            }
+
+            return logMessage.ToString();
+        }
+
+        internal static string BuildErrorDialogMessage(string message)
+        {
+            return message;
         }
 
         /// <summary>
@@ -409,21 +464,8 @@ namespace MojiCollaTool
         /// <param name="ex"></param>
         public static void ShowError(string message, Exception? ex = null)
         {
-            StringBuilder logMessage = new StringBuilder();
-            logMessage.AppendLine(message);
-            if(ex != null)
-            {
-                logMessage.AppendLine(ex.ToString());
-            }
-            DataIO.WriteErrorLog(logMessage.ToString());
-
-            StringBuilder dialogMessage = new StringBuilder();
-            dialogMessage.AppendLine(message);
-            if(ex != null)
-            {
-                dialogMessage.Append(ex.Message);
-            }
-            MessageBox.Show(dialogMessage.ToString(), "エラー", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+            DataIO.WriteErrorLog(BuildErrorLogMessage(message, ex));
+            MessageBox.Show(BuildErrorDialogMessage(message), "エラー", MessageBoxButton.OK, MessageBoxImage.Exclamation);
         }
 
         /// <summary>

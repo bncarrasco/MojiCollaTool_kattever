@@ -46,6 +46,17 @@ TASK-000で再配布可能性を確認し、以下を固定する。
 - 日本語directory/file名に置いた現行mctzip（`日本語フォルダー/現行プロジェクト.mctzip`）。
 - MojiDataを削除した後の保存、破損zip、unknown XML field、欠落画像。
 
+## TASK-005 verification update
+
+| Feature | Requirement | Automated verification | Result | Manual/UI |
+| --- | --- | --- | --- | --- |
+| Safe legacy save | SAVE/COMPAT | Fresh workspace, stale-entry exclusion, readback validation, replace | Pass | Not verified |
+| Safe legacy load | COMPAT/ERROR | Corrupt zip, traversal, staged XML validation, Working commit point | Pass | Not verified |
+| Image-backed save/load | SAVE/COMPAT | Explicit Image1/Image2 copy, archive round-trip, decoder/dimension validation | Pass | Not verified |
+| Image deletion / broken image | SAVE/ERROR | Stale image exclusion, corrupt image rejection, existing Working preservation | Pass | Not verified |
+| Duplicate image extensions | COMPAT/ERROR | Image1/Image1 duplicate-extension archive rejection | Pass | Not verified |
+| Persistence error messages | ERROR/UI | Japanese save/load/Working outer messages; internal exception retained in log builder | Pass | Not verified |
+
 ## Manual baseline procedure
 
 1. 起動し画像を新規読込。
