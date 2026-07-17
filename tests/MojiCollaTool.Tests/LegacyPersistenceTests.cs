@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Windows.Media.Imaging;
 
 namespace MojiCollaTool.Tests;
 
@@ -36,6 +37,109 @@ public class LegacyPersistenceTests
         CollectionAssert.AreEquivalent(
             new[] { "Info.txt", "CanvasData.xml", "MojiData1.xml" },
             archiveAfterSave.Entries.Select(entry => entry.FullName).ToArray());
+    }
+
+    [TestMethod]
+    public void ImageBackedProjectSaveAndLoadCopiesCurrentImages()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var sourceWorkingPath = Path.Combine(scope.Path, "SourceWorking");
+        var loadedWorkingPath = Path.Combine(scope.Path, "LoadedWorking");
+        var projectPath = Path.Combine(scope.Path, "images.mctzip");
+        Directory.CreateDirectory(sourceWorkingPath);
+        CopyFixtureImages(sourceWorkingPath);
+
+        var canvas = DataIO.ReadCanvasData(FixtureRootPath());
+        DataIO.WriteWorkingDirToProjectDataFile(
+            projectPath,
+            new[] { new MojiData(1) { FullText = "画像付き" } },
+            canvas,
+            sourceWorkingPath);
+
+        using (var archive = ZipFile.OpenRead(projectPath))
+        {
+            CollectionAssert.IsSubsetOf(
+                new[] { "Image1.png", "Image2.png" },
+                archive.Entries.Select(entry => entry.FullName).ToArray());
+        }
+
+        DataIO.ReadProjectDataToWorkingDir(projectPath, loadedWorkingPath);
+        AssertImageDimensions(Path.Combine(loadedWorkingPath, "Image1.png"), 640, 480);
+        AssertImageDimensions(Path.Combine(loadedWorkingPath, "Image2.png"), 320, 240);
+        Assert.AreEqual(2, Directory.GetFiles(loadedWorkingPath, "Image*.*").Length);
+    }
+
+    [TestMethod]
+    public void DeletedImageDoesNotLeaveStaleImageEntryInSavedArchive()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var sourceWorkingPath = Path.Combine(scope.Path, "SourceWorking");
+        var loadedWorkingPath = Path.Combine(scope.Path, "LoadedWorking");
+        var projectPath = Path.Combine(scope.Path, "image-deleted.mctzip");
+        Directory.CreateDirectory(sourceWorkingPath);
+        CopyFixtureImages(sourceWorkingPath);
+
+        var canvas = DataIO.ReadCanvasData(FixtureRootPath());
+        canvas.ImageData1.Init();
+        DataIO.WriteWorkingDirToProjectDataFile(projectPath, Array.Empty<MojiData>(), canvas, sourceWorkingPath);
+
+        using (var archive = ZipFile.OpenRead(projectPath))
+        {
+            var entries = archive.Entries.Select(entry => entry.FullName).ToArray();
+            CollectionAssert.DoesNotContain(entries, "Image1.png");
+            CollectionAssert.Contains(entries, "Image2.png");
+        }
+
+        DataIO.ReadProjectDataToWorkingDir(projectPath, loadedWorkingPath);
+        Assert.IsFalse(File.Exists(Path.Combine(loadedWorkingPath, "Image1.png")));
+        Assert.IsTrue(File.Exists(Path.Combine(loadedWorkingPath, "Image2.png")));
+    }
+
+    [TestMethod]
+    public void BrokenImageDoesNotReplaceExistingWorkingDirectory()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var sourceWorkingPath = Path.Combine(scope.Path, "SourceWorking");
+        var existingWorkingPath = Path.Combine(scope.Path, "ExistingWorking");
+        var validProjectPath = Path.Combine(scope.Path, "valid.mctzip");
+        var brokenProjectPath = Path.Combine(scope.Path, "broken-image.mctzip");
+        Directory.CreateDirectory(sourceWorkingPath);
+        Directory.CreateDirectory(existingWorkingPath);
+        CopyFixtureImages(sourceWorkingPath);
+        File.WriteAllText(Path.Combine(existingWorkingPath, "keep.txt"), "current session");
+
+        var canvas = DataIO.ReadCanvasData(FixtureRootPath());
+        DataIO.WriteWorkingDirToProjectDataFile(validProjectPath, Array.Empty<MojiData>(), canvas, sourceWorkingPath);
+        CreateArchiveWithCorruptImage(validProjectPath, brokenProjectPath);
+
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            DataIO.ReadProjectDataToWorkingDir(brokenProjectPath, existingWorkingPath));
+
+        Assert.AreEqual("current session", File.ReadAllText(Path.Combine(existingWorkingPath, "keep.txt")));
+        Assert.IsFalse(File.Exists(Path.Combine(existingWorkingPath, "CanvasData.xml")));
+    }
+
+    [TestMethod]
+    public void MultipleImageExtensionsForOneNumberAreRejected()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var sourceWorkingPath = Path.Combine(scope.Path, "SourceWorking");
+        var existingWorkingPath = Path.Combine(scope.Path, "ExistingWorking");
+        var validProjectPath = Path.Combine(scope.Path, "valid.mctzip");
+        var duplicateProjectPath = Path.Combine(scope.Path, "duplicate-image.mctzip");
+        Directory.CreateDirectory(sourceWorkingPath);
+        Directory.CreateDirectory(existingWorkingPath);
+        CopyFixtureImages(sourceWorkingPath);
+        File.WriteAllText(Path.Combine(existingWorkingPath, "keep.txt"), "current session");
+
+        var canvas = DataIO.ReadCanvasData(FixtureRootPath());
+        DataIO.WriteWorkingDirToProjectDataFile(validProjectPath, Array.Empty<MojiData>(), canvas, sourceWorkingPath);
+        CreateArchiveWithDuplicateImageExtension(validProjectPath, duplicateProjectPath);
+
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            DataIO.ReadProjectDataToWorkingDir(duplicateProjectPath, existingWorkingPath));
+
+        Assert.AreEqual("current session", File.ReadAllText(Path.Combine(existingWorkingPath, "keep.txt")));
     }
 
     [TestMethod]
@@ -141,5 +245,63 @@ public class LegacyPersistenceTests
     {
         yield return new MojiData(9) { FullText = "temporary" };
         throw new IOException("Injected save failure");
+    }
+
+    private static string FixtureRootPath()
+    {
+        return Path.Combine(AppContext.BaseDirectory, "Fixtures", "current-mctzip-root");
+    }
+
+    private static void CopyFixtureImages(string destinationDirectoryPath)
+    {
+        File.Copy(Path.Combine(FixtureRootPath(), "Image1.png"), Path.Combine(destinationDirectoryPath, "Image1.png"));
+        File.Copy(Path.Combine(FixtureRootPath(), "Image2.png"), Path.Combine(destinationDirectoryPath, "Image2.png"));
+    }
+
+    private static void AssertImageDimensions(string path, int width, int height)
+    {
+        using var stream = File.OpenRead(path);
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        Assert.AreEqual(width, decoder.Frames[0].PixelWidth);
+        Assert.AreEqual(height, decoder.Frames[0].PixelHeight);
+    }
+
+    private static void CreateArchiveWithCorruptImage(string sourcePath, string destinationPath)
+    {
+        using var source = ZipFile.OpenRead(sourcePath);
+        using var destination = ZipFile.Open(destinationPath, ZipArchiveMode.Create);
+        foreach (var entry in source.Entries)
+        {
+            var output = destination.CreateEntry(entry.FullName);
+            using var outputStream = output.Open();
+            if (entry.FullName.Equals("Image1.png", StringComparison.OrdinalIgnoreCase))
+            {
+                outputStream.Write(new byte[] { 0x00, 0x01, 0x02, 0x03 });
+                continue;
+            }
+
+            using var inputStream = entry.Open();
+            inputStream.CopyTo(outputStream);
+        }
+    }
+
+    private static void CreateArchiveWithDuplicateImageExtension(string sourcePath, string destinationPath)
+    {
+        using var source = ZipFile.OpenRead(sourcePath);
+        using var destination = ZipFile.Open(destinationPath, ZipArchiveMode.Create);
+        foreach (var entry in source.Entries)
+        {
+            var output = destination.CreateEntry(entry.FullName);
+            using var outputStream = output.Open();
+            using var inputStream = entry.Open();
+            inputStream.CopyTo(outputStream);
+        }
+
+        var originalImage = source.GetEntry("Image1.png");
+        Assert.IsNotNull(originalImage);
+        var duplicate = destination.CreateEntry("Image1.jpg");
+        using var duplicateStream = duplicate.Open();
+        using var originalStream = originalImage!.Open();
+        originalStream.CopyTo(duplicateStream);
     }
 }

@@ -463,9 +463,23 @@ namespace MojiCollaTool
             CanvasData canvasData,
             bool createBackup = false)
         {
+            WriteWorkingDirToProjectDataFile(projectFilePath, mojiDatas, canvasData, GetWorkingDirPath(), createBackup);
+        }
+
+        /// <summary>
+        /// 現在のWorkingディレクトリから画像を明示的にコピーして旧形式projectを保存する。
+        /// </summary>
+        public static void WriteWorkingDirToProjectDataFile(
+            string projectFilePath,
+            IEnumerable<MojiData> mojiDatas,
+            CanvasData canvasData,
+            string sourceWorkingDirectoryPath,
+            bool createBackup = false)
+        {
             if (string.IsNullOrWhiteSpace(projectFilePath)) throw new ArgumentException("Project path is required.", nameof(projectFilePath));
             if (mojiDatas == null) throw new ArgumentNullException(nameof(mojiDatas));
             if (canvasData == null) throw new ArgumentNullException(nameof(canvasData));
+            if (string.IsNullOrWhiteSpace(sourceWorkingDirectoryPath)) throw new ArgumentException("Source Working directory is required.", nameof(sourceWorkingDirectoryPath));
 
             var fullProjectFilePath = Path.GetFullPath(projectFilePath);
             var projectDirectoryPath = Path.GetDirectoryName(fullProjectFilePath);
@@ -483,6 +497,8 @@ namespace MojiCollaTool
                 WriteMojiDatas(mojiDatas, temporaryWorkingDirectoryPath);
 
                 WriteCanvasData(canvasData, temporaryWorkingDirectoryPath);
+
+                CopyCurrentImagesToSaveWorkspace(canvasData, sourceWorkingDirectoryPath, temporaryWorkingDirectoryPath);
 
                 temporaryProjectFilePath = Path.Combine(projectDirectoryPath, $".{Path.GetFileName(fullProjectFilePath)}.{Guid.NewGuid():N}.tmp");
                 ZipFile.CreateFromDirectory(temporaryWorkingDirectoryPath, temporaryProjectFilePath);
@@ -541,6 +557,7 @@ namespace MojiCollaTool
                 ExtractLegacyArchive(projectFilePath, stagingDirectoryPath);
 
                 var canvasData = ReadCanvasData(stagingDirectoryPath);
+                ValidateCanvasImages(canvasData, stagingDirectoryPath);
                 var mojiDatas = ReadMojiDatas(stagingDirectoryPath);
                 return new LegacyProjectData(stagingDirectoryPath, canvasData, mojiDatas);
             }
@@ -618,6 +635,115 @@ namespace MojiCollaTool
             {
                 var destinationFilePath = Path.Combine(destinationDirectoryPath, Path.GetFileName(sourceFilePath));
                 File.Copy(sourceFilePath, destinationFilePath, overwrite: false);
+            }
+        }
+
+        private static void CopyCurrentImagesToSaveWorkspace(CanvasData canvasData, string sourceWorkingDirectoryPath, string saveDirectoryPath)
+        {
+            var image1Path = ResolveCurrentImagePath(1, canvasData.ImageData1, sourceWorkingDirectoryPath);
+            var image2Path = ResolveCurrentImagePath(2, canvasData.ImageData2, sourceWorkingDirectoryPath);
+
+            CopyImageToSaveWorkspace(image1Path, saveDirectoryPath);
+            CopyImageToSaveWorkspace(image2Path, saveDirectoryPath);
+        }
+
+        private static string? ResolveCurrentImagePath(int imageNo, ImageData? imageData, string sourceWorkingDirectoryPath)
+        {
+            var imagePaths = Directory.Exists(sourceWorkingDirectoryPath)
+                ? GetImagePaths(imageNo, sourceWorkingDirectoryPath)
+                : new List<string>();
+
+            if (imagePaths.Count > 1)
+            {
+                throw new InvalidDataException($"Image{imageNo} has multiple extensions in the Working directory.");
+            }
+
+            var hasImageData = imageData != null && !imageData.IsNullData();
+            if (!hasImageData)
+            {
+                // CanvasDataが画像を参照していない場合、古いWorking画像は保存しない。
+                return null;
+            }
+
+            if (imagePaths.Count == 0)
+            {
+                throw new InvalidDataException($"CanvasData references Image{imageNo}, but the image file is missing.");
+            }
+
+            return imagePaths[0];
+        }
+
+        private static void CopyImageToSaveWorkspace(string? sourceImagePath, string saveDirectoryPath)
+        {
+            if (sourceImagePath == null) return;
+
+            var destinationImagePath = Path.Combine(saveDirectoryPath, Path.GetFileName(sourceImagePath));
+            File.Copy(sourceImagePath, destinationImagePath, overwrite: false);
+        }
+
+        private static List<string> GetImagePaths(int imageNo, string directoryPath)
+        {
+            var prefix = $"Image{imageNo}.";
+            return Directory.GetFiles(directoryPath, "*", SearchOption.TopDirectoryOnly)
+                .Where(path => Path.GetFileName(path).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        private static void ValidateCanvasImages(CanvasData canvasData, string projectDirectoryPath)
+        {
+            ValidateCanvasImage(1, canvasData.ImageData1, projectDirectoryPath);
+            ValidateCanvasImage(2, canvasData.ImageData2, projectDirectoryPath);
+        }
+
+        private static void ValidateCanvasImage(int imageNo, ImageData? imageData, string projectDirectoryPath)
+        {
+            var imagePaths = GetImagePaths(imageNo, projectDirectoryPath);
+            if (imagePaths.Count > 1)
+            {
+                throw new InvalidDataException($"Image{imageNo} has multiple extensions in the project archive.");
+            }
+
+            var hasImageData = imageData != null && !imageData.IsNullData();
+            if (!hasImageData)
+            {
+                if (imagePaths.Count != 0)
+                {
+                    throw new InvalidDataException($"Project archive contains Image{imageNo} without matching CanvasData.");
+                }
+
+                return;
+            }
+
+            if (imageData!.OriginalWidth <= 0 || imageData.OriginalHeight <= 0 || imagePaths.Count != 1)
+            {
+                throw new InvalidDataException($"CanvasData and Image{imageNo} are inconsistent.");
+            }
+
+            ValidateDecodedImage(imageNo, imageData, imagePaths[0]);
+        }
+
+        private static void ValidateDecodedImage(int imageNo, ImageData imageData, string imagePath)
+        {
+            try
+            {
+                using var stream = File.OpenRead(imagePath);
+                var decoder = BitmapDecoder.Create(
+                    stream,
+                    BitmapCreateOptions.PreservePixelFormat,
+                    BitmapCacheOption.OnLoad);
+
+                if (decoder.Frames.Count == 0 || decoder.Frames[0].PixelWidth != imageData.OriginalWidth || decoder.Frames[0].PixelHeight != imageData.OriginalHeight)
+                {
+                    throw new InvalidDataException($"Image{imageNo} dimensions do not match CanvasData.");
+                }
+            }
+            catch (InvalidDataException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException($"Image{imageNo} could not be decoded.", ex);
             }
         }
 

@@ -52,6 +52,9 @@ TASK-000で再配布可能性を確認し、以下を固定する。
 | --- | --- | --- | --- | --- |
 | Safe legacy save | SAVE/COMPAT | Fresh workspace, stale-entry exclusion, readback validation, replace | Pass | Not verified |
 | Safe legacy load | COMPAT/ERROR | Corrupt zip, traversal, staged XML validation, Working commit point | Pass | Not verified |
+| Image-backed save/load | SAVE/COMPAT | Explicit Image1/Image2 copy, archive round-trip, decoder/dimension validation | Pass | Not verified |
+| Image deletion / broken image | SAVE/ERROR | Stale image exclusion, corrupt image rejection, existing Working preservation | Pass | Not verified |
+| Duplicate image extensions | COMPAT/ERROR | Image1/Image1 duplicate-extension archive rejection | Pass | Not verified |
 
 ## Manual baseline procedure
 
