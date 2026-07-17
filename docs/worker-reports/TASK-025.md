@@ -36,7 +36,7 @@
 - Branch: `feature/TASK-025-workspace-project-session`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-025`
 - Base: `a46c29a`（TASK-010 HEAD）
-- Result commit: final amended T025 commit（`git log`参照）
+- Result commit: `68adb512da81a7d27eccaca57b7eb0b419f3648a`
 - 正式Git worktreeとして作成し、実装・テスト・報告書・台帳をこのbranchへ集約する。
 
 ## Verification
