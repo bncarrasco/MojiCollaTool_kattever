@@ -23,7 +23,7 @@
 - Branch: `feature/TASK-005-safe-legacy-persistence`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-005`
 - Base: `939c457` (`feature/TASK-000-build-baseline`)
-- Result commit: handoff前に確定
+- Result commit: `b739ac1` (`Localize persistence error messages`)
 
 ## Changed files
 
