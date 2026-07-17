@@ -20,7 +20,13 @@ $env:NUGET_PACKAGES = Join-Path $env:TEMP 'MojiCollaTool-nuget'
 
 Push-Location $repoRoot
 try {
-    & $dotnet test 'MojiCollaTool/MojiCollaTool.sln' --configuration Debug --nologo
+    $actualSdkVersion = (& $dotnet --version).Trim()
+    if ($actualSdkVersion -ne '6.0.428') {
+        throw "Expected .NET SDK 6.0.428 from global.json, but found $actualSdkVersion."
+    }
+    Write-Output "Using .NET SDK $actualSdkVersion from global.json."
+
+    & $dotnet test 'MojiCollaTool/MojiCollaTool.sln' --configuration Debug --nologo --logger 'console;verbosity=detailed'
     $exitCode = $LASTEXITCODE
 }
 finally {

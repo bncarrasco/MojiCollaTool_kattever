@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <MojiData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <Id>1</Id>
-  <FullText>横</FullText>
-  <X>100</X>
+  <Id>2</Id>
+  <FullText>縦</FullText>
+  <X>760</X>
   <Y>120</Y>
   <FontSize>50</FontSize>
   <FontFamilyName>ＭＳ ゴシック</FontFamilyName>
-  <TextDirection>Yokogaki</TextDirection>
+  <TextDirection>Tategaki</TextDirection>
   <IsBold>false</IsBold>
   <IsItalic>false</IsItalic>
   <CharacterMargin>0</CharacterMargin>
@@ -69,5 +69,5 @@
     <ScB>0</ScB>
   </BackgroundBoxBorderColor>
   <BackgroundBoxCornerRadius>8</BackgroundBoxCornerRadius>
-  <RotateAngle>12.5</RotateAngle>
+  <RotateAngle>-7.5</RotateAngle>
 </MojiData>

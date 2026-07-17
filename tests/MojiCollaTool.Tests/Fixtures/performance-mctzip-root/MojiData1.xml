@@ -32,7 +32,7 @@
     <ScB>1</ScB>
   </BorderColor>
   <BorderThickness>4</BorderThickness>
-  <BorderBlurrRadius>0</BorderBlurrRadius>
+  <BorderBlurrRadius>8</BorderBlurrRadius>
   <SecondBorderColor>
     <A>255</A>
     <R>0</R>
@@ -44,7 +44,7 @@
     <ScB>0</ScB>
   </SecondBorderColor>
   <SecondBorderThickness>2</SecondBorderThickness>
-  <SecondBorderBlurrRadius>0</SecondBorderBlurrRadius>
+  <SecondBorderBlurrRadius>4</SecondBorderBlurrRadius>
   <IsBackgroundBoxExists>true</IsBackgroundBoxExists>
   <BackgroundBoxColor>
     <A>255</A>

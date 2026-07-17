@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MojiCollaTool.Tests;
@@ -124,7 +125,7 @@ public class XmlRoundTripTests
     public void CurrentMctzipRootFixtureContainsExpectedEntries()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "current-mctzip-root");
-        var expectedEntries = new[] { "Info.txt", "CanvasData.xml", "MojiData1.xml", "Image1.png" };
+        var expectedEntries = FixtureEntries;
 
         foreach (var entry in expectedEntries)
         {
@@ -132,29 +133,93 @@ public class XmlRoundTripTests
         }
 
         var canvas = DataIO.ReadCanvasData(fixturePath);
-        var moji = DataIO.ReadMojiData(Path.Combine(fixturePath, "MojiData1.xml"));
+        var mojiDatas = DataIO.ReadMojiDatas(fixturePath).OrderBy(data => data.Id).ToArray();
 
-        Assert.AreEqual(640, canvas.CanvasWidth);
-        Assert.AreEqual(480, canvas.CanvasHeight);
-        Assert.AreEqual(TextDirection.Yokogaki, moji.TextDirection);
-        Assert.IsTrue(moji.FullText.Contains("日本語", StringComparison.Ordinal));
-        Assert.IsTrue(moji.FullText.Contains("😀", StringComparison.Ordinal));
+        Assert.AreEqual(980, canvas.CanvasWidth);
+        Assert.AreEqual(500, canvas.CanvasHeight);
+        Assert.AreEqual(LocatePosition.Right, canvas.Image2LocatePosition);
+        Assert.AreEqual(320, canvas.ImageData2.OriginalWidth);
+        AssertImageDimensions(Path.Combine(fixturePath, "Image1.png"), 640, 480);
+        AssertImageDimensions(Path.Combine(fixturePath, "Image2.png"), 320, 240);
+        Assert.AreEqual(3, mojiDatas.Length);
+        Assert.AreEqual(1, mojiDatas[0].FullText.Length);
+        Assert.AreEqual("横", mojiDatas[0].FullText);
+        Assert.AreEqual(TextDirection.Yokogaki, mojiDatas[0].TextDirection);
+        Assert.AreNotEqual(0, mojiDatas[0].RotateAngle);
+        Assert.AreEqual(4, mojiDatas[0].BorderThickness);
+        Assert.AreEqual(2, mojiDatas[0].SecondBorderThickness);
+        Assert.AreEqual(0, mojiDatas[0].BorderBlurrRadius);
+        Assert.AreEqual(0, mojiDatas[0].SecondBorderBlurrRadius);
+        Assert.IsTrue(mojiDatas[0].IsBackgroundBoxExists);
+        Assert.AreEqual(1, mojiDatas[1].FullText.Length);
+        Assert.AreEqual("縦", mojiDatas[1].FullText);
+        Assert.AreEqual(TextDirection.Tategaki, mojiDatas[1].TextDirection);
+        Assert.AreNotEqual(0, mojiDatas[1].RotateAngle);
+        Assert.IsTrue(mojiDatas[2].FullText.Contains("日本語", StringComparison.Ordinal));
+        Assert.IsTrue(mojiDatas[2].FullText.Contains("😀", StringComparison.Ordinal));
+        Assert.IsTrue(mojiDatas[2].FullText.Contains("か\u3099", StringComparison.Ordinal));
+        Assert.IsTrue(mojiDatas.All(data => data.BorderBlurrRadius == 0 && data.SecondBorderBlurrRadius == 0));
+        Assert.IsTrue(mojiDatas.All(data => data.IsBackgroundBoxExists));
+        Assert.IsTrue(mojiDatas.All(data => data.BorderThickness > 0 && data.SecondBorderThickness > 0));
     }
 
     [TestMethod]
     public void CurrentMctzipArchiveContainsExpectedRootEntries()
     {
         var archivePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "current-mctzip.mctzip");
-        var expectedEntries = new[] { "Info.txt", "CanvasData.xml", "MojiData1.xml", "Image1.png" };
 
         using var archive = ZipFile.OpenRead(archivePath);
-        CollectionAssert.AreEquivalent(expectedEntries, archive.Entries.Select(entry => entry.FullName).ToArray());
+        CollectionAssert.AreEquivalent(FixtureEntries, archive.Entries.Select(entry => entry.FullName).ToArray());
     }
+
+    [TestMethod]
+    public void PerformanceMctzipFixtureContainsBlurDataset()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "performance-mctzip-root");
+        var mojiDatas = DataIO.ReadMojiDatas(fixturePath);
+
+        CollectionAssert.AreEquivalent(FixtureEntries, Directory.GetFiles(fixturePath).Select(Path.GetFileName).ToArray());
+        Assert.AreEqual(LocatePosition.Right, DataIO.ReadCanvasData(fixturePath).Image2LocatePosition);
+        AssertImageDimensions(Path.Combine(fixturePath, "Image1.png"), 640, 480);
+        AssertImageDimensions(Path.Combine(fixturePath, "Image2.png"), 320, 240);
+        Assert.AreEqual(3, mojiDatas.Count);
+        Assert.IsTrue(mojiDatas.All(data => data.BorderBlurrRadius > 0));
+        Assert.IsTrue(mojiDatas.All(data => data.SecondBorderBlurrRadius > 0));
+    }
+
+    [TestMethod]
+    public void JapanesePathMctzipFixtureCanBeOpened()
+    {
+        var archivePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "日本語フォルダー", "現行プロジェクト.mctzip");
+
+        Assert.IsTrue(File.Exists(archivePath));
+        using var archive = ZipFile.OpenRead(archivePath);
+        CollectionAssert.AreEquivalent(FixtureEntries, archive.Entries.Select(entry => entry.FullName).ToArray());
+    }
+
+    private static readonly string[] FixtureEntries =
+    {
+        "Info.txt",
+        "CanvasData.xml",
+        "MojiData1.xml",
+        "MojiData2.xml",
+        "MojiData3.xml",
+        "Image1.png",
+        "Image2.png",
+    };
 
     private static string NormalizeNewLines(string value)
     {
         return value.Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace("\n", Environment.NewLine, StringComparison.Ordinal);
+    }
+
+    private static void AssertImageDimensions(string path, int width, int height)
+    {
+        using var stream = File.OpenRead(path);
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        Assert.AreEqual(width, decoder.Frames[0].PixelWidth, $"Unexpected width for {path}");
+        Assert.AreEqual(height, decoder.Frames[0].PixelHeight, $"Unexpected height for {path}");
     }
 
     private static void AssertUtf8WithoutBom(string path)
