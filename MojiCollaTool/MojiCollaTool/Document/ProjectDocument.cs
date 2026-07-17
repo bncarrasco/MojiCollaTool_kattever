@@ -85,7 +85,7 @@ namespace MojiCollaTool
         public PageDocument ClonePage(Guid pageId, string? name = null)
         {
             var source = GetPage(pageId);
-            var clone = source.Clone(name: name ?? CreateDefaultPageName(_pages.Count + 1));
+            var clone = source.Clone(name: name);
             _pages.Insert(source.Order + 1, clone);
             NormalizeOrder();
             return clone;
