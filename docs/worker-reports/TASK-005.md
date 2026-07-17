@@ -23,7 +23,7 @@
 - Branch: `feature/TASK-005-safe-legacy-persistence`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-005`
 - Base: `939c457` (`feature/TASK-000-build-baseline`)
-- Code result commit: handoff前に確定
+- Code result commit: `99086e0` (`Implement safe legacy project persistence`)
 
 ## Changed files
 
