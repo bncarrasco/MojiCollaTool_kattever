@@ -6,6 +6,8 @@
 
 ### Changed
 
+- READMEを「MojiCollaTool 勝手版」として明示し、非公式フォークであること、問い合わせ先の注意、現時点の配布状況を記載しました。ColorSelector由来コードのApache-2.0 noticeも追加しました。
+
 ### Fixed
 
 ### Compatibility
