@@ -49,6 +49,10 @@ namespace MojiCollaTool
 
         public event EventHandler? ContentChanged;
 
+        public string ContentChangeDescription { get; private set; } = "ページ編集";
+
+        public string? ContentChangeCoalesceKey { get; private set; }
+
         public PageDocument? BoundPage => _boundPage;
 
         public void RefreshMojiList()
@@ -65,7 +69,7 @@ namespace MojiCollaTool
             ThrowIfDisposed();
             CanvasData = canvasData ?? throw new ArgumentNullException(nameof(canvasData));
             UpdateCanvas();
-            RaiseContentChanged();
+            RaiseContentChanged("キャンバス変更");
         }
 
         public void BindPage(PageDocument page, IProjectAssetSource? assetSource, IProjectAssetSink? assetSink = null)
@@ -149,7 +153,7 @@ namespace MojiCollaTool
             _mojiPanels.Add(mojiPanel);
             _viewMojiPanels.Add(mojiPanel);
             MainCanvas.Children.Add(mojiPanel);
-            RaiseContentChanged();
+            RaiseContentChanged("文字追加");
         }
 
         public void ReproductionMoji(MojiPanel mojiPanel)
@@ -165,7 +169,7 @@ namespace MojiCollaTool
             _viewMojiPanels.Remove(mojiPanel);
             mojiPanel.Dispose();
             MainCanvas.Children.Remove(mojiPanel);
-            RaiseContentChanged();
+            RaiseContentChanged("文字削除");
         }
 
         public void RemoveAllMojiPanel()
@@ -188,7 +192,7 @@ namespace MojiCollaTool
                 assetStore.ReplacePageAssets(_boundPage.PageId, assets);
             }
             ApplyImage(candidate, imageNumber);
-            RaiseContentChanged();
+            RaiseContentChanged("画像変更");
         }
 
         public void ApplyImage(ProjectImageCandidate candidate, int imageNumber)
@@ -217,7 +221,8 @@ namespace MojiCollaTool
             (imageNumber == 1 ? ImageControl1 : ImageControl2).Source = null;
         }
 
-        internal void NotifyContentChanged() => RaiseContentChanged();
+        internal void NotifyContentChanged(string description = "ページ編集", string? coalesceKey = null)
+            => RaiseContentChanged(description, coalesceKey);
 
         public void CloseCanvasEditor()
         {
@@ -413,9 +418,12 @@ namespace MojiCollaTool
                 (int)imageSource.Height);
         }
 
-        private void RaiseContentChanged()
+        private void RaiseContentChanged(string description = "ページ編集", string? coalesceKey = null)
         {
-            if (!_suppressChanges) ContentChanged?.Invoke(this, EventArgs.Empty);
+            if (_suppressChanges) return;
+            ContentChangeDescription = description;
+            ContentChangeCoalesceKey = coalesceKey;
+            ContentChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 

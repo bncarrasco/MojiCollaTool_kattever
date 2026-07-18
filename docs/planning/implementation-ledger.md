@@ -20,7 +20,7 @@
 | TASK-041 | Complete | `feature/TASK-041-legacy-project-import` | `F:/github/MojiCollaTool-worktrees/TASK-041` | `6cc9b431e738dea7b6dfd7e56b008edaca8cc88e` | `60d72a5`, `27cea4d` | COMPAT | ADR-0005 | Debug/Release pass, 0 warnings, 0 errors | 60 passed | Legacy detector/reader/mapper、画像0/1/2枚、非batch/batch復元、未知field、壊れたmanifest非fallback、entry上限、日本語path | Integrated to `develop` at `8875af4`; commander reverified 60/60 | None | TASK-030 |
 | TASK-050 | Dependency ready | `feature/TASK-050-batch-page-export` | 未作成 | `develop`（T060/T190B統合後HEAD） | - | EXPORT | - | Not run | Not run | Not verified | Worker prompt/worktree準備待ち | TASK-070/TASK-200とMainWindow/PageEditor競合 | 単独lane候補 |
 | TASK-060 | Complete | `feature/TASK-060-object-id-zindex` | `F:/github/MojiCollaTool-worktrees/TASK-060` | `1e64a715adeb2102f15b6a932075f5afdb65ff44` | `e1af174` | OBJECT,ZORDER | ADR-0003 | Debug/Release pass、0 warnings/0 errors（SDK 6.0.428を明示指定） | Debug/Release 79 passed, 0 failed | UI変更なし。UUID/Type/ZIndex/lock/visibility/relationship fields、page/project duplicate checks、canonical Z snapshot、複数object clone/legacy XML確認を追加。TemporaryDirectory参照、旧int ID、配列比較を修正 | Integrated to `develop` at `e1af174`; commander reverified integrated state 81/81 | なし | TASK-070/080 |
-| TASK-070 | Dependency ready | `feature/TASK-070-undo-dirty` | 未作成 | `develop`（T060/T190B統合後HEAD） | - | UNDO,DIRTY,MEM | ADR-0004 | Not run | Not run | Not verified | Worker prompt/worktree準備待ち | TASK-050/TASK-200とMainWindow/PageEditor競合 | P0、次の単独laneに推奨 |
+| TASK-070 | Complete (local) | `feature/TASK-070-undo-dirty` | `F:/github/MojiCollaTool-worktrees/TASK-070` | `3f212391be8b2e4433617e8f67a97b00f161cf7f` | `0056d65757cfa7969258cf18c4e9076c6967a5e4` | UNDO,DIRTY,MEM | ADR-0004 | Debug/Release pass, SDK 6.0.428, 0 warnings/0 errors | Debug/Release 101 passed, 0 failed | revision coalesce、page dirty共通node除外、asset rollback、active page復元、saved-anchor trim compaction、operation-specific coalesce key、保持量収束、saved redo anchor回帰を確認。手動の縦書き/横書き・drag・複数project・AboutはNot verified | Pending integration review; prior handoff `9360249bb74b6be1876686b4b7ed1ace93930f02`; implementation `4c71e43e5aa70881f5fae38272ba9e9ed4cbda01` | なし | TASK-080/090/110/170/210/230 |
 | TASK-080 | Planned | - | - | - | - | ZORDER,LOCK,UI | ADR-0003/4 | Not run | Not run | Not verified | - | TASK-070 | 070後 |
 | TASK-090 | Planned | - | - | - | - | SYMBOL,UNICODE | ADR-0006 | Not run | Not run | Not verified | - | 060,070 | dependency後 |
 | TASK-100 | Planned | - | - | - | - | SYMBOL,UI | ADR-0006 | Not run | Not run | Not verified | - | TASK-090 | 090後 |
@@ -35,3 +35,10 @@
 | TASK-190B | Complete | `feature/TASK-190B-app-branding` | `F:/github/MojiCollaTool-worktrees/TASK-190B` | `1e64a71`（develop） | `d727b8b` | FORK,UI,DEPS | - | Debug/Release pass (0 warnings, 0 errors) | Debug/Release 73 passed | publish pass、Debug/Release/publishへLICENSE類同梱確認。AssemblyTitle、Company/Authors、4 ColorSelector noticesを確認 | Integrated to `develop` at `b80402e`; commander reverified integrated state 81/81 | なし | TASK-200 |
 | TASK-200 | Dependency ready | `feature/TASK-200-japanese-ui` | 未作成 | `develop`（T060/T190B統合後HEAD） | - | UI | - | Not run | Not run | Not verified | Worker prompt/worktree準備待ち | TASK-050/TASK-070とXAML/CS競合 | 単独lane候補 |
 | TASK-210/220/230 | Planned | - | - | - | - | OPS,SNAP,SELECT,GROUP | ADR-0003/4 | Not run | Not run | Not verified | - | task-breakdown参照 | future |
+
+### TASK-070 follow-up handoff
+
+- Implementation commit: `4c71e43e5aa70881f5fae38272ba9e9ed4cbda01`
+- Current handoff commit before this follow-up: `9360249bb74b6be1876686b4b7ed1ace93930f02`
+- Final implementation commit: `0056d65757cfa7969258cf18c4e9076c6967a5e4`
+- Follow-up validation: Debug 101/101 passed; Release 101/101 passed; 0 failed.

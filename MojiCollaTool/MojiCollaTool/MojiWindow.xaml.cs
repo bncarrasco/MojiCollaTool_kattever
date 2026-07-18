@@ -130,7 +130,7 @@ namespace MojiCollaTool
             _mojiPanel.Remove();
         }
 
-        public void UpdateMojiView(bool isTextDecoraitonUpdated)
+        public void UpdateMojiView(bool isTextDecoraitonUpdated, string changeDescription = "スタイル変更", string? coalesceKey = null)
         {
             _mojiPanel.MojiData.FullText = TextTextBox.Text;
             Title = $"[{_mojiPanel.MojiData.Id}] {_mojiPanel.MojiData.ExampleText}";
@@ -154,35 +154,35 @@ namespace MojiCollaTool
             _mojiPanel.MojiData.RotateAngle = RotateTextBox.Value;
 
             _mojiPanel.UpdateMojiView(isTextDecoraitonUpdated);
-            if (_runEvent) _mojiPanel.NotifyContentChanged();
+            if (_runEvent) _mojiPanel.NotifyContentChanged(changeDescription, coalesceKey);
         }
 
         private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (_runEvent == false) return;
 
-            UpdateMojiView(false);
+            UpdateMojiView(false, "文字入力", _mojiPanel.MojiData.ObjectId.ToString("D"));
         }
 
         private void TextBox_ValueChanged(object sender, UpDownTextBoxEvent e)
         {
             if (_runEvent == false) return;
 
-            UpdateMojiView(true);
+            UpdateMojiView(true, "スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
         }
 
         private void ComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_runEvent == false) return;
 
-            UpdateMojiView(true);
+            UpdateMojiView(true, "スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
         }
 
         private void CheckBox_CheckChanged(object sender, RoutedEventArgs e)
         {
             if (_runEvent == false) return;
 
-            UpdateMojiView(true);
+            UpdateMojiView(true, "スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
         }
 
         private void ColorButton_Click(Color currentColor, Action<Color> action)
@@ -209,7 +209,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.ForeColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
-                _mojiPanel.NotifyContentChanged();
+                _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }
 
@@ -220,7 +220,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.BorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
-                _mojiPanel.NotifyContentChanged();
+                _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }
 
@@ -231,7 +231,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.SecondBorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
-                _mojiPanel.NotifyContentChanged();
+                _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }
 
@@ -242,7 +242,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.BackgroundBoxColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
-                _mojiPanel.NotifyContentChanged();
+                _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }
 
@@ -253,7 +253,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.BackgroundBoxBorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
-                _mojiPanel.NotifyContentChanged();
+                _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }
 
@@ -311,7 +311,7 @@ namespace MojiCollaTool
                 LoadMojiDataToWindow(_mojiPanel.MojiData);
 
                 _mojiPanel.UpdateMojiView(true);
-                _mojiPanel.NotifyContentChanged();
+                _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             }
             catch (Exception ex)
             {

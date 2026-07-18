@@ -156,6 +156,68 @@ namespace MojiCollaTool
             return clone;
         }
 
+        /// <summary>
+        /// 履歴専用の一時コピーを作成します。保存形式には出力されません。
+        /// </summary>
+        internal ProjectDocument CreateHistorySnapshot()
+        {
+            return new ProjectDocument(ProjectId, Name, _pages);
+        }
+
+        internal ProjectHistoryState CreateHistoryState(IEnumerable<Guid> affectedPageIds)
+        {
+            if (affectedPageIds == null) throw new ArgumentNullException(nameof(affectedPageIds));
+            return ProjectHistoryState.Capture(this, affectedPageIds);
+        }
+
+        /// <summary>
+        /// 同じプロジェクトの履歴コピーを、現在の文書インスタンスへ復元します。
+        /// </summary>
+        internal void RestoreFrom(ProjectDocument snapshot)
+        {
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+            if (snapshot.ProjectId != ProjectId)
+            {
+                throw new InvalidOperationException("A history snapshot belongs to another project.");
+            }
+
+            Name = snapshot.Name;
+            _pages.Clear();
+            foreach (var page in snapshot.Pages)
+            {
+                AddExistingPage(page.Clone(page.PageId, preserveObjectIds: true));
+            }
+        }
+
+        internal void RestoreHistoryState(ProjectHistoryState state)
+        {
+            if (state == null) throw new ArgumentNullException(nameof(state));
+            if (state.ProjectId != ProjectId) throw new InvalidOperationException("A history state belongs to another project.");
+            if (state.PageOrder.Count == 0) throw new InvalidOperationException("A project must contain at least one page.");
+
+            var currentPages = _pages.ToDictionary(page => page.PageId);
+            var restored = new List<PageDocument>(state.PageOrder.Count);
+            foreach (var pageId in state.PageOrder)
+            {
+                if (state.Pages.TryGetValue(pageId, out var changedPage))
+                {
+                    restored.Add(changedPage.Clone(pageId, preserveObjectIds: true));
+                }
+                else if (currentPages.TryGetValue(pageId, out var currentPage))
+                {
+                    restored.Add(currentPage);
+                }
+                else
+                {
+                    throw new InvalidOperationException($"History state does not contain page: {pageId}");
+                }
+            }
+
+            Name = state.Name;
+            _pages.Clear();
+            foreach (var page in restored) AddExistingPage(page);
+        }
+
         public static ProjectDocument FromLegacy(
             string name,
             CanvasData canvas,

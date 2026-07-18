@@ -5,6 +5,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+using System.Windows.Input;
 using Microsoft.Win32;
 
 namespace MojiCollaTool
@@ -26,6 +27,11 @@ namespace MojiCollaTool
         public MainWindow()
         {
             InitializeComponent();
+            CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, UndoCommand_Executed, UndoCommand_CanExecute));
+            CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, RedoCommand_Executed, RedoCommand_CanExecute));
+            InputBindings.Add(new KeyBinding(ApplicationCommands.Undo, Key.Z, ModifierKeys.Control));
+            InputBindings.Add(new KeyBinding(ApplicationCommands.Redo, Key.Y, ModifierKeys.Control));
+            InputBindings.Add(new KeyBinding(ApplicationCommands.Redo, Key.Z, ModifierKeys.Control | ModifierKeys.Shift));
             _lastUsedDirectory = DataIO.GetExeDirPath();
             Title = $"{ProductIdentity.DisplayName} ver{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version}";
             _workspace.PropertyChanged += Workspace_PropertyChanged;
@@ -61,6 +67,42 @@ namespace MojiCollaTool
         private void PageEditor_ContentChanged(object? sender, EventArgs e)
         {
             CommitEditorChanges();
+        }
+
+        private void UndoCommand_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        {
+            e.CanExecute = ActiveSession?.CanUndo == true;
+            e.Handled = true;
+        }
+
+        private void RedoCommand_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        {
+            e.CanExecute = ActiveSession?.CanRedo == true;
+            e.Handled = true;
+        }
+
+        private void UndoCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ActiveSession == null) return;
+            CaptureEditorState();
+            if (ActiveSession.Undo())
+            {
+                BindActivePage();
+                RefreshTabs();
+            }
+            e.Handled = true;
+        }
+
+        private void RedoCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ActiveSession == null) return;
+            CaptureEditorState();
+            if (ActiveSession.Redo())
+            {
+                BindActivePage();
+                RefreshTabs();
+            }
+            e.Handled = true;
         }
 
         private void Window_Activated(object sender, EventArgs e)
@@ -163,32 +205,38 @@ namespace MojiCollaTool
 
         private void AddPageButton_Click(object sender, RoutedEventArgs e)
         {
-            if (ActiveSession == null) return;
+            var session = ActiveSession;
+            if (session == null) return;
             CaptureEditorState();
-            var page = ActiveSession.Document.AddPage();
-            ActiveSession.ActivatePage(page.PageId);
-            ActiveSession.MarkChanged(page.PageId);
+            session.Execute(project =>
+            {
+                var page = project.AddPage();
+                session.ActivatePage(page.PageId);
+            }, "ページ追加");
             BindActivePage();
             RefreshTabs();
         }
 
         private void DuplicatePageButton_Click(object sender, RoutedEventArgs e)
         {
-            if (ActiveSession == null || ActivePage == null) return;
-            CaptureEditorState();
+            var session = ActiveSession;
             var source = ActivePage;
-            var clone = ActiveSession.Document.ClonePage(source.PageId);
-            try
+            if (session == null || source == null) return;
+            CaptureEditorState();
+            session.Execute(project =>
             {
-                ActiveSession.AssetStore.CopyPageAssets(source, clone);
-            }
-            catch
-            {
-                ActiveSession.Document.RemovePage(clone.PageId);
-                throw;
-            }
-            ActiveSession.ActivatePage(clone.PageId);
-            ActiveSession.MarkChanged(clone.PageId);
+                var clone = project.ClonePage(source.PageId);
+                try
+                {
+                    session.AssetStore.CopyPageAssets(source, clone);
+                }
+                catch
+                {
+                    project.RemovePage(clone.PageId);
+                    throw;
+                }
+                session.ActivatePage(clone.PageId);
+            }, "ページ複製");
             BindActivePage();
             RefreshTabs();
         }
@@ -205,7 +253,7 @@ namespace MojiCollaTool
             try
             {
                 ActiveSession.AssetStore.RemovePage(page.PageId);
-                ActiveSession.Execute(project => project.RemovePage(page.PageId));
+                ActiveSession.Execute(project => project.RemovePage(page.PageId), "ページ削除");
                 BindActivePage();
                 RefreshTabs();
             }
@@ -259,7 +307,7 @@ namespace MojiCollaTool
                 PageEditor.ApplyImage(candidate, 1);
                 CanvasData.UpdateCanvasSize();
                 PageEditor.UpdateCanvas();
-                PageEditor.NotifyContentChanged();
+                PageEditor.NotifyContentChanged("画像変更");
                 _lastUsedDirectory = Path.GetDirectoryName(filePath);
             }
             catch (Exception ex)
@@ -297,7 +345,7 @@ namespace MojiCollaTool
                 CanvasData.ModifyImageSize();
                 CanvasData.UpdateCanvasSize();
                 PageEditor.UpdateCanvas();
-                PageEditor.NotifyContentChanged();
+                PageEditor.NotifyContentChanged("画像変更");
                 _lastUsedDirectory = Path.GetDirectoryName(dialog.FileName);
             }
             catch (Exception ex)
@@ -436,7 +484,8 @@ namespace MojiCollaTool
         {
             if (ActiveSession == null || ActivePage == null || PageEditor.BoundPage == null) return;
             CaptureEditorState();
-            ActiveSession.MarkChanged(ActivePage.PageId);
+            ActiveSession.MarkChanged(ActivePage.PageId, PageEditor.ContentChangeDescription,
+                PageEditor.ContentChangeCoalesceKey);
             RefreshTabs();
         }
 
