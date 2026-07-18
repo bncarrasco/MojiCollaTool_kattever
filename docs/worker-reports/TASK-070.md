@@ -2,7 +2,7 @@
 
 ## Result
 
-実装完了。実装commit: `0847c0c1e83321bea2bc6994bb7e87fc99b45e37`。
+実装完了。指摘対応commit: `4c71e43`（最終handoff hashはdocs更新後に確定）。
 
 ## Summary
 
