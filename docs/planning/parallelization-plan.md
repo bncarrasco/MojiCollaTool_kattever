@@ -81,3 +81,5 @@ TASK-070は`develop`へ統合済みであり、TASK-080、TASK-090、TASK-110、
 | TASK-110 | 新規balloon model、relationship DTO、versioned serializer、history command、model/serializer tests | MainWindow、PageEditor、XAML、export service | model/schema laneとして実施 |
 
 両taskは同一の`develop`開始commitからworktreeを作成する。共有台帳・CHANGELOG以外の横断fileを同時変更せず、範囲外変更が必要になった場合は実装前に司令役へ報告する。TASK-050はTASK-200と、TASK-110はTASK-090/TASK-230と同時開始しない。
+
+本waveは完了し、TASK-110を`fd307beec9d0cf6c8865f219a99ca44ce2353733`、TASK-050を`726ba07e2dcfff0fe4e43e929a24731de3c6059f`で`develop`へ統合した。統合状態のDebug/Release buildは警告0・エラー0、全testは各124/124成功。

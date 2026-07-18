@@ -29,5 +29,5 @@
 
 | Task | Branch | Worktree path | Functional base | Dependencies | Worker prompt | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| TASK-050 | `feature/TASK-050-batch-page-export` | `F:/github/MojiCollaTool-worktrees/TASK-050` | 本wave開始commit | TASK-030、TASK-070統合済み | `docs/worker-prompts/TASK-050.md`（local-only） | Kickoff ready; TASK-110と並行 |
-| TASK-110 | `feature/TASK-110-balloon-model` | `F:/github/MojiCollaTool-worktrees/TASK-110` | 本wave開始commit | TASK-060、TASK-070統合済み | `docs/worker-prompts/TASK-110.md`（local-only） | Kickoff ready; TASK-050と並行 |
+| TASK-050 | `feature/TASK-050-batch-page-export` | `F:/github/MojiCollaTool-worktrees/TASK-050` | `aa16cbc774b578ccd53b5101d919a44f546c63d8` | TASK-030、TASK-070統合済み | `docs/worker-prompts/TASK-050.md`（local-only） | Complete; integrated at `726ba07e2dcfff0fe4e43e929a24731de3c6059f` |
+| TASK-110 | `feature/TASK-110-balloon-model` | `F:/github/MojiCollaTool-worktrees/TASK-110` | `aa16cbc774b578ccd53b5101d919a44f546c63d8` | TASK-060、TASK-070統合済み | `docs/worker-prompts/TASK-110.md`（local-only） | Complete; integrated at `fd307beec9d0cf6c8865f219a99ca44ce2353733` |
