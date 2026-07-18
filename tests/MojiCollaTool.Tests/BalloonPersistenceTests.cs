@@ -97,6 +97,113 @@ namespace MojiCollaTool.Tests
             Assert.AreEqual("FutureShape", restored.Pages[0].Balloons[0].UnknownShapeKind);
         }
 
+        [TestMethod]
+        public void WriterUsesVersion21AndReaderAcceptsVersion20Archive()
+        {
+            using var scope = TemporaryDirectory.Create();
+            var currentPath = Path.Combine(scope.Path, "current.mctzip");
+            var legacyVersionPath = Path.Combine(scope.Path, "version20.mctzip");
+            var project = new ProjectDocument(Guid.NewGuid(), "version", new[]
+            {
+                new PageDocument("01", Array.Empty<MojiData>(), new[] { new BalloonData() }),
+            });
+            DataIO.WriteVersionedProject(currentPath, project);
+
+            using (var archive = ZipFile.OpenRead(currentPath))
+            {
+                var manifest = XDocument.Load(archive.GetEntry("manifest.xml")!.Open());
+                Assert.AreEqual("2.1", manifest.Root!.Element("FormatVersion")!.Value);
+                Assert.AreEqual("2.1", manifest.Root.Element("MinimumReaderVersion")!.Value);
+            }
+
+            RewriteArchive(currentPath, legacyVersionPath, entry =>
+            {
+                if (entry.FullName != "manifest.xml") return null;
+                var manifest = XDocument.Load(entry.Open());
+                manifest.Root!.Element("FormatVersion")!.Value = "2.0";
+                manifest.Root.Element("MinimumReaderVersion")!.Value = "2.0";
+                return Encoding.UTF8.GetBytes(manifest.ToString(SaveOptions.DisableFormatting));
+            });
+
+            var restored = DataIO.ReadVersionedProject(legacyVersionPath);
+            Assert.AreEqual(1, restored.Pages[0].Balloons.Count);
+        }
+
+        [TestMethod]
+        public void FutureMinorVersionIsRejected()
+        {
+            using var scope = TemporaryDirectory.Create();
+            var currentPath = Path.Combine(scope.Path, "current.mctzip");
+            var futurePath = Path.Combine(scope.Path, "future.mctzip");
+            DataIO.WriteVersionedProject(currentPath, new ProjectDocument("future"));
+
+            RewriteArchive(currentPath, futurePath, entry =>
+            {
+                if (entry.FullName != "manifest.xml") return null;
+                var manifest = XDocument.Load(entry.Open());
+                manifest.Root!.Element("FormatVersion")!.Value = "2.2";
+                return Encoding.UTF8.GetBytes(manifest.ToString(SaveOptions.DisableFormatting));
+            });
+
+            Assert.ThrowsException<InvalidDataException>(() => DataIO.ReadVersionedProject(futurePath));
+        }
+
+        [TestMethod]
+        public void MixedOrderSetUndoRedoAndPersistencePreserveOrder()
+        {
+            using var scope = TemporaryDirectory.Create();
+            var path = Path.Combine(scope.Path, "mixed.mctzip");
+            var page = new PageDocument("01");
+            var firstBalloon = new BalloonData();
+            var text = new MojiData { FullText = "本文" };
+            var secondBalloon = new BalloonData();
+            page.AddBalloon(firstBalloon);
+            page.AddMojiData(text);
+            page.AddBalloon(secondBalloon);
+            var project = new ProjectDocument(Guid.NewGuid(), "mixed", new[] { page });
+            var pageId = project.Pages[0].PageId;
+            using var session = new ProjectSession(project);
+
+            session.ExecutePage(pageId, target =>
+            {
+                target.SetMojiDatas(target.Objects.Select(item => item.Clone()));
+                target.SetBalloons(target.Balloons.Select(item => item.Clone()));
+                target.GetBalloon(firstBalloon.ObjectId).Fill = System.Windows.Media.Colors.LightBlue;
+            }, "混在順回帰");
+            var expectedOrder = new[] { firstBalloon.ObjectId, text.ObjectId, secondBalloon.ObjectId };
+            CollectionAssert.AreEqual(expectedOrder, session.Document.Pages[0].AllObjects.Select(item => item.ObjectId).ToArray());
+
+            Assert.IsTrue(session.Undo());
+            CollectionAssert.AreEqual(expectedOrder, session.Document.Pages[0].AllObjects.Select(item => item.ObjectId).ToArray());
+            Assert.IsTrue(session.Redo());
+            CollectionAssert.AreEqual(expectedOrder, session.Document.Pages[0].AllObjects.Select(item => item.ObjectId).ToArray());
+
+            DataIO.WriteVersionedProject(path, session.Document);
+            var restored = DataIO.ReadVersionedProject(path);
+            CollectionAssert.AreEqual(expectedOrder, restored.Pages[0].AllObjects.Select(item => item.ObjectId).ToArray());
+        }
+
+        private static void RewriteArchive(string sourcePath, string destinationPath, Func<ZipArchiveEntry, byte[]?> rewrite)
+        {
+            using var source = ZipFile.OpenRead(sourcePath);
+            using var destination = ZipFile.Open(destinationPath, ZipArchiveMode.Create);
+            foreach (var sourceEntry in source.Entries)
+            {
+                var destinationEntry = destination.CreateEntry(sourceEntry.FullName);
+                using var output = destinationEntry.Open();
+                var rewritten = rewrite(sourceEntry);
+                if (rewritten != null)
+                {
+                    output.Write(rewritten, 0, rewritten.Length);
+                }
+                else
+                {
+                    using var input = sourceEntry.Open();
+                    input.CopyTo(output);
+                }
+            }
+        }
+
         private sealed class TemporaryDirectory : IDisposable
         {
             private TemporaryDirectory(string path) => Path = path;

@@ -140,7 +140,7 @@ namespace MojiCollaTool
 
     public static class VersionedProjectFormat
     {
-        public const string CurrentVersion = "2.0";
+        public const string CurrentVersion = "2.1";
         public const string ProductName = "MojiCollaTool Katteban";
         public const string ManifestEntryName = "manifest.xml";
         public const int MaxArchiveEntries = 4096;

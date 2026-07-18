@@ -167,9 +167,11 @@ namespace MojiCollaTool
         public void SetMojiDatas(IEnumerable<MojiData> mojiDatas)
         {
             if (mojiDatas == null) throw new ArgumentNullException(nameof(mojiDatas));
+            var replacement = mojiDatas.Select(CloneMojiData).ToList();
+            EnsureReplacementObjectIds(replacement, _balloons);
             _mojiDatas.Clear();
-            _mojiDatas.AddRange(mojiDatas.Select(CloneMojiData));
-            RebuildObjectOrder();
+            _mojiDatas.AddRange(replacement);
+            RebuildObjectOrderPreservingExisting();
             NormalizeObjectOrder();
         }
 
@@ -188,9 +190,12 @@ namespace MojiCollaTool
         public void SetBalloons(IEnumerable<BalloonData> balloons)
         {
             if (balloons == null) throw new ArgumentNullException(nameof(balloons));
+            var replacement = balloons.Select(CloneBalloonData).ToList();
+            foreach (var balloon in replacement) balloon.Validate();
+            EnsureReplacementObjectIds(_mojiDatas, replacement);
             _balloons.Clear();
-            _balloons.AddRange(balloons.Select(CloneBalloonData));
-            RebuildObjectOrder();
+            _balloons.AddRange(replacement);
+            RebuildObjectOrderPreservingExisting();
             NormalizeObjectOrder();
         }
 
@@ -253,6 +258,10 @@ namespace MojiCollaTool
             if (index < 0) throw new KeyNotFoundException($"Balloon was not found: {objectId}");
             var candidate = _balloons[index].Clone();
             update(candidate);
+            if (candidate.ObjectId != objectId)
+            {
+                throw new InvalidOperationException("A balloon object ID cannot be changed.");
+            }
             candidate.Validate();
             _balloons[index] = candidate;
             NormalizeObjectOrder();
@@ -448,11 +457,30 @@ namespace MojiCollaTool
             return (clones, balloonClones);
         }
 
-        private void RebuildObjectOrder()
+        private void RebuildObjectOrderPreservingExisting()
         {
+            var currentIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)));
+            var preserved = _objectOrder.Where(currentIds.Contains).Distinct().ToList();
+            foreach (var id in _mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)))
+            {
+                if (!preserved.Contains(id)) preserved.Add(id);
+            }
+
             _objectOrder.Clear();
-            _objectOrder.AddRange(_mojiDatas.Select(item => item.ObjectId));
-            _objectOrder.AddRange(_balloons.Select(item => item.ObjectId));
+            _objectOrder.AddRange(preserved);
+        }
+
+        private static void EnsureReplacementObjectIds<T>(IEnumerable<T> replacement, IEnumerable<BalloonData> other)
+            where T : IPageObjectData
+        {
+            var ids = new HashSet<Guid>();
+            foreach (var item in replacement.Cast<IPageObjectData>().Concat(other))
+            {
+                if (item.ObjectId != Guid.Empty && !ids.Add(item.ObjectId))
+                {
+                    throw new InvalidOperationException($"Duplicate object ID: {item.ObjectId}");
+                }
+            }
         }
 
         private void ReconcileRelationships(HashSet<Guid> objectIds)

@@ -2,7 +2,7 @@
 
 ## Result
 
-実装完了。Implementation commit: `90b0b63e2cb0a0b91253cf4bf199b73938f1c732`。
+実装完了。初回実装commit: `90b0b63e2cb0a0b91253cf4bf199b73938f1c732`。本修正のfollow-up commitは最終handoff時に記録します。
 
 ## Summary
 
@@ -11,6 +11,9 @@
 - Page cloneでballoon/tail/text linkのdeep copyとrelationship ID remapを実装。文字削除時はフキダシを残してtext linkだけ解除。
 - versioned `page.xml`へBalloons collectionを追加。旧page.xmlは空collectionとして読み、未知shapeはUnknownとして保持し、無効なrelationshipは安全に解除。
 - `BalloonCommands`をProjectSessionのUndo/Redoへ接続し、add/remove/update/tail/link/unlinkを1 operationとして記録。
+- `SetMojiDatas`／`SetBalloons`で既存object IDの混在Z順スロットを維持し、新規objectだけ末尾へ追加。
+- `ProjectHistoryState`の見積り対象を全page objectへ拡張し、形式versionを2.1へ更新。2.0読込と未来minor version拒否をテスト。
+- `UpdateBalloon`でObjectId変更を拒否し、失敗時にmodelとZ順が変わらないことをテスト。
 - 描画、Geometry、hit test、handle、MainWindow/PageEditor UIはTASK-120/130の範囲として変更していない。
 
 ## 対応要件
@@ -55,10 +58,13 @@
 
 - `C:\Users\user\.dotnet\dotnet.exe --version`: `6.0.428`
 - Debug build: pass、0 warnings、0 errors
-- Debug test: pass、110/110
+- Debug test: pass、116/116
 - Release build: pass、0 warnings、0 errors
 - Release test: repositoryの`eng/test.ps1`はDebug configurationを固定するため、Release build後にも同scriptでDebug testを実行する
 - `git diff --check`: pass
+- 混在順→SetMojiDatas／SetBalloons→Undo/Redo→保存再読込: pass
+- フキダシを含む履歴メモリ見積りと件数／byte上限trim: pass
+- version 2.1 writer、version 2.0 reader互換、future 2.2拒否: pass
 
 ## 手動・互換性確認
 
@@ -77,4 +83,4 @@
 ## マージ注意・ロールバック
 
 - `PageDocument`、`ProjectDocument`、`VersionedProjectFormat`に変更があるため、後続TASK-120/130の同ファイル変更は本実装を取り込んでから行う。
-- rollbackはResult commitをrevertし、既存のT060/T070モデル・履歴基盤は維持する。
+- rollbackはfollow-up commitをrevertし、初回T110実装と既存のT060/T070モデル・履歴基盤は維持する。
