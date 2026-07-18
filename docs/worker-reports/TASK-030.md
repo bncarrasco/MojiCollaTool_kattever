@@ -35,7 +35,7 @@
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-030`
 - Base commit: `8875af4696663f34a6ba72f255b2f9e209578dd2`
 - 開始時HEAD: `70386485419c3d9dbcb09ee9c2c7493e5e66b50b`
-- Result commit: 後続の完了報告commitで確定
+- Result commit: `124e3e4`（実hash確定後の報告更新commitは後続）
 
 ## Changed files
 
