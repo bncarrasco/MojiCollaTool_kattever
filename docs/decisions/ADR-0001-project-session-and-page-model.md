@@ -1,6 +1,6 @@
 # ADR-0001: ProjectSessionと複数ページ文書モデル
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Context:** 現状はMainWindowが単一CanvasDataとMojiPanel一覧を所有する。要求は複数projectを同一アプリで開き、各projectが複数pageを持つ。
 - **選択肢:** (A) MainWindow状態をtabごとに複製、(B) ProjectSession/ProjectDocument/PageDocumentを導入、(C) projectごとに別process。
 - **Decision:** B。ApplicationWorkspaceが複数ProjectSessionを持ち、ProjectDocumentが順序付きPageDocumentを持つ。UIはproject tabとpage tabの二段構成。

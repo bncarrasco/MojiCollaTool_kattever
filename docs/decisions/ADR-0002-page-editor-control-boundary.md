@@ -1,6 +1,6 @@
 # ADR-0002: ページ編集コントロールの境界
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Context:** MainWindowがCanvas、画像、文字、zoom、drop、dialogを直接扱い、tabごとの独立状態を作れない。
 - **選択肢:** (A) MainWindowを複製、(B) PageEditorControlへpage内責務を抽出、(C) 全面MVVM化。
 - **Decision:** B。page描画・選択・page内inputをUserControlへ抽出し、shellとはcommand/eventで接続する。全面MVVM化はしない。

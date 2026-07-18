@@ -58,7 +58,7 @@
 ### 正式worktree登録確認と逸脱事項
 
 - `git worktree add -b feature/TASK-041-legacy-project-import F:/github/MojiCollaTool-worktrees/TASK-041 6cc9b43` を実行し、`git worktree list` で正式登録を確認した。
-- 指示された開始点 `1c4420a` ではなく、T020/T025/T040統合済みのfunctional base `6cc9b43` から開始した。これは統合済み機能を欠落させないための逸脱事項である。
+- 指示された開始点 `1c4420a` ではなく、functional base `6cc9b43` から開始してしまった。`1c4420a` は `6cc9b43` の子孫であり、機能差ではなくworktree運用文書を含めなかった手順逸脱である。履歴は変更せず、司令役が `develop` へtask固有commitを統合する。
 
 ### 変更ファイル
 

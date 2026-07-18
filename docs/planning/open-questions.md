@@ -15,7 +15,7 @@
 | OQ-UI-001 | ID/RGB/OK等の技術略語許容範囲 | UI,200 | 完全日本語 / 慣用略語許容 | RGB等は許容、Before/After/filterは日本語 | User/TASK-200前 | Temporarily decided |
 | OQ-UI-002 | About表示形態 | FORK,190B | menu dialog / startup only / footer | menuの「このアプリについて」 | User/TASK-190B前 | Temporarily decided |
 | OQ-UI-003 | project/page tabの表示 | WORKSPACE,030 | 二段 / 単一bar group / 別Window | 二段tab。単一bar groupは将来 | User/usability確認時 | Temporarily decided |
-| OQ-UI-004 | page単位dirty印を表示するか | DIRTY,030 | projectのみ / 両方 | 両方、煩雑ならprojectだけ | User/TASK-030 prototype時 | Open |
+| OQ-UI-004 | page単位dirty印を表示するか | DIRTY,030 | projectのみ / 両方 | projectとpageの両方に`*`を表示 | TASK-030固定UX。保存成功時にproject配下をclear | Decided |
 | OQ-UI-005 | locked objectの選択解除導線 | LOCK,080 | list / modifier click / context cycling | 小型object listまたはmodifierを比較 | User/TASK-080前 | Open |
 | OQ-BAL-001 | 初期フキダシshape | BALLOON,110/120 | 4種 / 思考含む5種 | 楕円・角丸四角・四角・モノローグの4種 | User/TASK-110前 | Temporarily decided |
 | OQ-BAL-002 | balloon text linkと一般groupの関係 | BALLOON/GROUP,130/230 | 同一 / 別概念 | 別概念、compositionとして扱う | Commander/TASK-130設計時 | Temporarily decided |
