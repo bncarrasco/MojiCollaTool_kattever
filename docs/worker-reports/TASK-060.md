@@ -10,7 +10,7 @@
 - Branch: `feature/TASK-060-object-id-zindex`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-060`
 - Functional base / kickoff HEAD: `1e64a715adeb2102f15b6a932075f5afdb65ff44`
-- Result commit: `96b89e6` (`feat: add common object identity and z-order`)
+- Result commits: `96b89e6` (`feat: add common object identity and z-order`), `6ff780d` (`fix: preserve legacy ids when cloning objects`)
 - Dedicated `TASK-060.md`: 未配置。task-breakdown、requirements、ADR-0003を根拠に実装。
 
 ## 対応要件
@@ -25,12 +25,14 @@
 - `PageDocument.cs`: object ID重複検出、legacy空ID修復、ZIndex正規化、ID検索、複製時のrelationship remap、保存用snapshotを追加。
 - `ProjectDocument.cs`: project内のobject ID重複を拒否。
 - `VersionedProjectFormat.cs`: page.xmlへcanonical object snapshotを保存。
-- `ObjectIdentityAndZOrderTests.cs`: default、normalize、duplicate、clone、versioned round-tripを追加。
+- `ObjectIdentityAndZOrderTests.cs`: default、normalize、duplicate、複数オブジェクト複製、relationship remap、legacy XML、versioned round-tripを確認（全8テストメソッド）。テスト内に`TemporaryDirectory`を実装。
 
 ## 検証
 
 - `git diff --check`: pass。
-- `dotnet test tests/MojiCollaTool.Tests/MojiCollaTool.Tests.csproj --no-restore`: 未実行。環境に.NET SDK 6.0.428がなく、`global.json`のSDK解決で停止。
+- `dotnet test tests/MojiCollaTool.Tests/MojiCollaTool.Tests.csproj --no-restore`: 実行試行。環境に.NET SDK 6.0.428がなく、`global.json`のSDK解決で停止（exit code 1）。
+- コンパイル修正: `TemporaryDirectory`のprivate型参照を解消。SDK不足のためコンパイラによる再確認は未検証。
+- 追加確認: 複数オブジェクトの旧int ID保持・UUID再発行、ParentId/GroupId再マッピング、legacy XMLからのUUID生成・`IsVisible=true`をテストへ追加。
 - Debug/Release build: 未実行。上記SDK不足のためNot verified。
 - UI/manual verification: Scope外（UI変更なし）。
 
