@@ -13,7 +13,7 @@ namespace MojiCollaTool
     /// Persisted object kinds. More kinds can be added without changing the
     /// common object state carried by <see cref="MojiData"/>.
     /// </summary>
-    public static class DocumentObjectTypes
+    public static partial class DocumentObjectTypes
     {
         public const string Text = "Text";
     }
@@ -34,7 +34,7 @@ namespace MojiCollaTool
     }
 
     [Serializable]
-    public class MojiData
+    public class MojiData : IPageObjectData
     {
         /// <summary>
         /// Legacy page-local integer ID. New code should use <see cref="ObjectId"/>.

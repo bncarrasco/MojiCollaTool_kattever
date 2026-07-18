@@ -25,8 +25,8 @@
 | Z-order/lock | ZORDER/LOCK | Debug/Release pass; 0 warnings/0 errors | Debug/Release 79 passed, 0 failed | Not verified | Not verified | Not verified | Required by TASK-080 | UUID/Type/ZIndex/lock/visibility/relationship fields; canonical page order, clone remap, legacy XML defaults, and versioned round-trip covered | TASK-060 / `e1af174` | Integrated。UI operations remain TASK-080 |
 | Grapheme handling | UNICODE | Current char-unit risk | None | Not verified | Not verified | Not verified | N/A | Round-trip unknown | - | TASK-090 |
 | Attached symbols | SYMBOL | Not implemented | None | Not verified | Not verified | Not verified | Required | New fields | - | TASK-090/100 |
-| Basic balloon | BALLOON | Not implemented | None | Not verified | Not verified | Not verified | Required | New fields | - | TASK-110/120 |
-| Tail/text link | BALLOON | Not implemented | None | Not verified | Not verified | Not verified | Required | Relationships | - | TASK-130 |
+| Basic balloon model | BALLOON | Debug/Release pass (0 warnings, 0 errors) | Debug 110 passed, 0 failed | UI/render/handles Not verified | Tategaki text relationship round-trip | Yokogaki/Unicode text relationship round-trip | N/A: model-only task | versioned page.xml, unknown shape fallback, invalid numeric validation | TASK-110 | UI/rendering remains TASK-120 |
+| Tail/text link model | BALLOON | Debug/Release pass (0 warnings, 0 errors) | Debug 110 passed, 0 failed | UI editing Not verified | Tail/link data round-trip | Tail/link data round-trip | N/A: model-only task | Single-tail slot, unlink-on-text-delete policy | TASK-110 | Interactive tail/text-link UI remains TASK-130 |
 | Auto layout | LAYOUT | Not implemented | None | Not verified | Not verified | Not verified | Required | Mode fields | - | TASK-140 |
 | Clipboard image | CLIPBOARD | Not implemented | None | Not verified | N/A | N/A | Required | Background persistence | - | TASK-170 |
 | Current/all page export | EXPORT | Current only | None | Not verified | Not verified | Not verified | Required for all-pages | N/A | - | TASK-050 |

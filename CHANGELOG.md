@@ -7,6 +7,12 @@
 - Undo/Redo、保存revisionによるdirty表示、ページ・画像assetのatomic復元、連続入力のcoalesceを追加しました。
 - `Ctrl+Z`、`Ctrl+Y`、`Ctrl+Shift+Z`で現在のプロジェクトだけを操作できるようにしました。
 
+### TASK-110
+
+- 楕円・角丸四角・四角・モノローグのフキダシモデル、塗り・枠線・位置・回転・ロック・表示状態を追加しました。
+- 単一しっぽ、文字リンク、ページ内の文字／フキダシZ順、ID remap付き複製、削除時のリンク解除を保存可能にしました。
+- versioned `.mctzip` のpage.xmlへフキダシを追加し、未知shapeの安全な読込、Undo/Redo対応のモデルコマンドを追加しました。
+
 ### TASK-190B
 
 - アプリのタイトル、About画面、Assembly/package metadataを`MojiCollaTool 勝手版`に統一しました。
