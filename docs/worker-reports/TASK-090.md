@@ -4,7 +4,6 @@
 
 - Base commit: `384dcfc76ef39871daa47c91ef6bd5085afafc33`
 - Result implementation commit: `eb38dea373659c5ae6512dbadbf7b420420353e1`
-- Report finalization commit: to be filled after the report update
 
 - Grapheme segmentation serviceを追加し、サロゲート、結合文字、variation selector、emoji modifier、ZWJ sequence、regional indicator、CRLFを1書記素単位として扱うようにした。
 - `AttachedSymbolData`を追加し、親text object ID、grapheme anchor、anchor fingerprint、em offset、scale、rotation、inherit flags、character spacing policyを保持するようにした。
