@@ -208,6 +208,7 @@ namespace MojiCollaTool
         public MojiData Clone()
         {
             MojiData clone = new MojiData();
+            clone.Id = Id;
             clone.ObjectId = ObjectId;
             clone.Copy(this);
             return clone;

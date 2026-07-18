@@ -65,6 +65,37 @@ public class ObjectIdentityAndZOrderTests
     }
 
     [TestMethod]
+    public void CloningMultipleObjectsPreservesLegacyIdsAndRemapsRelationships()
+    {
+        var root = new MojiData { Id = 7 };
+        var child = new MojiData { Id = 8, ParentId = root.ObjectId, GroupId = root.ObjectId };
+        var source = new PageDocument("01", new[] { root, child });
+
+        var clone = source.Clone();
+
+        CollectionAssert.AreEqual(new[] { 7, 8 }, clone.Objects.Select(item => item.Id).ToArray());
+        Assert.IsTrue(clone.Objects.All(item => !source.Objects.Any(sourceItem => sourceItem.ObjectId == item.ObjectId)));
+        Assert.AreEqual(clone.Objects[0].ObjectId, clone.Objects[1].ParentId);
+        Assert.AreEqual(clone.Objects[0].ObjectId, clone.Objects[1].GroupId);
+    }
+
+    [TestMethod]
+    public void LegacyXmlWithoutCommonFieldsGeneratesIdentityAndKeepsVisibleDefault()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var path = Path.Combine(scope.Path, "MojiData17.xml");
+        File.WriteAllText(path, "<MojiData><Id>17</Id><FullText>legacy</FullText></MojiData>");
+
+        var restored = DataIO.ReadMojiData(path);
+
+        Assert.AreEqual(17, restored.Id);
+        Assert.AreNotEqual(Guid.Empty, restored.ObjectId);
+        Assert.AreEqual(DocumentObjectTypes.Text, restored.Type);
+        Assert.IsTrue(restored.IsVisible);
+    }
+
+
+    [TestMethod]
     public void VersionedRoundTripPreservesObjectIdentityStateAndOrder()
     {
         using var scope = TemporaryDirectory.Create();
@@ -97,5 +128,24 @@ public class ObjectIdentityAndZOrderTests
         Assert.IsFalse(restoredObject.IsVisible);
         Assert.AreEqual(sourcePage.Objects[0].ParentId, restoredObject.ParentId);
         Assert.AreEqual(sourcePage.Objects[0].GroupId, restoredObject.GroupId);
+    }
+
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        private TemporaryDirectory(string path) => Path = path;
+
+        public string Path { get; }
+
+        public static TemporaryDirectory Create()
+        {
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "MojiCollaTool.Tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(path);
+            return new TemporaryDirectory(path);
+        }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
+        }
     }
 }
