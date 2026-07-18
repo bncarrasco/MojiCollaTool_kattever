@@ -14,6 +14,7 @@
 - Start worktree: 主repositoryの`git worktree list --porcelain`に登録済み
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` => `6.0.428`
 - Result commit: `bec5f16cfbdb288a448dfb37cdec9cc3af7f6c83`
+- Follow-up correction: JPEG合成時に`CanvasBackgroundRect`を変更せず、`MainCanvas`の白い背面で透明部分だけを合成するよう修正。
 
 ## Changed files
 
@@ -24,7 +25,7 @@
 - `MojiCollaTool/MojiCollaTool/MainWindow.xaml.cs`
   - active sessionだけを対象に、編集中ページを先にcaptureし、非active pageを既存のBindPage境界で切替・描画。完了後にactive page、選択object、zoomを復元。
 - `MojiCollaTool/MojiCollaTool/PageEditorControl.xaml.cs`
-  - view stateの取得・復元と、PNG透明背景／JPEG白背景のrender境界を追加。
+  - view stateの取得・復元と、PNG透明背景／CanvasColorを維持したJPEG合成のrender境界を追加。
 - `tests/MojiCollaTool.Tests/TASK050ExportTests.cs`
   - 命名、衝突、失敗継続、開始失敗、PNG alpha、JPEG背景、論理寸法を検証。
 - `CHANGELOG.md`、`docs/planning/implementation-ledger.md`、`docs/testing/verification-matrix.md`
@@ -33,18 +34,19 @@
 
 - 命名: `接頭辞_{project order + 1のzero-padded index}_{sanitize済みpage名}.png|jpg`。2桁を最低幅とし、100ページ以上では必要桁数へ拡張します。無効文字、制御文字、末尾のdot/space、空名、Windows予約名を安全化し、日本語・Unicodeは保持します。ページ名自体は変更しません。
 - 衝突: 開始前に全出力先を検査し、1件でも既存なら何も書かず明示エラーにします。描画は一時ファイルへ行い、成功時だけ確定名へ移動するため、既存ファイルを上書きしません。
-- JPEG: alphaを持たないため、出力時だけ白い不透明背景を合成します。PNGはworkspaceの灰色背景を出力へ持ち込まず、CanvasColorと画像assetのalphaを保持します。
+- JPEG: alphaを持たないため、出力時だけ`MainCanvas`に白い不透明な背面を置きます。`CanvasBackgroundRect`のCanvasColorは変更しないため、不透明色はそのまま、半透明色は白へ合成され、完全透明部分だけが白になります。PNGはworkspaceの灰色背景を出力へ持ち込まず、CanvasColorと画像assetのalphaを保持します。
 - 失敗継続: 出力先フォルダーを作成できない等、batch開始前の失敗は何も書かず中止します。開始後の1ページ失敗は残りを継続し、成功数・失敗数・失敗ページを日本語で表示します。
 - dirty/state: render前にactive pageをcaptureし、page切替はsessionの既存境界を使用します。serviceはdocumentを変更せず、MainWindowは処理後にactive page、選択object、zoomを復元します。
 
 ## Verification
 
 - Debug build: pass、0 warnings、0 errors
-- Debug test: 106 passed、0 failed
+- Debug test: 109 passed、0 failed
 - Release build: pass、0 warnings、0 errors
-- Release test: 106 passed、0 failed
+- Release test: 109 passed、0 failed
 - `git diff --check`: pass
 - GUIの実操作（dialogからのフォルダー参照、複数ページの目視確認、縦書き／横書きの目視）はこの実行では`Not verified`です。WPF/STAのrender integration、PNG/JPEGの寸法・背景、service単体の命名・衝突・失敗継続は自動検証済みです。
+- JPEGのCanvasColorについて、不透明赤・半透明赤・完全透明の3ケースをSTAレンダリングテストで検証済みです。
 
 ## Known issues and rollback
 

@@ -146,6 +146,36 @@ public class TASK050ExportTests
         }
     }
 
+    [TestMethod]
+    public void JpegPreservesOpaqueCanvasColor()
+    {
+        var pixel = RenderJpegPixel(Colors.Red);
+
+        Assert.IsTrue(pixel.red >= 200, $"red={pixel.red}");
+        Assert.IsTrue(pixel.green <= 80, $"green={pixel.green}");
+        Assert.IsTrue(pixel.blue <= 80, $"blue={pixel.blue}");
+    }
+
+    [TestMethod]
+    public void JpegCompositesSemiTransparentCanvasColorOverWhite()
+    {
+        var pixel = RenderJpegPixel(Color.FromArgb(128, 255, 0, 0));
+
+        Assert.IsTrue(pixel.red >= 200, $"red={pixel.red}");
+        Assert.IsTrue(pixel.green is >= 80 and <= 190, $"green={pixel.green}");
+        Assert.IsTrue(pixel.blue is >= 80 and <= 190, $"blue={pixel.blue}");
+    }
+
+    [TestMethod]
+    public void JpegCompositesFullyTransparentCanvasColorToWhite()
+    {
+        var pixel = RenderJpegPixel(Colors.Transparent);
+
+        Assert.IsTrue(pixel.red >= 240, $"red={pixel.red}");
+        Assert.IsTrue(pixel.green >= 240, $"green={pixel.green}");
+        Assert.IsTrue(pixel.blue >= 240, $"blue={pixel.blue}");
+    }
+
     private static string CreateTempDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "mct-export-" + Guid.NewGuid().ToString("N"));
@@ -163,6 +193,36 @@ public class TASK050ExportTests
         using var stream = File.OpenRead(path);
         var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
         return decoder.Frames[0];
+    }
+
+    private static (byte red, byte green, byte blue) RenderJpegPixel(Color canvasColor)
+    {
+        var directory = CreateTempDirectory();
+        var path = Path.Combine(directory, "color.jpg");
+        try
+        {
+            RunOnSta(() =>
+            {
+                using var editor = new PageEditorControl();
+                editor.SetCanvasData(new CanvasData
+                {
+                    CanvasWidth = 32,
+                    CanvasHeight = 32,
+                    CanvasColor = canvasColor,
+                });
+                editor.ExportImage(path, new JpegBitmapEncoder());
+                return true;
+            });
+
+            var bitmap = new FormatConvertedBitmap(ReadBitmap(path), PixelFormats.Bgra32, null, 0);
+            var pixels = new byte[bitmap.PixelWidth * bitmap.PixelHeight * 4];
+            bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0);
+            return (pixels[2], pixels[1], pixels[0]);
+        }
+        finally
+        {
+            DeleteTempDirectory(directory);
+        }
     }
 
     private static T RunOnSta<T>(Func<T> action)

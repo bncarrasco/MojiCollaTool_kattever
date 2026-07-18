@@ -283,9 +283,8 @@ namespace MojiCollaTool
                 UpdateScale(100);
                 if (encoder is JpegBitmapEncoder)
                 {
-                    // JPEG has no alpha channel. Use an opaque white background rather
-                    // than allowing transparent pixels to become encoder-dependent black.
-                    CanvasBackgroundRect.Fill = Brushes.White;
+                    // JPEG has no alpha channel. Keep CanvasColor as the foreground and
+                    // use a white backplate only where the canvas is transparent.
                     MainCanvas.Background = Brushes.White;
                 }
                 else
