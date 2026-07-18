@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Xps.Serialization;
+using System.Xml;
 using System.Xml.Serialization;
 
 namespace MojiCollaTool
@@ -290,10 +291,16 @@ namespace MojiCollaTool
         /// <exception cref="InvalidOperationException"></exception>
         public static T ReadXMLData<T>(string filePath)
         {
-            using (var stream = new StreamReader(filePath, new UTF8Encoding(false)))
+            using (var stream = File.OpenRead(filePath))
+            using (var reader = XmlReader.Create(stream, new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                MaxCharactersFromEntities = 0,
+            }))
             {
                 XmlSerializer xmlSerializer = new XmlSerializer(typeof(T));
-                var obj = xmlSerializer.Deserialize(stream);
+                var obj = xmlSerializer.Deserialize(reader);
 
                 if (obj == null) throw new InvalidOperationException("XML convert null error.");
 
@@ -331,6 +338,23 @@ namespace MojiCollaTool
         public static ProjectDocument ReadVersionedProject(string projectFilePath, IProjectAssetSink? assetSink)
         {
             return new VersionedProjectReader().Read(projectFilePath, assetSink);
+        }
+
+        /// <summary>
+        /// プロジェクト形式を判定し、現行形式または旧形式を読み込む。
+        /// 旧形式は1ページへ移行され、結果にwarningが付与される。
+        /// </summary>
+        public static ProjectReadResult ReadProject(string projectFilePath)
+        {
+            return new ProjectReader().ReadResult(projectFilePath);
+        }
+
+        /// <summary>
+        /// プロジェクト形式を判定し、画像実体をasset sinkへ復元して読み込む。
+        /// </summary>
+        public static ProjectReadResult ReadProject(string projectFilePath, IProjectAssetSink? assetSink)
+        {
+            return new ProjectReader().ReadResult(projectFilePath, assetSink);
         }
 
         /// <summary>
