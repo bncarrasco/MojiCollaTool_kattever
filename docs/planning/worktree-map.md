@@ -23,4 +23,11 @@
 | TASK-041 | `feature/TASK-041-legacy-project-import` | `F:/github/MojiCollaTool-worktrees/TASK-041` | `6cc9b431e738dea7b6dfd7e56b008edaca8cc88e` | TASK-040まで`develop`へ統合済み | `docs/worker-prompts/TASK-041.md` | Complete; `develop`の`8875af4`までに統合済み |
 | TASK-030 | `feature/TASK-030-project-page-tabs` | `F:/github/MojiCollaTool-worktrees/TASK-030` | `8875af4696663f34a6ba72f255b2f9e209578dd2` | TASK-020、TASK-025、TASK-041統合済み | `docs/worker-prompts/TASK-030.md` | Complete; `develop`の`7fc27d5`までに統合済み |
 
-次taskのworktreeはまだ作成しない。`parallelization-plan.md`で選定後、追跡対象コードのexact HEADから司令役がworktreeを登録し、そのworktreeへlocal-onlyのAGENTSとworker promptを配置する。
+## TASK-070統合後wave
+
+下記2taskは、本台帳更新を含む同一の`develop`開始commitから司令役が正式なworktreeを登録し、各worktreeへlocal-onlyのAGENTSとworker promptを配置する。
+
+| Task | Branch | Worktree path | Functional base | Dependencies | Worker prompt | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| TASK-050 | `feature/TASK-050-batch-page-export` | `F:/github/MojiCollaTool-worktrees/TASK-050` | 本wave開始commit | TASK-030、TASK-070統合済み | `docs/worker-prompts/TASK-050.md`（local-only） | Kickoff ready; TASK-110と並行 |
+| TASK-110 | `feature/TASK-110-balloon-model` | `F:/github/MojiCollaTool-worktrees/TASK-110` | 本wave開始commit | TASK-060、TASK-070統合済み | `docs/worker-prompts/TASK-110.md`（local-only） | Kickoff ready; TASK-050と並行 |

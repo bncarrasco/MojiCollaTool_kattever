@@ -69,4 +69,15 @@ TASK-060とTASK-190Bは`develop`へ統合済み。依存DAG上は次の3taskが�
 
 現在のtask粒度では安全に並行実装できる組み合わせはない。優先度と後続解放数から、次はTASK-070を単独で実施する。
 
-TASK-070統合後はTASK-080、TASK-090、TASK-110、TASK-170、TASK-210、TASK-230が依存解消する。次waveでは、MainWindow/PageEditorを変更するTASK-050と、新規model/serializer中心でMainWindowを変更しないTASK-110を、file ownershipを指示書で固定したうえで並行候補として再評価する。
+TASK-070は`develop`へ統合済みであり、TASK-080、TASK-090、TASK-110、TASK-170、TASK-210、TASK-230の依存が解消した。
+
+## 8. TASK-070統合後wave
+
+次waveはTASK-050とTASK-110を並行実施する。
+
+| Task | 所有領域 | 変更禁止領域 | 並行判断 |
+| --- | --- | --- | --- |
+| TASK-050 | export service、出力dialog、MainWindow/PageEditorの出力command、export tests | balloon model、relationship DTO、project XML schema | 既存UI/export laneとして実施 |
+| TASK-110 | 新規balloon model、relationship DTO、versioned serializer、history command、model/serializer tests | MainWindow、PageEditor、XAML、export service | model/schema laneとして実施 |
+
+両taskは同一の`develop`開始commitからworktreeを作成する。共有台帳・CHANGELOG以外の横断fileを同時変更せず、範囲外変更が必要になった場合は実装前に司令役へ報告する。TASK-050はTASK-200と、TASK-110はTASK-090/TASK-230と同時開始しない。
