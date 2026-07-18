@@ -114,19 +114,28 @@ namespace MojiCollaTool
             var codePoint = ReadCodePoint(text, currentStart, out _);
             if (codePoint == 0x200D || IsVariationSelector(codePoint) || IsEmojiModifier(codePoint) || IsTag(codePoint)) return true;
 
-            // Regional indicator symbols form flags in pairs.
-            var previousCodePoint = ReadCodePoint(text, previousStart, out _);
-            if (IsRegionalIndicator(previousCodePoint) && IsRegionalIndicator(codePoint))
+            // Regional indicator symbols form flags in strict pairs. Count
+            // code points in the current provisional cluster instead of
+            // asking whether that substring happens to be one StringInfo
+            // element; otherwise consecutive flags can be merged as one.
+            if (IsRegionalIndicator(codePoint))
             {
-                var previousCluster = SegmentWithoutMerge(text.Substring(previousStart, currentStart - previousStart));
-                return previousCluster.Count == 1;
+                var regionalCount = CountRegionalIndicators(text, previousStart, currentStart);
+                if (regionalCount > 0) return regionalCount % 2 == 1;
             }
             return false;
         }
 
-        private static IReadOnlyList<int> SegmentWithoutMerge(string text)
+        private static int CountRegionalIndicators(string text, int start, int end)
         {
-            return StringInfo.ParseCombiningCharacters(text);
+            var count = 0;
+            for (var index = start; index < end;)
+            {
+                var codePoint = ReadCodePoint(text, index, out var charCount);
+                if (IsRegionalIndicator(codePoint)) count++;
+                index += charCount;
+            }
+            return count;
         }
 
         private static int ReadCodePoint(string text, int index, out int charCount)

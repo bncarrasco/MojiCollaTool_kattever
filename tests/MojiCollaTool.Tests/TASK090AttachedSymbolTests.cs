@@ -40,6 +40,13 @@ public class TASK090AttachedSymbolTests
     }
 
     [TestMethod]
+    public void RegionalIndicatorsAreGroupedInPairsWithExactUtf16Ranges()
+    {
+        AssertRegionalClusters("🇯🇵🇺🇸", new[] { "🇯🇵", "🇺🇸" }, new[] { 0, 4 }, new[] { 4, 4 });
+        AssertRegionalClusters("🇯🇵🇺", new[] { "🇯🇵", "🇺" }, new[] { 0, 4 }, new[] { 4, 2 });
+    }
+
+    [TestMethod]
     public void AttachedSymbolIsClonedWithRemappedParentAndSymbolIds()
     {
         var page = new PageDocument("記号", new[]
@@ -276,6 +283,20 @@ public class TASK090AttachedSymbolTests
         var page = new PageDocument("本文", new[] { new MojiData { FullText = text } });
         parentId = page.MojiDatas[0].ObjectId;
         return page;
+    }
+
+    private static void AssertRegionalClusters(string text, string[] expectedTexts, int[] expectedStarts, int[] expectedLengths)
+    {
+        var clusters = GraphemeService.Segment(text);
+        Assert.AreEqual(expectedTexts.Length, clusters.Count);
+        for (var index = 0; index < clusters.Count; index++)
+        {
+            Assert.AreEqual(index, clusters[index].Index);
+            Assert.AreEqual(expectedTexts[index], clusters[index].Text);
+            Assert.AreEqual(expectedStarts[index], clusters[index].Utf16Start);
+            Assert.AreEqual(expectedLengths[index], clusters[index].Utf16Length);
+        }
+        Assert.AreEqual(text, string.Concat(clusters));
     }
 
     private static void RewriteManifestVersion(string sourcePath, string destinationPath, string version)
