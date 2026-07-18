@@ -12,6 +12,8 @@ namespace MojiCollaTool
     public sealed class PageDocument
     {
         private readonly List<MojiData> _mojiDatas;
+        private readonly List<BalloonData> _balloons;
+        private readonly List<Guid> _objectOrder = new List<Guid>();
 
         public PageDocument(string name)
             : this(Guid.NewGuid(), name, new CanvasData(), Enumerable.Empty<MojiData>())
@@ -23,11 +25,31 @@ namespace MojiCollaTool
         {
         }
 
+        public PageDocument(string name, IEnumerable<MojiData> mojiDatas, IEnumerable<BalloonData> balloons)
+            : this(Guid.NewGuid(), name, new CanvasData(), mojiDatas, balloons)
+        {
+        }
+
+        public PageDocument(string name, IEnumerable<BalloonData> balloons)
+            : this(Guid.NewGuid(), name, new CanvasData(), Enumerable.Empty<MojiData>(), balloons)
+        {
+        }
+
         public PageDocument(
             Guid pageId,
             string name,
             CanvasData canvas,
             IEnumerable<MojiData> mojiDatas)
+            : this(pageId, name, canvas, mojiDatas, Enumerable.Empty<BalloonData>())
+        {
+        }
+
+        public PageDocument(
+            Guid pageId,
+            string name,
+            CanvasData canvas,
+            IEnumerable<MojiData> mojiDatas,
+            IEnumerable<BalloonData> balloons)
         {
             if (pageId == Guid.Empty) throw new ArgumentException("Page ID must not be empty.", nameof(pageId));
             PageId = pageId;
@@ -36,6 +58,21 @@ namespace MojiCollaTool
             _mojiDatas = (mojiDatas ?? throw new ArgumentNullException(nameof(mojiDatas)))
                 .Select(CloneMojiData)
                 .ToList();
+            _balloons = (balloons ?? throw new ArgumentNullException(nameof(balloons)))
+                .Select(CloneBalloonData)
+                .ToList();
+            var allObjects = _mojiDatas.Cast<IPageObjectData>().Concat(_balloons).ToArray();
+            if (allObjects.Length > 0 &&
+                allObjects.Select(item => item.ZIndex).Distinct().Count() == allObjects.Length &&
+                allObjects.All(item => item.ZIndex >= 0 && item.ZIndex < allObjects.Length))
+            {
+                _objectOrder.AddRange(allObjects.OrderBy(item => item.ZIndex).Select(item => item.ObjectId));
+            }
+            else
+            {
+                _objectOrder.AddRange(_mojiDatas.Select(mojiData => mojiData.ObjectId));
+                _objectOrder.AddRange(_balloons.Select(balloon => balloon.ObjectId));
+            }
             NormalizeObjectOrder();
         }
 
@@ -49,6 +86,21 @@ namespace MojiCollaTool
                 name,
                 (canvas ?? throw new ArgumentNullException(nameof(canvas))).LegacyData,
                 mojiDatas)
+        {
+        }
+
+        public PageDocument(
+            Guid pageId,
+            string name,
+            CanvasDocument canvas,
+            IEnumerable<MojiData> mojiDatas,
+            IEnumerable<BalloonData> balloons)
+            : this(
+                pageId,
+                name,
+                (canvas ?? throw new ArgumentNullException(nameof(canvas))).LegacyData,
+                mojiDatas,
+                balloons)
         {
         }
 
@@ -83,6 +135,20 @@ namespace MojiCollaTool
         /// </summary>
         public IReadOnlyList<MojiData> Objects => MojiDatas;
 
+        public IReadOnlyList<BalloonData> Balloons => new ReadOnlyCollection<BalloonData>(_balloons);
+
+        public IReadOnlyList<BalloonData> BalloonDatas => Balloons;
+
+        /// <summary>
+        /// All page objects in canonical page-level drawing order.
+        /// </summary>
+        public IReadOnlyList<IPageObjectData> AllObjects => new ReadOnlyCollection<IPageObjectData>(
+            _objectOrder.Select(GetDocumentObject).ToList());
+
+        public IReadOnlyList<IPageObjectData> DocumentObjects => AllObjects;
+
+        public int ObjectCount => _objectOrder.Count;
+
         public void Rename(string name)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -91,15 +157,45 @@ namespace MojiCollaTool
         public void AddMojiData(MojiData mojiData)
         {
             if (mojiData == null) throw new ArgumentNullException(nameof(mojiData));
-            _mojiDatas.Add(CloneMojiData(mojiData));
+            var clone = CloneMojiData(mojiData);
+            EnsureNewObjectId(clone.ObjectId);
+            _mojiDatas.Add(clone);
+            _objectOrder.Add(clone.ObjectId);
             NormalizeObjectOrder();
         }
 
         public void SetMojiDatas(IEnumerable<MojiData> mojiDatas)
         {
             if (mojiDatas == null) throw new ArgumentNullException(nameof(mojiDatas));
+            var replacement = mojiDatas.Select(CloneMojiData).ToList();
+            EnsureReplacementObjectIds(replacement, _balloons);
             _mojiDatas.Clear();
-            _mojiDatas.AddRange(mojiDatas.Select(CloneMojiData));
+            _mojiDatas.AddRange(replacement);
+            RebuildObjectOrderPreservingExisting();
+            NormalizeObjectOrder();
+        }
+
+        public void AddBalloon(BalloonData balloon)
+        {
+            if (balloon == null) throw new ArgumentNullException(nameof(balloon));
+            var clone = CloneBalloonData(balloon);
+            EnsureNewObjectId(clone.ObjectId);
+            _balloons.Add(clone);
+            _objectOrder.Add(clone.ObjectId);
+            NormalizeObjectOrder();
+        }
+
+        public void AddBalloonData(BalloonData balloon) => AddBalloon(balloon);
+
+        public void SetBalloons(IEnumerable<BalloonData> balloons)
+        {
+            if (balloons == null) throw new ArgumentNullException(nameof(balloons));
+            var replacement = balloons.Select(CloneBalloonData).ToList();
+            foreach (var balloon in replacement) balloon.Validate();
+            EnsureReplacementObjectIds(_mojiDatas, replacement);
+            _balloons.Clear();
+            _balloons.AddRange(replacement);
+            RebuildObjectOrderPreservingExisting();
             NormalizeObjectOrder();
         }
 
@@ -113,8 +209,87 @@ namespace MojiCollaTool
                 if (matching != null) removed = _mojiDatas.Remove(matching);
             }
 
-            if (removed) NormalizeObjectOrder();
+            if (removed)
+            {
+                _objectOrder.Remove(mojiData.ObjectId);
+                foreach (var balloon in _balloons.Where(balloon => balloon.TextLink?.TextObjectId == mojiData.ObjectId))
+                {
+                    // Deleting text detaches the composition link but keeps the balloon.
+                    balloon.TextLink = null;
+                }
+                NormalizeObjectOrder();
+            }
             return removed;
+        }
+
+        public bool RemoveBalloon(BalloonData balloon)
+        {
+            if (balloon == null) throw new ArgumentNullException(nameof(balloon));
+            var matching = _balloons.FirstOrDefault(candidate => ReferenceEquals(candidate, balloon) || candidate.ObjectId == balloon.ObjectId);
+            if (matching == null) return false;
+            _balloons.Remove(matching);
+            _objectOrder.Remove(matching.ObjectId);
+            NormalizeObjectOrder();
+            return true;
+        }
+
+        public bool RemoveBalloon(Guid balloonId)
+        {
+            return ContainsBalloon(balloonId) && RemoveBalloon(GetBalloon(balloonId));
+        }
+
+        public bool RemoveBalloonData(Guid balloonId) => RemoveBalloon(balloonId);
+
+        public BalloonData GetBalloon(Guid objectId)
+        {
+            return _balloons.SingleOrDefault(balloon => balloon.ObjectId == objectId)
+                ?? throw new KeyNotFoundException($"Balloon was not found: {objectId}");
+        }
+
+        public bool ContainsBalloon(Guid objectId) => _balloons.Any(balloon => balloon.ObjectId == objectId);
+
+        /// <summary>
+        /// Atomically updates a balloon model. The original remains unchanged when validation fails.
+        /// </summary>
+        public void UpdateBalloon(Guid objectId, Action<BalloonData> update)
+        {
+            if (update == null) throw new ArgumentNullException(nameof(update));
+            var index = _balloons.FindIndex(balloon => balloon.ObjectId == objectId);
+            if (index < 0) throw new KeyNotFoundException($"Balloon was not found: {objectId}");
+            var candidate = _balloons[index].Clone();
+            update(candidate);
+            if (candidate.ObjectId != objectId)
+            {
+                throw new InvalidOperationException("A balloon object ID cannot be changed.");
+            }
+            candidate.Validate();
+            _balloons[index] = candidate;
+            NormalizeObjectOrder();
+        }
+
+        public void SetBalloonTail(Guid balloonId, BalloonTailData? tail)
+        {
+            UpdateBalloon(balloonId, balloon => balloon.Tail = tail?.Clone());
+        }
+
+        public void LinkBalloonText(Guid balloonId, Guid textObjectId, TextLinkData? link = null)
+        {
+            if (!ContainsObject(textObjectId) || !_mojiDatas.Any(text => text.ObjectId == textObjectId))
+            {
+                throw new KeyNotFoundException($"Text object was not found: {textObjectId}");
+            }
+
+            UpdateBalloon(balloonId, balloon =>
+            {
+                var value = link?.Clone() ?? new TextLinkData();
+                value.TextObjectId = textObjectId;
+                balloon.TextLink = value;
+            });
+        }
+
+        public void UnlinkBalloonText(Guid balloonId)
+        {
+            UpdateBalloon(balloonId, balloon => balloon.TextLink = null);
         }
 
         /// <summary>
@@ -124,9 +299,8 @@ namespace MojiCollaTool
         public void NormalizeObjectOrder()
         {
             var objectIds = new HashSet<Guid>();
-            for (var index = 0; index < _mojiDatas.Count; index++)
+            foreach (var mojiData in _mojiDatas)
             {
-                var mojiData = _mojiDatas[index];
                 if (mojiData.ObjectId == Guid.Empty)
                 {
                     mojiData.ObjectId = Guid.NewGuid();
@@ -141,14 +315,36 @@ namespace MojiCollaTool
                 {
                     mojiData.Type = DocumentObjectTypes.Text;
                 }
+            }
 
-                mojiData.ZIndex = index;
+            foreach (var balloon in _balloons)
+            {
+                if (balloon.ObjectId == Guid.Empty) balloon.ObjectId = Guid.NewGuid();
+                if (!objectIds.Add(balloon.ObjectId))
+                {
+                    throw new InvalidOperationException($"Duplicate object ID: {balloon.ObjectId}");
+                }
+                if (string.IsNullOrWhiteSpace(balloon.Type)) balloon.Type = DocumentObjectTypes.Balloon;
+                balloon.Validate();
+            }
+
+            ReconcileRelationships(objectIds);
+            var knownIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)));
+            _objectOrder.RemoveAll(id => !knownIds.Contains(id));
+            foreach (var id in _mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)))
+            {
+                if (!_objectOrder.Contains(id)) _objectOrder.Add(id);
+            }
+            for (var index = 0; index < _objectOrder.Count; index++)
+            {
+                GetDocumentObject(_objectOrder[index]).ZIndex = index;
             }
         }
 
         public bool ContainsObject(Guid objectId)
         {
-            return _mojiDatas.Any(mojiData => mojiData.ObjectId == objectId);
+            return _mojiDatas.Any(mojiData => mojiData.ObjectId == objectId) ||
+                _balloons.Any(balloon => balloon.ObjectId == objectId);
         }
 
         public MojiData GetObject(Guid objectId)
@@ -157,15 +353,21 @@ namespace MojiCollaTool
                 ?? throw new KeyNotFoundException($"Object was not found: {objectId}");
         }
 
+        public IPageObjectData GetDocumentObject(Guid objectId)
+        {
+            return _mojiDatas.FirstOrDefault(mojiData => mojiData.ObjectId == objectId)
+                ?? (IPageObjectData?)_balloons.FirstOrDefault(balloon => balloon.ObjectId == objectId)
+                ?? throw new KeyNotFoundException($"Object was not found: {objectId}");
+        }
+
         internal IReadOnlyList<MojiData> CreateObjectSnapshot()
         {
-            var snapshot = _mojiDatas.Select(CloneMojiData).ToList();
-            for (var index = 0; index < snapshot.Count; index++)
-            {
-                snapshot[index].ZIndex = index;
-            }
+            return _mojiDatas.Select(CloneMojiData).ToList();
+        }
 
-            return snapshot;
+        internal IReadOnlyList<IPageObjectData> CreateAllObjectSnapshot()
+        {
+            return AllObjects.Select(ClonePageObject).ToList();
         }
 
         /// <summary>
@@ -173,14 +375,23 @@ namespace MojiCollaTool
         /// </summary>
         public PageDocument Clone(Guid? pageId = null, string? name = null, bool preserveObjectIds = false)
         {
-            var objects = preserveObjectIds
-                ? _mojiDatas
-                : CloneObjectsWithRemappedRelationships();
+            IEnumerable<MojiData> objects;
+            IEnumerable<BalloonData> balloons;
+            if (preserveObjectIds)
+            {
+                objects = _mojiDatas;
+                balloons = _balloons;
+            }
+            else
+            {
+                (objects, balloons) = CloneObjectsWithRemappedRelationships();
+            }
             return new PageDocument(
                 pageId ?? Guid.NewGuid(),
                 name ?? Name,
                 Canvas.LegacyData,
-                objects);
+                objects,
+                balloons);
         }
 
         internal static CanvasData CloneCanvas(CanvasData source)
@@ -205,27 +416,97 @@ namespace MojiCollaTool
             return clone;
         }
 
-        private IEnumerable<MojiData> CloneObjectsWithRemappedRelationships()
+        internal static BalloonData CloneBalloonData(BalloonData source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            return source.Clone();
+        }
+
+        internal static IPageObjectData ClonePageObject(IPageObjectData source)
+        {
+            return source switch
+            {
+                MojiData mojiData => CloneMojiData(mojiData),
+                BalloonData balloon => CloneBalloonData(balloon),
+                _ => throw new InvalidOperationException($"Unsupported page object type: {source.GetType().Name}"),
+            };
+        }
+
+        private (IEnumerable<MojiData> MojiDatas, IEnumerable<BalloonData> Balloons) CloneObjectsWithRemappedRelationships()
         {
             var clones = _mojiDatas.Select(mojiData => mojiData.CloneAsNewObject()).ToArray();
-            var objectIds = _mojiDatas
-                .Select((mojiData, index) => new { mojiData.ObjectId, CloneId = clones[index].ObjectId })
+            var balloonClones = _balloons.Select(balloon => balloon.CloneAsNewObject()).ToArray();
+            var objectIds = _mojiDatas.Cast<IPageObjectData>().Concat(_balloons)
+                .Select((item, index) => new { item.ObjectId, CloneId = index < clones.Length ? clones[index].ObjectId : balloonClones[index - clones.Length].ObjectId })
                 .ToDictionary(item => item.ObjectId, item => item.CloneId);
 
-            foreach (var clone in clones)
+            foreach (var clone in clones.Cast<IPageObjectData>().Concat(balloonClones))
             {
-                if (clone.ParentId.HasValue && objectIds.TryGetValue(clone.ParentId.Value, out var parentId))
-                {
-                    clone.ParentId = parentId;
-                }
+                if (clone.ParentId.HasValue && objectIds.TryGetValue(clone.ParentId.Value, out var parentId)) clone.ParentId = parentId;
+                if (clone.GroupId.HasValue && objectIds.TryGetValue(clone.GroupId.Value, out var groupId)) clone.GroupId = groupId;
+            }
 
-                if (clone.GroupId.HasValue && objectIds.TryGetValue(clone.GroupId.Value, out var groupId))
+            foreach (var clone in balloonClones)
+            {
+                if (clone.TextLink?.TextObjectId is Guid textId && objectIds.TryGetValue(textId, out var remappedTextId))
                 {
-                    clone.GroupId = groupId;
+                    clone.TextLink.TextObjectId = remappedTextId;
                 }
             }
 
-            return clones;
+            return (clones, balloonClones);
+        }
+
+        private void RebuildObjectOrderPreservingExisting()
+        {
+            var currentIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)));
+            var preserved = _objectOrder.Where(currentIds.Contains).Distinct().ToList();
+            foreach (var id in _mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)))
+            {
+                if (!preserved.Contains(id)) preserved.Add(id);
+            }
+
+            _objectOrder.Clear();
+            _objectOrder.AddRange(preserved);
+        }
+
+        private static void EnsureReplacementObjectIds<T>(IEnumerable<T> replacement, IEnumerable<BalloonData> other)
+            where T : IPageObjectData
+        {
+            var ids = new HashSet<Guid>();
+            foreach (var item in replacement.Cast<IPageObjectData>().Concat(other))
+            {
+                if (item.ObjectId != Guid.Empty && !ids.Add(item.ObjectId))
+                {
+                    throw new InvalidOperationException($"Duplicate object ID: {item.ObjectId}");
+                }
+            }
+        }
+
+        private void ReconcileRelationships(HashSet<Guid> objectIds)
+        {
+            foreach (var item in _mojiDatas.Cast<IPageObjectData>().Concat(_balloons))
+            {
+                if (item.ParentId == item.ObjectId || (item.ParentId.HasValue && !objectIds.Contains(item.ParentId.Value))) item.ParentId = null;
+                if (item.GroupId == item.ObjectId || (item.GroupId.HasValue && !objectIds.Contains(item.GroupId.Value))) item.GroupId = null;
+            }
+
+            foreach (var balloon in _balloons)
+            {
+                if (balloon.TextLink != null &&
+                    (!_mojiDatas.Any(text => text.ObjectId == balloon.TextLink.TextObjectId) || balloon.TextLink.TextObjectId == balloon.ObjectId))
+                {
+                    balloon.TextLink = null;
+                }
+            }
+        }
+
+        private void EnsureNewObjectId(Guid objectId)
+        {
+            if (objectId == Guid.Empty || _mojiDatas.Any(item => item.ObjectId == objectId) || _balloons.Any(item => item.ObjectId == objectId))
+            {
+                throw new InvalidOperationException($"Duplicate or empty object ID: {objectId}");
+            }
         }
     }
 }

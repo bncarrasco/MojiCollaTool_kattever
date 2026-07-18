@@ -132,11 +132,15 @@ namespace MojiCollaTool
         [XmlArray("Objects")]
         [XmlArrayItem("MojiData")]
         public List<MojiData> Objects { get; set; } = new List<MojiData>();
+
+        [XmlArray("Balloons")]
+        [XmlArrayItem("Balloon")]
+        public List<BalloonData> Balloons { get; set; } = new List<BalloonData>();
     }
 
     public static class VersionedProjectFormat
     {
-        public const string CurrentVersion = "2.0";
+        public const string CurrentVersion = "2.1";
         public const string ProductName = "MojiCollaTool Katteban";
         public const string ManifestEntryName = "manifest.xml";
         public const int MaxArchiveEntries = 4096;
@@ -405,6 +409,7 @@ namespace MojiCollaTool
                     // Persist canonical list order even when a caller has edited
                     // individual ZIndex values directly.
                     Objects = page.CreateObjectSnapshot().ToList(),
+                    Balloons = page.Balloons.Select(PageDocument.CloneBalloonData).ToList(),
                 };
                 WriteEntry(archive, VersionedProjectFormat.CanonicalPagePath(page.PageId), VersionedProjectFormat.Serialize(VersionedProjectFormat.PageSerializer, pageFile));
                 WriteAssetEntry(archive, preparedImage1);
@@ -671,7 +676,12 @@ namespace MojiCollaTool
                 var image2 = ReadAsset(archive, pageFile.Image2Path, pageId, 2, canvas.ImageData2);
                 if (image1 != null) assets.Add(image1);
                 if (image2 != null) assets.Add(image2);
-                pageDocuments.Add(new PageDocument(pageId, pageFile.Name ?? manifestPage.Name, canvas, pageFile.Objects ?? Enumerable.Empty<MojiData>()));
+                pageDocuments.Add(new PageDocument(
+                    pageId,
+                    pageFile.Name ?? manifestPage.Name,
+                    canvas,
+                    pageFile.Objects ?? Enumerable.Empty<MojiData>(),
+                    pageFile.Balloons ?? Enumerable.Empty<BalloonData>()));
             }
 
             if (string.IsNullOrWhiteSpace(manifest.ProjectName))

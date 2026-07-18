@@ -24,7 +24,7 @@
 | TASK-080 | Planned | - | - | - | - | ZORDER,LOCK,UI | ADR-0003/4 | Not run | Not run | Not verified | - | TASK-070 | 070後 |
 | TASK-090 | Planned | - | - | - | - | SYMBOL,UNICODE | ADR-0006 | Not run | Not run | Not verified | - | 060,070 | dependency後 |
 | TASK-100 | Planned | - | - | - | - | SYMBOL,UI | ADR-0006 | Not run | Not run | Not verified | - | TASK-090 | 090後 |
-| TASK-110 | Kickoff ready | `feature/TASK-110-balloon-model` | `F:/github/MojiCollaTool-worktrees/TASK-110`（司令役が本wave開始commitから作成） | 本wave開始commit | - | REQ-BALLOON-001/002 | ADR-0007 | Not run | Not run | Not verified | TASK-050とのfile ownershipを固定して並行開始 | MainWindow/PageEditor描画・UIは範囲外 | TASK-050と並行、後続TASK-120 |
+| TASK-110 | Implemented | `feature/TASK-110-balloon-model` | `F:/github/MojiCollaTool-worktrees/TASK-110` | `aa16cbc774b578ccd53b5101d919a44f546c63d8` | `90b0b63e2cb0a0b91253cf4bf199b73938f1c732`, `053f81cda1993ff04e726d60ba2679840bc42e02` | REQ-BALLOON-001/002, OBJECT, ZORDER, UNDO | ADR-0007 | Debug/Release pass, 0 warnings/0 errors, SDK 6.0.428 | 116 passed, 0 failed | Balloon model/style/bounds, single-tail/text-link DTO, mixed page Z order, Set order preservation, clone remap, history estimate/trim, version 2.1 with 2.0 read compatibility, session commands | UI/render/handles remain TASK-120/130 | MainWindow/PageEditor drawing/UI unchanged | TASK-120/130 |
 | TASK-120 | Planned | - | - | - | - | BALLOON,PERF | ADR-0007 | Not run | Not run | Not verified | - | TASK-110 | 110後 |
 | TASK-130 | Planned | - | - | - | - | BALLOON link | ADR-0007 | Not run | Not run | Not verified | - | TASK-120 | 120後 |
 | TASK-140 | Planned | - | - | - | - | LAYOUT | ADR-0008 | Not run | Not run | Not verified | - | TASK-130 | 130後 |
