@@ -9,7 +9,7 @@ TASK-120を実装しました。geometry/cache、4種shape描画、選択、移�
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-120`
 - Branch: `feature/TASK-120-balloon-editor`
 - Functional base: `384dcfc76ef39871daa47c91ef6bd5085afafc33`
-- Implementation commit: pending final verification commit
+- Implementation commit: `a8c4b180ae5c7e4361bc5d99bdd8e5657090ef91`
 - SDK: `6.0.428` (`C:\Users\user\.dotnet\dotnet.exe`)
 
 ## Implementation
