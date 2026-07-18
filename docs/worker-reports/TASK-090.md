@@ -4,7 +4,7 @@
 
 - Base commit: `384dcfc76ef39871daa47c91ef6bd5085afafc33`
 - Result implementation commit: `eb38dea373659c5ae6512dbadbf7b420420353e1`
-- Regional Indicator follow-up commit: to be filled after the follow-up commit
+- Regional Indicator follow-up commit: `e044d278b48f9b0dfd4813a9c96b2a3aa611f3e9`
 
 - Grapheme segmentation serviceを追加し、サロゲート、結合文字、variation selector、emoji modifier、ZWJ sequence、regional indicator、CRLFを1書記素単位として扱うようにした。
 - `AttachedSymbolData`を追加し、親text object ID、grapheme anchor、anchor fingerprint、em offset、scale、rotation、inherit flags、character spacing policyを保持するようにした。
