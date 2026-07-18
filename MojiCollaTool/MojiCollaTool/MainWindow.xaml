@@ -7,15 +7,21 @@
         mc:Ignorable="d"
         Activated="Window_Activated"
         Closing="Window_Closing"
-        Title="MojiCollaTool" Height="720" Width="1200">
+        Title="MojiCollaTool 勝手版" Height="720" Width="1200">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <StackPanel Orientation="Horizontal" Grid.Row="0">
+        <Menu Grid.Row="0">
+            <MenuItem Header="ヘルプ">
+                <MenuItem Header="このアプリについて" Click="AboutMenuItem_Click"/>
+            </MenuItem>
+        </Menu>
+        <StackPanel Orientation="Horizontal" Grid.Row="1">
             <Button x:Name="InitButton" Margin="5" Click="InitButton_Click" Content="新規作成"/>
             <Button x:Name="SwapImageButton" Margin="5" Click="SwapImageButton_Click" Content="画像を入れ替える"/>
             <Button x:Name="MultiImageButton" Margin="5" Click="MultiImageButton_Click" Content="2枚目の画像を追加"/>
@@ -24,8 +30,8 @@
             <Button x:Name="OutputImageButton" Margin="5" Click="OutputImageButton_Click" Content="画像を書き出す"/>
             <Button x:Name="AddTextButton" Margin="5" Click="AddTextButton_Click" Content="文字を追加"/>
         </StackPanel>
-        <TabControl x:Name="ProjectTabs" Grid.Row="1" Margin="5" SelectionChanged="ProjectTabs_SelectionChanged"/>
-        <DockPanel Grid.Row="2" Margin="5">
+        <TabControl x:Name="ProjectTabs" Grid.Row="2" Margin="5" SelectionChanged="ProjectTabs_SelectionChanged"/>
+        <DockPanel Grid.Row="3" Margin="5">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <Button Margin="2" Click="AddPageButton_Click" Content="ページ追加"/>
                 <Button Margin="2" Click="DuplicatePageButton_Click" Content="複製"/>
@@ -36,6 +42,6 @@
             </StackPanel>
             <TabControl x:Name="PageTabs" SelectionChanged="PageTabs_SelectionChanged"/>
         </DockPanel>
-        <local:PageEditorControl x:Name="PageEditor" Grid.Row="3"/>
+        <local:PageEditorControl x:Name="PageEditor" Grid.Row="4"/>
     </Grid>
 </Window>

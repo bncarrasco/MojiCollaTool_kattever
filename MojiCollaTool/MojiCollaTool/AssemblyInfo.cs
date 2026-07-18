@@ -1,5 +1,8 @@
 using System.Windows;
 using System.Runtime.CompilerServices;
+using System.Reflection;
+
+[assembly: AssemblyTitle("MojiCollaTool 勝手版")]
 
 [assembly: InternalsVisibleTo("MojiCollaTool.Tests")]
 
