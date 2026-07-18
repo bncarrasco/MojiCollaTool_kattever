@@ -13,7 +13,7 @@
 - Start status: clean（開始前に`git status --short`で確認）
 - Start worktree: 主repositoryの`git worktree list --porcelain`に登録済み
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` => `6.0.428`
-- Result commit: source implementation commit（完了時にledgerへfull hashを記録）
+- Result commit: `bec5f16cfbdb288a448dfb37cdec9cc3af7f6c83`
 
 ## Changed files
 
