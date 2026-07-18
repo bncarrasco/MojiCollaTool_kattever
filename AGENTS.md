@@ -1,5 +1,7 @@
 # MojiCollaTool 勝手版 — 作業規則
 
+> **Fork-specific governance:** This file contains development instructions specific to the unofficial MojiCollaTool Kattever fork. It is not part of the upstream project and does not imply endorsement by or affiliation with the original author.
+
 ## Project identity
 
 - プロジェクト名は「MojiCollaTool 勝手版」とする。
@@ -7,6 +9,14 @@
 - 勝手版に関する問い合わせを原作者へ送らないよう案内する。
 - 元作者の著作権表示とMITライセンスを維持する。
 - 取り込まれた第三者コードのライセンスと帰属表示を維持する。
+
+## Repository publication policy
+
+- 本ファイルは非公式forkの公開可能な開発規約としてGit管理する。上流projectの規約や原作者による承認を表すものではない。
+- 司令役用の詳細manual、司令役が新規生成する個別worker指示書、一時的なAI分析・作業memoはlocal AI referenceとし、`.git/info/exclude`等で除外して、`git add`、commit、push、merge、配布物への同梱を行わない。
+- 要件、ADR、設計文書、worker報告書、実装台帳、CHANGELOG、source、testなど、人間の開発・review・保守にも必要な成果物は通常どおりGit管理する。
+- local AI referenceにも秘密情報、credential、token、不要な個人情報を記録しない。
+- 既にGit履歴へ存在する過去のworker指示書を、この方針だけを理由に履歴改変して削除しない。今後新規作成するlocal指示書から適用する。
 
 ## Language policy
 
