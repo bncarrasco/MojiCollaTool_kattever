@@ -30,7 +30,7 @@ namespace MojiCollaTool
             foreach (var page in pages)
             {
                 if (page == null) throw new ArgumentException("Page collection contains null.", nameof(pages));
-                AddExistingPage(page.Clone(page.PageId));
+                AddExistingPage(page.Clone(page.PageId, preserveObjectIds: true));
             }
 
             if (_pages.Count == 0)
@@ -151,6 +151,7 @@ namespace MojiCollaTool
                 clone._pages.Add(clonedPage);
             }
 
+            clone.EnsureUniqueObjectIds();
             clone.NormalizeOrder();
             return clone;
         }
@@ -169,6 +170,7 @@ namespace MojiCollaTool
             if (ContainsPage(page.PageId)) throw new InvalidOperationException("Duplicate page ID.");
 
             _pages.Add(page);
+            EnsureUniqueObjectIds();
             NormalizeOrder();
         }
 
@@ -177,6 +179,21 @@ namespace MojiCollaTool
             for (var index = 0; index < _pages.Count; index++)
             {
                 _pages[index].Order = index;
+            }
+        }
+
+        private void EnsureUniqueObjectIds()
+        {
+            var objectIds = new HashSet<Guid>();
+            foreach (var page in _pages)
+            {
+                foreach (var mojiData in page.Objects)
+                {
+                    if (!objectIds.Add(mojiData.ObjectId))
+                    {
+                        throw new InvalidOperationException($"Duplicate object ID in project: {mojiData.ObjectId}");
+                    }
+                }
             }
         }
 

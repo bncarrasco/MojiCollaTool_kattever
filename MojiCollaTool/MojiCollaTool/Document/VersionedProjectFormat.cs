@@ -402,7 +402,9 @@ namespace MojiCollaTool
                     Canvas = canvas,
                     Image1Path = preparedImage1?.Path,
                     Image2Path = preparedImage2?.Path,
-                    Objects = page.MojiDatas.Select(PageDocument.CloneMojiData).ToList(),
+                    // Persist canonical list order even when a caller has edited
+                    // individual ZIndex values directly.
+                    Objects = page.CreateObjectSnapshot().ToList(),
                 };
                 WriteEntry(archive, VersionedProjectFormat.CanonicalPagePath(page.PageId), VersionedProjectFormat.Serialize(VersionedProjectFormat.PageSerializer, pageFile));
                 WriteAssetEntry(archive, preparedImage1);

@@ -9,6 +9,15 @@ using System.Windows.Media;
 
 namespace MojiCollaTool
 {
+    /// <summary>
+    /// Persisted object kinds. More kinds can be added without changing the
+    /// common object state carried by <see cref="MojiData"/>.
+    /// </summary>
+    public static class DocumentObjectTypes
+    {
+        public const string Text = "Text";
+    }
+
     public enum TextDirection : int
     {
         Yokogaki = 0,
@@ -27,7 +36,33 @@ namespace MojiCollaTool
     [Serializable]
     public class MojiData
     {
+        /// <summary>
+        /// Legacy page-local integer ID. New code should use <see cref="ObjectId"/>.
+        /// </summary>
         public int Id { get; set; }
+
+        /// <summary>
+        /// Stable project object identity. Legacy data receives a new value on import.
+        /// </summary>
+        public Guid ObjectId { get; set; } = Guid.NewGuid();
+
+        /// <summary>
+        /// Discriminator for the shared object model.
+        /// </summary>
+        public string Type { get; set; } = DocumentObjectTypes.Text;
+
+        /// <summary>
+        /// Canonical page-local drawing order. PageDocument normalizes this to 0..N-1.
+        /// </summary>
+        public int ZIndex { get; set; }
+
+        public bool IsLocked { get; set; }
+
+        public bool IsVisible { get; set; } = true;
+
+        public Guid? ParentId { get; set; }
+
+        public Guid? GroupId { get; set; }
 
         public string FullText { get; set; } = "サンプル";
 
@@ -137,8 +172,14 @@ namespace MojiCollaTool
 
         public void Copy(MojiData source)
         {
-            //  IDはコピーしない
+            // Legacy integer ID is intentionally not copied by this method.
             FullText = source.FullText;
+            Type = source.Type;
+            ZIndex = source.ZIndex;
+            IsLocked = source.IsLocked;
+            IsVisible = source.IsVisible;
+            ParentId = source.ParentId;
+            GroupId = source.GroupId;
             X = source.X;
             Y = source.Y;
             FontSize = source.FontSize;
@@ -167,7 +208,18 @@ namespace MojiCollaTool
         public MojiData Clone()
         {
             MojiData clone = new MojiData();
+            clone.ObjectId = ObjectId;
             clone.Copy(this);
+            return clone;
+        }
+
+        /// <summary>
+        /// Creates a deep copy that represents a newly inserted object.
+        /// </summary>
+        public MojiData CloneAsNewObject()
+        {
+            MojiData clone = Clone();
+            clone.ObjectId = Guid.NewGuid();
             return clone;
         }
 
