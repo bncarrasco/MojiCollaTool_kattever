@@ -28,7 +28,7 @@ public class ObjectIdentityAndZOrderTests
         var second = new MojiData { Id = 12, ZIndex = 50 };
         var page = new PageDocument("01", new[] { first, second });
 
-        Assert.AreEqual(new[] { 0, 1 }, page.Objects.Select(item => item.ZIndex).ToArray());
+        CollectionAssert.AreEqual(new[] { 0, 1 }, page.Objects.Select(item => item.ZIndex).ToArray());
         Assert.AreEqual(11, page.Objects[0].Id);
         Assert.AreEqual(12, page.Objects[1].Id);
     }
