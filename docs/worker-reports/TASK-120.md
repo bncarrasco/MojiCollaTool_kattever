@@ -9,7 +9,7 @@ TASK-120を実装しました。geometry/cache、4種shape描画、選択、移�
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-120`
 - Branch: `feature/TASK-120-balloon-editor`
 - Functional base: `384dcfc76ef39871daa47c91ef6bd5085afafc33`
-- Implementation commit: `a8c4b180ae5c7e4361bc5d99bdd8e5657090ef91`
+- Implementation commit: `7feee3c`
 - SDK: `6.0.428` (`C:\Users\user\.dotnet\dotnet.exe`)
 
 ## Implementation
@@ -29,6 +29,7 @@ TASK-120を実装しました。geometry/cache、4種shape描画、選択、移�
 - `git diff --check`: pass
 - Automated tests cover selection/background clearing, move, all eight resize directions, minimum size, zoom handle behavior, capture-loss cancel, separate rapid gesture undo entries, undo/redo/redo-branch/saved-dirty, mixed Z-order, page/project switching, save/reload, all four shape geometries, unknown fallback, cache hit/miss/eviction, and warm-cache performance.
 - Geometry cache performance: 10,000 warm-cache calls in 1.106 ms on Release; threshold 500 ms; 10,999 hits and 1 miss.
+- 履歴説明を「フキダシ位置・サイズ変更」に正規化し、未接続の旧イベントメソッドと未使用4引数コンストラクターを削除。プロジェクト全体（生成物・画像を除く194ファイル）を文字化け候補で走査し、テキストファイルのヒットは0件。
 - Manual WPF pointer interaction and visual DPI inspection: not run in this environment.
 
 ## Handoff / rollback
