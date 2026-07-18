@@ -10,6 +10,7 @@
 - Branch: `feature/TASK-060-object-id-zindex`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-060`
 - Functional base / kickoff HEAD: `1e64a715adeb2102f15b6a932075f5afdb65ff44`
+- Result commit: `96b89e6` (`feat: add common object identity and z-order`)
 - Dedicated `TASK-060.md`: 未配置。task-breakdown、requirements、ADR-0003を根拠に実装。
 
 ## 対応要件
