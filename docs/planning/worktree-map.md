@@ -14,7 +14,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | TASK-000 | `feature/TASK-000-build-baseline` | `F:/github/MojiCollaTool-worktrees/TASK-000` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | なし | `docs/worker-prompts/TASK-000.md` | Complete; `develop`へ統合済み |
 | TASK-190A | `feature/TASK-190A-fork-documentation` | `F:/github/MojiCollaTool-worktrees/TASK-190A` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | なし | `docs/worker-prompts/TASK-190A.md` | Complete; `develop`の`88c7062`で統合済み |
-| TASK-190B | `feature/TASK-190B-app-branding` | `F:/github/MojiCollaTool-worktrees/TASK-190B` | `1e64a715adeb2102f15b6a932075f5afdb65ff44` | TASK-020、TASK-190A | `docs/worker-prompts/TASK-190B.md` | Complete; `ea339b9` |
+| TASK-190B | `feature/TASK-190B-app-branding` | `F:/github/MojiCollaTool-worktrees/TASK-190B` | `1e64a715adeb2102f15b6a932075f5afdb65ff44` | TASK-020、TASK-190A | `docs/worker-prompts/TASK-190B.md` | Complete; `1c9e6b9` |
 
 ## 統合済み
 

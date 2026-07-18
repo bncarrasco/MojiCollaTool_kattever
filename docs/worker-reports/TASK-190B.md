@@ -5,6 +5,7 @@
 実装完了。アプリのタイトル、About画面、Assembly/package metadataを`MojiCollaTool 勝手版`に統一し、非公式フォークであること、公式版・原作者とは無関係であること、原作者へ問い合わせないことをアプリ内に表示した。`AssemblyInfo.cs`の`AssemblyTitle`を明示設定し、Company/Authorsの不正確な製品名設定を削除して、`Copyright (c) 2024 kuramiya`を維持した。LICENSEと`THIRD-PARTY-NOTICES.md`はDebug/Release/publish出力へ同梱する。
 
 Implementation commit: `ea339b9` (`Implement TASK-190B fork branding`)
+Correction commit: `1c9e6b9` (`Fix TASK-190B metadata and license distribution`)
 
 ## 対応要件
 
