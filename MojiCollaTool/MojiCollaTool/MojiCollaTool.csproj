@@ -5,15 +5,19 @@
     <TargetFramework>net6.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
-    <Title>MojiCollaTool 勝手版</Title>
+    <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
     <Product>MojiCollaTool 勝手版</Product>
     <Description>MojiCollaToolをもとにした非公式フォークです。公式版および原作者とは無関係です。</Description>
-    <Company>MojiCollaTool 勝手版</Company>
-    <Authors>MojiCollaTool 勝手版</Authors>
+    <Copyright>Copyright (c) 2024 kuramiya</Copyright>
     <ApplicationIcon>mctool-icon.ico</ApplicationIcon>
     <AssemblyVersion>1.3.0.1</AssemblyVersion>
     <FileVersion>1.3.0.1</FileVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Remove="Images\canvas.png" />

@@ -1,4 +1,7 @@
 ﻿using System;
+// Derived from MT224244/WpfColorPicker under Apache-2.0.
+// Local changes: nullable annotations and application-specific integration.
+
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
