@@ -504,7 +504,7 @@ namespace MojiCollaTool
             _balloonDrag = null;
             if (changed)
             {
-                RaiseContentChanged("繝輔く繝繧ｷ菴咲ｽｮ繝ｻ繧ｵ繧､繧ｺ螟画峩", state.CoalesceKey);
+                RaiseContentChanged("フキダシ位置・サイズ変更", state.CoalesceKey);
             }
             return changed;
         }
@@ -655,30 +655,6 @@ namespace MojiCollaTool
         {
             if (_balloonDrag == null || sender is not BalloonVisual visual || !ReferenceEquals(visual, _balloonDrag.Visual) || _restoringBalloon) return;
             CancelBalloonGesture();
-        }
-
-        private void BalloonVisual_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-        {
-            if (_balloonDrag == null || sender is not BalloonVisual visual || !ReferenceEquals(visual, _balloonDrag.Visual)) return;
-            ApplyBalloonDrag(e.GetPosition(MainCanvas));
-            var moved = !BalloonEquivalent(_balloonDrag.Before, visual.BalloonData);
-            _balloonDrag = null;
-            visual.ReleaseMouseCapture();
-            if (moved) RaiseContentChanged("フキダシ位置・サイズ変更", visual.ObjectId.ToString("D"));
-            e.Handled = true;
-        }
-
-        private void BalloonVisual_LostMouseCapture(object sender, MouseEventArgs e)
-        {
-            if (_balloonDrag == null || sender is not BalloonVisual visual || !ReferenceEquals(visual, _balloonDrag.Visual) || _restoringBalloon) return;
-            _restoringBalloon = true;
-            try { visual.ApplyData(_balloonDrag.Before.Clone()); }
-            finally
-            {
-                _restoringBalloon = false;
-                _balloonDrag = null;
-            }
-            UpdateResizeHandles();
         }
 
         private void ApplyBalloonDrag(Point current)
@@ -835,11 +811,6 @@ namespace MojiCollaTool
 
         private sealed class BalloonDragState
         {
-            public BalloonDragState(BalloonVisual visual, Point start, BalloonData before, ResizeHandle handle)
-                : this(visual, start, before, handle, Guid.NewGuid().ToString("D"))
-            {
-            }
-
             public BalloonDragState(BalloonVisual visual, Point start, BalloonData before, ResizeHandle handle, string coalesceKey)
             {
                 Visual = visual; Start = start; Before = before; Handle = handle; CoalesceKey = coalesceKey;
