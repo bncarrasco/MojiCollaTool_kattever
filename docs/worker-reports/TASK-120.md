@@ -9,7 +9,7 @@ TASK-120を実装しました。geometry/cache、4種shape描画、選択、移�
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-120`
 - Branch: `feature/TASK-120-balloon-editor`
 - Functional base: `384dcfc76ef39871daa47c91ef6bd5085afafc33`
-- Implementation commit: `70ae16eaaaf8d0dd4e4909d8c057f96c58ec014d`
+- Implementation commit: pending final verification commit
 - SDK: `6.0.428` (`C:\Users\user\.dotnet\dotnet.exe`)
 
 ## Implementation
@@ -23,11 +23,12 @@ TASK-120を実装しました。geometry/cache、4種shape描画、選択、移�
 ## Verification
 
 - Debug build: pass, 0 warnings / 0 errors
-- Debug test: pass, 130 passed / 0 failed
+- Debug test: pass, 142 passed / 0 failed
 - Release build: pass, 0 warnings / 0 errors
-- Release test: pass, 130 passed / 0 failed
+- Release test: pass, 142 passed / 0 failed
 - `git diff --check`: pass
-- Automated tests cover all four shape geometries, unknown fallback, cache hit/miss and eviction, editor add/capture, and dispose lifecycle.
+- Automated tests cover selection/background clearing, move, all eight resize directions, minimum size, zoom handle behavior, capture-loss cancel, separate rapid gesture undo entries, undo/redo/redo-branch/saved-dirty, mixed Z-order, page/project switching, save/reload, all four shape geometries, unknown fallback, cache hit/miss/eviction, and warm-cache performance.
+- Geometry cache performance: 10,000 warm-cache calls in 1.106 ms on Release; threshold 500 ms; 10,999 hits and 1 miss.
 - Manual WPF pointer interaction and visual DPI inspection: not run in this environment.
 
 ## Handoff / rollback
