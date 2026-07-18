@@ -6,9 +6,13 @@
 - Branch: `feature/TASK-100-attached-symbol-ui`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-100`
 - SDK: `C:\Users\user\.dotnet\dotnet.exe` / `6.0.428`
-- 開始時Git確認: top-levelは上記worktree、branchは上記feature branch、開始HEADは`8e9ae8ee860690d11090fc055f1ba055c15969dd`、開始時statusはclean、worktree登録済み。
+- Functional base: `4402a6101c457a615bb86412981954d1ea1e0171`
+- Round 3開始HEAD: `528e9be3aaad93ae1f20b2c2ba2aa58892ca39ce`
+- Round 3開始時Git確認: branchは`feature/TASK-100-attached-symbol-ui`、statusはclean、`F:/github/MojiCollaTool-worktrees/TASK-100`は`git worktree list --porcelain`で登録済み、SDKは`6.0.428`。
 - 完全実装コミット: `864a95d76b5d34f7ac491e619464724908ad13d0`
-- 追加受入実装・最終実装コミット: `6dc0f1f00b40be7b8f29057cb3d18d2c74abd15c`
+- Round 2受入実装コミット: `6dc0f1f00b40be7b8f29057cb3d18d2c74abd15c`
+- Round 3実装コミット／最終実装コミット: `bfe9f455240860d7248ca968a147ef07d06234ea`
+- 最終報告書コミット: 本報告書更新コミット（full hashは最終handoffで報告）
 
 ## 2. 実装内容
 
@@ -20,6 +24,11 @@
 - 濁点、半濁点、「装飾継承」、「文字間隔に含める」を追加。フォント候補は固定リストではなく、既存FontUtilの全system font列挙を使用。
 - 設定領域を実際の`ScrollViewer`内へ配置。
 - grapheme全体をキーとするvisual poolへ更新。FontUtilの全system font列挙結果はLazy cacheし、列挙内容は変更していない。
+- 文字・付加記号・フキダシ・未選択を相互排他的に同期し、存在しないIDとページ切替では選択を安全に解除。
+- UI境界で空文字、257文字以上、無効anchor、親なしを日本語で拒否し、TextBoxにも256文字上限を設定。
+- 文字・フキダシ・付加記号を`PageDocument.AllObjects`の順序で同じ`MainCanvas`へ配置し、保存再読込後も混在Z-orderを復元。
+- 設定画面のAuto行をstar行へ変更し、有限のMaxHeightを持つScrollViewerとして内容超過時に実スクロール可能化。
+- 未接続ContentControlを含む測定環境でも、親の論理座標・サイズ・回転から付加記号位置を再現し、実UIではVisual変換を使用。
 
 ## 3. 変更ファイル
 
@@ -31,6 +40,8 @@
 - `MojiCollaTool/MojiCollaTool/DecoratedCharacterControlTotalPool.cs`
 - `MojiCollaTool/MojiCollaTool/MojiWindow.xaml`
 - `MojiCollaTool/MojiCollaTool/MojiWindow.xaml.cs`
+- `MojiCollaTool/MojiCollaTool/PageEditorControl.xaml`
+- `MojiCollaTool/MojiCollaTool/Visuals/AttachedSymbolVisual.cs`
 - `MojiCollaTool/MojiCollaTool/FontUtil.cs`
 - `tests/MojiCollaTool.Tests/TASK100AttachedSymbolUiTests.cs`
 - `docs/worker-reports/TASK-100.md`
@@ -40,12 +51,16 @@
 
 ## 4. 自動検証範囲
 
-`TASK100AttachedSymbolUiTests`は14件です。
+`TASK100AttachedSymbolUiTests`は17件です。
 
 - variation selector、skin tone、ZWJ、国旗2個、CRLF、空行。
 - 横書き／縦書き、2種類のWPF認識済みsystem font、有限な配置、offset調整、親の移動・サイズ・回転追従。
 - 全候補記号、任意文字、font継承／解除／fallback／保存名、decoration、spacing。
 - visual階層を含むmixed canonical Z-order。
+- 重なる座標で文字・フキダシ・付加記号を混在させた描画順と、保存再読込後の順序。
+- 文字／付加記号／フキダシ／未選択、存在しないID、ページ切替の相互排他的な選択復元。
+- ScrollViewerのmeasure／arrange後の有限viewportと`ScrollableHeight > 0`。
+- UI追加境界での空文字・長さ超過・無効anchor・親なしの日本語拒否と不変性。
 - add、remove、property、dragのUI controller経路におけるUndo／Redo、saved dirty、redo branch破棄。
 - 2回drag＝2 Undo、capture loss、page/project切替、selection復元、Dispose。
 - detached保持、親削除、保存再読込、`IsVisible=false`。
@@ -57,8 +72,8 @@
 
 Debug実行時、24個の付加記号を配置し、同一parentをrefresh／dragしました。
 
-- refresh 50回: **471.163 ms**
-- drag 25回: **11.315 ms**
+- refresh 50回: **583.493 ms**
+- drag 25回: **18.930 ms**
 - 計測テストの閾値: 各5,000 ms未満
 
 FontUtilの全system font列挙は初回のみ実行し、以後はLazy cacheを使用します。
@@ -67,11 +82,11 @@ FontUtilの全system font列挙は初回のみ実行し、以後はLazy cacheを
 
 - `C:\Users\user\.dotnet\dotnet.exe --version`: pass、`6.0.428`
 - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Debug`: pass、0 warnings / 0 errors
-- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\test.ps1`: pass、169 passed / 0 failed
+- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\test.ps1`: pass、172 passed / 0 failed
 - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Release`: pass、0 warnings / 0 errors
-- `C:\Users\user\.dotnet\dotnet.exe test .\tests\MojiCollaTool.Tests\MojiCollaTool.Tests.csproj -c Release --no-build`: pass、169 passed / 0 failed
+- `C:\Users\user\.dotnet\dotnet.exe test .\tests\MojiCollaTool.Tests\MojiCollaTool.Tests.csproj -c Release --no-build`: pass、172 passed / 0 failed
 - `git diff --check`: pass
-- 最終status: clean
+- 最終status: clean（最終報告書コミット後）
 
 ## 7. 既知問題・未検証範囲
 
