@@ -18,9 +18,9 @@
 | Japanese path | UNICODE | Debug/Release pass | 8 passed | Not verified | N/A | N/A | N/A | Japanese path archive verified | TASK-000 / `939c457` | `日本語フォルダー/現行プロジェクト.mctzip` |
 | Corrupt project load | ERROR | Not verified | None | Not verified | N/A | N/A | Error日本語 | Current state loss risk | - | - |
 | Save failure preserves old file | SAVE | Not verified | None | Not verified | N/A | N/A | Not verified | Current code fails design review | - | fault test required |
-| Multiple pages | PAGE | Debug/Release pass (0 warnings, 0 errors) | 16 passed（ProjectDocumentTests 8件） | Not verified | Tategaki/Yokogaki data保持 | N/A | N/A: UI変更なし | Model-only; format unchanged | TASK-010/ef8230a（integration pending） | Project/Page/Canvas model、CRUD、順序正規化、PageId保持、重複拒否、deep clone、legacy adapterを検証。新形式・tabsはTASK-030/040 |
-| Multiple project tabs | WORKSPACE | Debug pass (0 warnings, 0 errors) | 24 passed | Not verified | N/A | N/A | Required | session isolation/path duplicate rejection | TASK-025 | two-level tabs; UI is TASK-030 |
-| Dirty state | DIRTY | Debug pass (0 warnings, 0 errors) | 24 passed | Not verified | N/A | N/A | Required | saved/current revision, close policy, branch-safe token | TASK-025 | undo integration is TASK-070 |
+| Multiple pages | PAGE | Debug/Release pass (0 warnings, 0 errors) | 71 passed | Not verified | Tategaki data保持 | Yokogaki data保持 | 新規tab/操作文言は日本語 | versioned/legacy、page asset隔離 | TASK-030 / `7fc27d5` | CRUD、順序、active page、3page保存、page複製asset、STA tab選択を検証 |
+| Multiple project tabs | WORKSPACE | Debug/Release pass (0 warnings, 0 errors) | 71 passed | Not verified | N/A | N/A | 新規tab/close文言は日本語 | session/path/asset隔離 | TASK-030 / `7fc27d5` | 二段tab、2project×3page、duplicate path、個別close基盤を検証 |
+| Dirty state | DIRTY | Debug/Release pass (0 warnings, 0 errors) | 71 passed | Not verified | N/A | N/A | dirty印とclose文言は日本語 | saved/current revision、page dirty、失敗時保護 | TASK-030 / `7fc27d5` | captureと変更通知を分離。Undo統合はTASK-070 |
 | Undo/Redo | UNDO | Not implemented | None | Not verified | Not verified | Not verified | Required | history not saved | - | TASK-070 |
 | Z-order/lock | ZORDER/LOCK | Not implemented | None | Not verified | Not verified | Not verified | Required | New fields | - | TASK-060/080 |
 | Grapheme handling | UNICODE | Current char-unit risk | None | Not verified | Not verified | Not verified | N/A | Round-trip unknown | - | TASK-090 |

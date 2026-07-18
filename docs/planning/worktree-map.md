@@ -12,17 +12,14 @@
 
 | Task | Branch | Worktree path | Functional base | Dependencies | Worker prompt | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| TASK-000 | `feature/TASK-000-build-baseline` | `F:/github/MojiCollaTool-worktrees/TASK-000` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | なし | `docs/worker-prompts/TASK-000.md` | Ready; SDK blocker |
-| TASK-190A | `feature/TASK-190A-fork-documentation` | `F:/github/MojiCollaTool-worktrees/TASK-190A` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | なし | `docs/worker-prompts/TASK-190A.md` | Ready |
+| TASK-000 | `feature/TASK-000-build-baseline` | `F:/github/MojiCollaTool-worktrees/TASK-000` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | なし | `docs/worker-prompts/TASK-000.md` | Complete; `develop`へ統合済み |
+| TASK-190A | `feature/TASK-190A-fork-documentation` | `F:/github/MojiCollaTool-worktrees/TASK-190A` | `adf5fd8fb9e34deb9fdd2cba373f28c8c3f22a4a` | なし | `docs/worker-prompts/TASK-190A.md` | Complete; `develop`の`88c7062`で統合済み |
 
 ## 統合済み
 
 | Task | Branch | Worktree path | Functional base | Dependencies | Worker prompt | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | TASK-041 | `feature/TASK-041-legacy-project-import` | `F:/github/MojiCollaTool-worktrees/TASK-041` | `6cc9b431e738dea7b6dfd7e56b008edaca8cc88e` | TASK-040まで`develop`へ統合済み | `docs/worker-prompts/TASK-041.md` | Complete; `develop`の`8875af4`までに統合済み |
+| TASK-030 | `feature/TASK-030-project-page-tabs` | `F:/github/MojiCollaTool-worktrees/TASK-030` | `8875af4696663f34a6ba72f255b2f9e209578dd2` | TASK-020、TASK-025、TASK-041統合済み | `docs/worker-prompts/TASK-030.md` | Complete; `develop`の`7fc27d5`までに統合済み |
 
-## 次作業
-
-| Task | Branch | Worktree path | Functional base | Dependencies | Worker prompt | Status |
-| --- | --- | --- | --- | --- | --- | --- |
-| TASK-030 | `feature/TASK-030-project-page-tabs` | `F:/github/MojiCollaTool-worktrees/TASK-030` | `8875af4696663f34a6ba72f255b2f9e209578dd2` | TASK-020、TASK-025、TASK-041統合済み | `docs/worker-prompts/TASK-030.md` | Ready; 司令役が正式worktree登録とexact開始時HEADをkickoffで確認する |
+次taskのworktreeはまだ作成しない。`parallelization-plan.md`で選定後、worker promptをcommitしたexact HEADから司令役が登録する。
