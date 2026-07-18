@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### TASK-120
+
+- 4種のフキダシgeometryと上限付きLRU cache、未知shapeの矩形fallbackを追加。
+- PageEditorControlに日本語のshape選択・追加、選択表示、移動、8方向resize、最小サイズ制限、zoom対応handleを追加。
+- drag/resizeはpreview中に履歴を増やさず、pointer-upで1件だけcommitし、capture lossでは元状態へ戻す。
+
 ### TASK-050
 
 - 現在のページまたはactive projectの全ページを、ページ順・安全な連番ファイル名でPNG/JPEGへ一括出力できるようにしました。

@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 
 namespace MojiCollaTool
 {
@@ -19,6 +20,9 @@ namespace MojiCollaTool
     {
         private readonly List<MojiPanel> _mojiPanels = new();
         private readonly ObservableCollection<MojiPanel> _viewMojiPanels = new();
+        private readonly List<BalloonVisual> _balloonVisuals = new();
+        private readonly BalloonGeometryFactory _balloonGeometryFactory = new();
+        private readonly Dictionary<Rectangle, ResizeHandle> _resizeHandles = new();
         private CanvasEditWindow? _canvasEditWindow;
         private bool _runEvent;
         private bool _isDisposed;
@@ -26,11 +30,20 @@ namespace MojiCollaTool
         private IProjectAssetSource? _assetSource;
         private IProjectAssetSink? _assetSink;
         private bool _suppressChanges;
+        private BalloonVisual? _selectedBalloon;
+        private BalloonDragState? _balloonDrag;
+        private bool _restoringBalloon;
+
+        private const double DefaultBalloonWidth = 240;
+        private const double DefaultBalloonHeight = 140;
+        private const double MinimumBalloonSize = 24;
+        private const double ResizeHandleSize = 8;
 
         public PageEditorControl()
         {
             InitializeComponent();
             MojiListView.ItemsSource = _viewMojiPanels;
+            MainCanvas.PreviewMouseLeftButtonDown += MainCanvas_PreviewMouseLeftButtonDown;
             ResetScale();
             _runEvent = true;
         }
@@ -40,6 +53,10 @@ namespace MojiCollaTool
         public Canvas Canvas => MainCanvas;
 
         public IReadOnlyList<MojiPanel> MojiPanels => _mojiPanels;
+
+        public IReadOnlyList<BalloonVisual> BalloonVisuals => _balloonVisuals;
+
+        public IEnumerable<BalloonData> Balloons => _balloonVisuals.Select(visual => visual.BalloonData);
 
         public IEnumerable<MojiData> MojiDatas => _mojiPanels.Select(panel => panel.MojiData);
 
@@ -58,6 +75,8 @@ namespace MojiCollaTool
         public int ScalePercent => ScalingTextBox.Value;
 
         public Guid? SelectedObjectId => (MojiListView.SelectedItem as MojiPanel)?.MojiData.ObjectId;
+
+        public Guid? SelectedBalloonId => _selectedBalloon?.ObjectId;
 
         public void RestoreViewState(int scalePercent, Guid? selectedObjectId)
         {
@@ -104,6 +123,7 @@ namespace MojiCollaTool
             {
                 CloseCanvasEditor();
                 RemoveAllMojiPanel();
+                RemoveAllBalloonVisuals();
                 UnloadImage(1);
                 UnloadImage(2);
                 _boundPage = page;
@@ -117,6 +137,11 @@ namespace MojiCollaTool
                 {
                     AddMojiPanel(new MojiPanel(PageDocument.CloneMojiData(mojiData), this));
                 }
+                foreach (var balloon in page.Balloons)
+                {
+                    AddBalloonVisual(new BalloonVisual(PageDocument.CloneBalloonData(balloon), _balloonGeometryFactory), raiseContentChanged: false);
+                }
+                RebuildCanvasObjectOrder();
             }
             finally
             {
@@ -138,6 +163,7 @@ namespace MojiCollaTool
             {
                 CloseCanvasEditor();
                 RemoveAllMojiPanel();
+                RemoveAllBalloonVisuals();
                 UnloadImage(1);
                 UnloadImage(2);
                 _boundPage = null;
@@ -174,6 +200,40 @@ namespace MojiCollaTool
             _viewMojiPanels.Add(mojiPanel);
             MainCanvas.Children.Add(mojiPanel);
             RaiseContentChanged("文字追加");
+        }
+
+        public BalloonVisual AddNewBalloon(BalloonShapeKind shape = BalloonShapeKind.Ellipse)
+        {
+            ThrowIfDisposed();
+            var index = _balloonVisuals.Count;
+            var balloon = new BalloonData
+            {
+                X = 40 + (index % 4) * 30,
+                Y = 40 + (index % 4) * 30,
+                Bounds = new Rect(0, 0, DefaultBalloonWidth, DefaultBalloonHeight),
+                ShapeKind = shape,
+                ZIndex = _boundPage?.ObjectCount ?? (_mojiPanels.Count + _balloonVisuals.Count),
+            };
+            var visual = new BalloonVisual(balloon, _balloonGeometryFactory);
+            AddBalloonVisual(visual);
+            SelectBalloon(visual);
+            return visual;
+        }
+
+        public void AddBalloon(BalloonData balloon)
+        {
+            ThrowIfDisposed();
+            if (balloon == null) throw new ArgumentNullException(nameof(balloon));
+            AddBalloonVisual(new BalloonVisual(PageDocument.CloneBalloonData(balloon), _balloonGeometryFactory));
+        }
+
+        public bool RemoveBalloon(Guid balloonId)
+        {
+            var visual = _balloonVisuals.FirstOrDefault(candidate => candidate.ObjectId == balloonId);
+            if (visual == null) return false;
+            RemoveBalloonVisual(visual);
+            RaiseContentChanged("フキダシ削除");
+            return true;
         }
 
         public void ReproductionMoji(MojiPanel mojiPanel)
@@ -263,6 +323,7 @@ namespace MojiCollaTool
             foreach (var panel in _mojiPanels.ToArray()) panel.Dispose();
             _mojiPanels.Clear();
             _viewMojiPanels.Clear();
+            RemoveAllBalloonVisuals();
             MainCanvas.Children.Clear();
             FileDropped = null;
             ContentChanged = null;
@@ -323,6 +384,7 @@ namespace MojiCollaTool
             CanvasBackgroundRect.Height = CanvasData.CanvasHeight;
             ImageControl1.Margin = CanvasData.GetImage1Margin();
             ImageControl2.Margin = CanvasData.GetImage2Margin();
+            UpdateResizeHandles();
         }
 
         private int GetNextMojiId() => _mojiPanels.Count == 0 ? 1 : _mojiPanels.Max(x => x.Id) + 1;
@@ -344,7 +406,11 @@ namespace MojiCollaTool
 
         private void ScalingTextBox_ValueChanged(object sender, UpDownTextBoxEvent e)
         {
-            if (_runEvent) UpdateScale(e.Value);
+            if (_runEvent)
+            {
+                UpdateScale(e.Value);
+                UpdateResizeHandles();
+            }
         }
 
         private void CanvasGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -395,6 +461,247 @@ namespace MojiCollaTool
             e.Handled = true;
         }
 
+        private void AddBalloonButton_Click(object sender, RoutedEventArgs e)
+        {
+            var item = BalloonShapeComboBox.SelectedItem as ComboBoxItem;
+            var shape = Enum.TryParse(item?.Tag as string, ignoreCase: true, out BalloonShapeKind parsed)
+                ? parsed
+                : BalloonShapeKind.Ellipse;
+            AddNewBalloon(shape);
+        }
+
+        private void MainCanvas_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not BalloonVisual && e.OriginalSource is not Rectangle)
+                SelectBalloon(null);
+        }
+
+        private void AddBalloonVisual(BalloonVisual visual, bool raiseContentChanged = true)
+        {
+            if (_balloonVisuals.Any(candidate => candidate.ObjectId == visual.ObjectId))
+                throw new InvalidOperationException($"Duplicate balloon object ID: {visual.ObjectId}");
+
+            visual.BalloonMouseLeftButtonDown += BalloonVisual_MouseLeftButtonDown;
+            visual.BalloonMouseLeftButtonUp += BalloonVisual_MouseLeftButtonUp;
+            visual.BalloonMouseMove += BalloonVisual_MouseMove;
+            visual.BalloonLostMouseCapture += BalloonVisual_LostMouseCapture;
+            _balloonVisuals.Add(visual);
+            MainCanvas.Children.Add(visual);
+            if (raiseContentChanged) RaiseContentChanged("フキダシ追加");
+        }
+
+        private void RemoveBalloonVisual(BalloonVisual visual)
+        {
+            if (!_balloonVisuals.Remove(visual)) return;
+            visual.BalloonMouseLeftButtonDown -= BalloonVisual_MouseLeftButtonDown;
+            visual.BalloonMouseLeftButtonUp -= BalloonVisual_MouseLeftButtonUp;
+            visual.BalloonMouseMove -= BalloonVisual_MouseMove;
+            visual.BalloonLostMouseCapture -= BalloonVisual_LostMouseCapture;
+            MainCanvas.Children.Remove(visual);
+            if (ReferenceEquals(_selectedBalloon, visual)) SelectBalloon(null);
+        }
+
+        private void RemoveAllBalloonVisuals()
+        {
+            _balloonDrag = null;
+            SelectBalloon(null);
+            foreach (var visual in _balloonVisuals.ToArray()) RemoveBalloonVisual(visual);
+            ClearResizeHandles();
+        }
+
+        private void SelectBalloon(BalloonVisual? visual)
+        {
+            if (ReferenceEquals(_selectedBalloon, visual))
+            {
+                UpdateResizeHandles();
+                return;
+            }
+            if (_selectedBalloon != null) _selectedBalloon.IsSelected = false;
+            _selectedBalloon = visual;
+            if (_selectedBalloon != null) _selectedBalloon.IsSelected = true;
+            UpdateResizeHandles();
+            foreach (var candidate in _balloonVisuals) candidate.InvalidateVisual();
+        }
+
+        private void BalloonVisual_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not BalloonVisual visual) return;
+            SelectBalloon(visual);
+            if (visual.BalloonData.IsLocked || e.ChangedButton != MouseButton.Left)
+            {
+                e.Handled = true;
+                return;
+            }
+            _balloonDrag = new BalloonDragState(visual, e.GetPosition(MainCanvas), visual.BalloonData.Clone(), ResizeHandle.Move);
+            visual.CaptureMouse();
+            e.Handled = true;
+        }
+
+        private void BalloonVisual_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (_balloonDrag == null || sender is not BalloonVisual visual || !ReferenceEquals(visual, _balloonDrag.Visual)) return;
+            if (e.LeftButton != MouseButtonState.Pressed) return;
+            ApplyBalloonDrag(e.GetPosition(MainCanvas));
+            e.Handled = true;
+        }
+
+        private void BalloonVisual_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_balloonDrag == null || sender is not BalloonVisual visual || !ReferenceEquals(visual, _balloonDrag.Visual)) return;
+            ApplyBalloonDrag(e.GetPosition(MainCanvas));
+            var moved = !BalloonEquivalent(_balloonDrag.Before, visual.BalloonData);
+            _balloonDrag = null;
+            visual.ReleaseMouseCapture();
+            if (moved) RaiseContentChanged("フキダシ位置・サイズ変更", visual.ObjectId.ToString("D"));
+            e.Handled = true;
+        }
+
+        private void BalloonVisual_LostMouseCapture(object sender, MouseEventArgs e)
+        {
+            if (_balloonDrag == null || sender is not BalloonVisual visual || !ReferenceEquals(visual, _balloonDrag.Visual) || _restoringBalloon) return;
+            _restoringBalloon = true;
+            try { visual.ApplyData(_balloonDrag.Before.Clone()); }
+            finally
+            {
+                _restoringBalloon = false;
+                _balloonDrag = null;
+            }
+            UpdateResizeHandles();
+        }
+
+        private void ApplyBalloonDrag(Point current)
+        {
+            if (_balloonDrag == null) return;
+            var dx = current.X - _balloonDrag.Start.X;
+            var dy = current.Y - _balloonDrag.Start.Y;
+            var before = _balloonDrag.Before;
+            var data = _balloonDrag.Visual.BalloonData;
+            if (_balloonDrag.Handle == ResizeHandle.Move)
+            {
+                data.X = before.X + dx;
+                data.Y = before.Y + dy;
+            }
+            else
+            {
+                var left = before.X;
+                var top = before.Y;
+                var right = before.X + before.Bounds.Width;
+                var bottom = before.Y + before.Bounds.Height;
+                if (_balloonDrag.Handle.HasFlag(ResizeHandle.Left)) left = Math.Min(before.X + dx, right - MinimumBalloonSize);
+                if (_balloonDrag.Handle.HasFlag(ResizeHandle.Right)) right = Math.Max(before.X + before.Bounds.Width + dx, left + MinimumBalloonSize);
+                if (_balloonDrag.Handle.HasFlag(ResizeHandle.Top)) top = Math.Min(before.Y + dy, bottom - MinimumBalloonSize);
+                if (_balloonDrag.Handle.HasFlag(ResizeHandle.Bottom)) bottom = Math.Max(before.Y + before.Bounds.Height + dy, top + MinimumBalloonSize);
+                data.X = left;
+                data.Y = top;
+                data.Bounds = new Rect(0, 0, Math.Max(MinimumBalloonSize, right - left), Math.Max(MinimumBalloonSize, bottom - top));
+            }
+            _balloonDrag.Visual.Refresh();
+            UpdateResizeHandles();
+        }
+
+        private static bool BalloonEquivalent(BalloonData left, BalloonData right)
+            => left.X == right.X && left.Y == right.Y && left.Bounds == right.Bounds && left.Rotation == right.Rotation;
+
+        private void RebuildCanvasObjectOrder()
+        {
+            if (_boundPage == null) return;
+            var visuals = _balloonVisuals.ToDictionary(visual => visual.ObjectId);
+            var panels = _mojiPanels.ToDictionary(panel => panel.MojiData.ObjectId);
+            foreach (var child in _mojiPanels.Cast<UIElement>().Concat(_balloonVisuals).ToArray()) MainCanvas.Children.Remove(child);
+            foreach (var item in _boundPage.AllObjects)
+            {
+                if (item is BalloonData balloon && visuals.TryGetValue(balloon.ObjectId, out var visual)) MainCanvas.Children.Add(visual);
+                else if (item is MojiData moji && panels.TryGetValue(moji.ObjectId, out var panel)) MainCanvas.Children.Add(panel);
+            }
+            UpdateResizeHandles();
+        }
+
+        private void UpdateResizeHandles()
+        {
+            ClearResizeHandles();
+            if (_selectedBalloon == null || !_balloonVisuals.Contains(_selectedBalloon)) return;
+            var scale = Math.Max(0.01, CanvasScaleTransform.ScaleX);
+            var logicalSize = ResizeHandleSize / scale;
+            var half = logicalSize / 2;
+            var data = _selectedBalloon.BalloonData;
+            var x = data.X;
+            var y = data.Y;
+            var w = Math.Max(MinimumBalloonSize, data.Bounds.Width);
+            var h = Math.Max(MinimumBalloonSize, data.Bounds.Height);
+            AddResizeHandle(ResizeHandle.TopLeft, x, y, logicalSize, half);
+            AddResizeHandle(ResizeHandle.Top, x + w / 2, y, logicalSize, half);
+            AddResizeHandle(ResizeHandle.TopRight, x + w, y, logicalSize, half);
+            AddResizeHandle(ResizeHandle.Left, x, y + h / 2, logicalSize, half);
+            AddResizeHandle(ResizeHandle.Right, x + w, y + h / 2, logicalSize, half);
+            AddResizeHandle(ResizeHandle.BottomLeft, x, y + h, logicalSize, half);
+            AddResizeHandle(ResizeHandle.Bottom, x + w / 2, y + h, logicalSize, half);
+            AddResizeHandle(ResizeHandle.BottomRight, x + w, y + h, logicalSize, half);
+        }
+
+        private void AddResizeHandle(ResizeHandle handle, double centerX, double centerY, double size, double half)
+        {
+            var rectangle = new Rectangle
+            {
+                Width = size, Height = size, Fill = Brushes.White, Stroke = Brushes.DodgerBlue,
+                StrokeThickness = 1, Tag = handle, Cursor = GetCursor(handle),
+            };
+            rectangle.MouseLeftButtonDown += ResizeHandle_MouseLeftButtonDown;
+            Canvas.SetLeft(rectangle, centerX - half);
+            Canvas.SetTop(rectangle, centerY - half);
+            MainCanvas.Children.Add(rectangle);
+            _resizeHandles.Add(rectangle, handle);
+        }
+
+        private void ResizeHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not Rectangle rectangle || _selectedBalloon == null || !_resizeHandles.TryGetValue(rectangle, out var handle)) return;
+            if (_selectedBalloon.BalloonData.IsLocked) return;
+            _balloonDrag = new BalloonDragState(_selectedBalloon, e.GetPosition(MainCanvas), _selectedBalloon.BalloonData.Clone(), handle);
+            _selectedBalloon.CaptureMouse();
+            e.Handled = true;
+        }
+
+        private static Cursor GetCursor(ResizeHandle handle)
+        {
+            return handle switch
+            {
+                ResizeHandle.Top or ResizeHandle.Bottom => Cursors.SizeNS,
+                ResizeHandle.Left or ResizeHandle.Right => Cursors.SizeWE,
+                ResizeHandle.TopLeft or ResizeHandle.BottomRight => Cursors.SizeNWSE,
+                _ => Cursors.SizeNESW,
+            };
+        }
+
+        private void ClearResizeHandles()
+        {
+            foreach (var rectangle in _resizeHandles.Keys.ToArray())
+            {
+                rectangle.MouseLeftButtonDown -= ResizeHandle_MouseLeftButtonDown;
+                MainCanvas.Children.Remove(rectangle);
+            }
+            _resizeHandles.Clear();
+        }
+
+        [Flags]
+        private enum ResizeHandle
+        {
+            Move = 0, Left = 1, Right = 2, Top = 4, Bottom = 8,
+            TopLeft = Top | Left, TopRight = Top | Right,
+            BottomLeft = Bottom | Left, BottomRight = Bottom | Right,
+        }
+
+        private sealed class BalloonDragState
+        {
+            public BalloonDragState(BalloonVisual visual, Point start, BalloonData before, ResizeHandle handle)
+            {
+                Visual = visual; Start = start; Before = before; Handle = handle;
+            }
+            public BalloonVisual Visual { get; }
+            public Point Start { get; }
+            public BalloonData Before { get; }
+            public ResizeHandle Handle { get; }
+        }
+
         private void ThrowIfDisposed()
         {
             if (_isDisposed) throw new ObjectDisposedException(nameof(PageEditorControl));
@@ -413,6 +720,7 @@ namespace MojiCollaTool
             page.Canvas.ImageMarginRight = CanvasData.ImageMarginRight;
             page.Canvas.CanvasColor = CanvasData.CanvasColor;
             page.SetMojiDatas(_mojiPanels.Select(panel => panel.MojiData));
+            page.SetBalloons(_balloonVisuals.Select(visual => visual.BalloonData));
         }
 
         private void LoadStoredImage(PageDocument page, int imageNumber)
@@ -447,7 +755,7 @@ namespace MojiCollaTool
         {
             var imageSource = ImageUtil.LoadImageSource2(filePath);
             return new ProjectImageCandidate(
-                Path.GetExtension(filePath),
+                System.IO.Path.GetExtension(filePath),
                 File.ReadAllBytes(filePath),
                 (int)imageSource.Width,
                 (int)imageSource.Height);
