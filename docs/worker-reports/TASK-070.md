@@ -2,7 +2,7 @@
 
 ## Result
 
-実装完了。最終handoff commitは作業完了時のGit確認結果に記載する。
+実装完了。実装commit: `0847c0c1e83321bea2bc6994bb7e87fc99b45e37`。
 
 ## Summary
 
