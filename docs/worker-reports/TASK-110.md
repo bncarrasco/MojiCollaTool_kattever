@@ -2,7 +2,7 @@
 
 ## Result
 
-実装完了。Result commitはこの報告書を含む最終コミットで確定します。
+実装完了。Implementation commit: `90b0b63e2cb0a0b91253cf4bf199b73938f1c732`。
 
 ## Summary
 
@@ -56,7 +56,7 @@
 - `C:\Users\user\.dotnet\dotnet.exe --version`: `6.0.428`
 - Debug build: pass、0 warnings、0 errors
 - Debug test: pass、110/110
-- Release build: 実装完了時に実行予定
+- Release build: pass、0 warnings、0 errors
 - Release test: repositoryの`eng/test.ps1`はDebug configurationを固定するため、Release build後にも同scriptでDebug testを実行する
 - `git diff --check`: pass
 
