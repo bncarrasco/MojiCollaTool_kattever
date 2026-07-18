@@ -31,6 +31,7 @@ namespace MojiCollaTool
         public bool IsHideOnly { get; set; } = true;
 
         internal ScrollViewer AttachedSymbolSettingsViewer => AttachedSymbolSettingsScrollViewer;
+        internal Expander AttachedSymbolSettingsExpander => AttachedSymbolSettingsExpanderControl;
 
         private bool _runEvent = false;
         private bool _updatingAttachedSymbolUi;
@@ -127,10 +128,13 @@ namespace MojiCollaTool
                     .Select(item => new GraphemeChoice(item.Index, item.Text))
                     .ToArray();
                 AttachedSymbolGraphemeComboBox.ItemsSource = graphemes;
-                AttachedSymbolListBox.ItemsSource = _mojiPanel.AttachedSymbolVisuals.ToArray();
+                var parentSymbols = _mojiPanel.PageEditor.AttachedSymbolVisuals
+                    .Where(item => item.SymbolData.ParentId == _mojiPanel.MojiData.ObjectId && !item.SymbolData.IsDetached)
+                    .ToArray();
+                AttachedSymbolListBox.ItemsSource = parentSymbols;
                 var selectedId = preferred?.ObjectId ?? _mojiPanel.PageEditor.SelectedAttachedSymbolId;
                 var selected = selectedId.HasValue
-                    ? _mojiPanel.AttachedSymbolVisuals.FirstOrDefault(item => item.ObjectId == selectedId.Value)
+                    ? parentSymbols.FirstOrDefault(item => item.ObjectId == selectedId.Value)
                     : null;
                 AttachedSymbolListBox.SelectedItem = selected;
                 if (selected == null)
@@ -386,8 +390,20 @@ namespace MojiCollaTool
         private void AttachedSymbolListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_updatingAttachedSymbolUi || AttachedSymbolListBox == null) return;
+            if (SelectedAttachedSymbol != null)
+                _mojiPanel.PageEditor.SelectAttachedSymbolFromUi(SelectedAttachedSymbol);
             LoadAttachedSymbolsToWindow(SelectedAttachedSymbol);
         }
+
+        internal void HandleAttachedSymbolListItemClickFromUi()
+        {
+            if (SelectedAttachedSymbol == null) return;
+            _mojiPanel.PageEditor.SelectAttachedSymbolFromUi(SelectedAttachedSymbol);
+            LoadAttachedSymbolsToWindow(SelectedAttachedSymbol);
+        }
+
+        private void AttachedSymbolListBox_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+            => HandleAttachedSymbolListItemClickFromUi();
 
         private void AttachedSymbolPropertyTextChanged(object sender, TextChangedEventArgs e)
         {

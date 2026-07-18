@@ -157,6 +157,189 @@ public class TASK100AttachedSymbolUiTests
             Assert.IsTrue(scrollViewer.ActualHeight <= 410.1);
             Assert.IsTrue(scrollViewer.ScrollableHeight > 0,
                 $"viewport={scrollViewer.ViewportHeight}; extent={scrollViewer.ExtentHeight}; actual={scrollViewer.ActualHeight}");
+
+            var expandedHeight = root.RowDefinitions[2].ActualHeight;
+            Assert.IsTrue(expandedHeight > 100);
+            window.AttachedSymbolSettingsExpander.IsExpanded = false;
+            root.Measure(new Size(800, 900));
+            root.Arrange(new Rect(0, 0, 800, 900));
+            root.UpdateLayout();
+            Assert.IsTrue(root.RowDefinitions[2].ActualHeight < 100);
+            Assert.IsTrue(root.RowDefinitions[1].ActualHeight > 500);
+        });
+    }
+
+    [TestMethod]
+    public void AttachedSymbolWindowUsesParentFilteredTopLevelVisualsAndUiCrudIsUndoable()
+    {
+        RunOnSta(() =>
+        {
+            var document = new ProjectDocument("ui-list");
+            var page = document.Pages[0];
+            var first = new MojiData { FullText = "A" };
+            var second = new MojiData { FullText = "B" };
+            page.AddMojiData(first);
+            page.AddMojiData(second);
+            using var session = new ProjectSession(document);
+            using var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(session.ActivePage!.PageId, editor.ContentChangeDescription,
+                    editor.ContentChangeCoalesceKey);
+            };
+
+            var firstPanel = editor.MojiPanels.Single(panel => panel.MojiData.ObjectId == first.ObjectId);
+            var firstWindow = firstPanel.MojiWindow!;
+            Assert.IsTrue(firstWindow.TryAddAttachedSymbolFromUi(0, "!", out var firstError), firstError);
+            var firstList = (ListBox)firstWindow.FindName("AttachedSymbolListBox")!;
+            Assert.AreEqual(1, firstList.Items.Count);
+            var firstVisual = (AttachedSymbolVisual)firstList.SelectedItem!;
+            Assert.AreEqual(firstVisual.ObjectId, editor.SelectedAttachedSymbolId);
+
+            editor.HandleMojiListItemClickFromUi(firstPanel);
+            Assert.AreEqual(first.ObjectId, editor.SelectedObjectId);
+            Assert.IsNull(editor.SelectedAttachedSymbolId);
+            firstList.SelectedItem = firstVisual;
+            firstWindow.HandleAttachedSymbolListItemClickFromUi();
+            Assert.AreEqual(firstVisual.ObjectId, editor.SelectedAttachedSymbolId);
+
+            var offsetTextBox = (TextBox)firstWindow.FindName("AttachedSymbolOffsetXTextBox")!;
+            offsetTextBox.Text = "0.75";
+            Assert.AreEqual(0.75, firstVisual.SymbolData.OffsetX, 0.000001);
+
+            var secondPanel = editor.MojiPanels.Single(panel => panel.MojiData.ObjectId == second.ObjectId);
+            var secondWindow = secondPanel.MojiWindow!;
+            Assert.IsTrue(secondWindow.TryAddAttachedSymbolFromUi(0, "?", out var secondError), secondError);
+            var secondList = (ListBox)secondWindow.FindName("AttachedSymbolListBox")!;
+            Assert.AreEqual(1, secondList.Items.Count);
+            Assert.AreNotEqual(firstVisual.ObjectId, ((AttachedSymbolVisual)secondList.SelectedItem!).ObjectId);
+            Assert.IsTrue(firstList.Items.Cast<AttachedSymbolVisual>().All(item => item.SymbolData.ParentId == first.ObjectId));
+
+            firstList.SelectedItem = firstVisual;
+            ((Button)firstWindow.FindName("AttachedSymbolRemoveButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual(0, firstList.Items.Count);
+            Assert.IsFalse(editor.AttachedSymbolVisuals.Any(item => item.ObjectId == firstVisual.ObjectId));
+            Assert.IsTrue(session.ActivePage!.AttachedSymbols.All(item => item.ParentId != first.ObjectId));
+
+            Assert.IsTrue(session.Undo());
+            editor.BindPage(session.ActivePage!, null);
+            firstPanel = editor.MojiPanels.Single(panel => panel.MojiData.ObjectId == first.ObjectId);
+            firstList = (ListBox)firstPanel.MojiWindow!.FindName("AttachedSymbolListBox")!;
+            Assert.AreEqual(1, firstList.Items.Count);
+            Assert.IsTrue(session.Redo());
+            editor.BindPage(session.ActivePage!, null);
+            firstPanel = editor.MojiPanels.Single(panel => panel.MojiData.ObjectId == first.ObjectId);
+            Assert.AreEqual(0, ((ListBox)firstPanel.MojiWindow!.FindName("AttachedSymbolListBox")!).Items.Count);
+        });
+    }
+
+    [TestMethod]
+    public void UiAddedSymbolGetsCanonicalZIndexBeforeRebindAndUndoRedo()
+    {
+        RunOnSta(() =>
+        {
+            var document = new ProjectDocument("ui-z");
+            var page = document.Pages[0];
+            var parent = new MojiData { FullText = "A", X = 0, Y = 0 };
+            page.AddMojiData(parent);
+            page.AddBalloon(new BalloonData { X = 0, Y = 0, Bounds = new Rect(0, 0, 100, 60) });
+            using var session = new ProjectSession(document);
+            using var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(session.ActivePage!.PageId, editor.ContentChangeDescription,
+                    editor.ContentChangeCoalesceKey);
+            };
+
+            var panel = editor.MojiPanels.Single(item => item.MojiData.ObjectId == parent.ObjectId);
+            Assert.IsTrue(panel.MojiWindow!.TryAddAttachedSymbolFromUi(0, "!", out var error), error);
+            var symbol = editor.AttachedSymbolVisuals.Single();
+            var rendered = editor.Canvas.Children.Cast<UIElement>()
+                .Where(item => item is MojiPanel || item is BalloonVisual || item is AttachedSymbolVisual)
+                .ToArray();
+            CollectionAssert.AreEqual(page.AllObjects.Select(item => item.ObjectId).ToArray(), rendered.Select(item => item switch
+            {
+                MojiPanel text => text.MojiData.ObjectId,
+                BalloonVisual balloon => balloon.ObjectId,
+                AttachedSymbolVisual attached => attached.ObjectId,
+                _ => Guid.Empty
+            }).ToArray());
+            Assert.AreEqual(page.AllObjects.Single(item => item.ObjectId == symbol.ObjectId).ZIndex, Canvas.GetZIndex(symbol));
+
+            Assert.IsTrue(session.Undo());
+            editor.BindPage(session.ActivePage!, null);
+            Assert.AreEqual(0, editor.AttachedSymbolVisuals.Count);
+            Assert.IsTrue(session.Redo());
+            editor.BindPage(session.ActivePage!, null);
+            symbol = editor.AttachedSymbolVisuals.Single();
+            Assert.AreEqual(session.ActivePage!.AllObjects.Single(item => item.ObjectId == symbol.ObjectId).ZIndex,
+                Canvas.GetZIndex(symbol));
+        });
+    }
+
+    [TestMethod]
+    public void ParentRotationComposesOffsetAndDragInLocalCoordinatesWithUndoRedo()
+    {
+        RunOnSta(() =>
+        {
+            var document = new ProjectDocument("rotation-offset");
+            var page = document.Pages[0];
+            var parentData = new MojiData { FullText = "A", FontSize = 40 };
+            page.AddMojiData(parentData);
+            using var session = new ProjectSession(document);
+            using var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(session.ActivePage!.PageId, editor.ContentChangeDescription,
+                    editor.ContentChangeCoalesceKey);
+            };
+
+            var parent = editor.MojiPanels.Single(item => item.MojiData.ObjectId == parentData.ObjectId);
+            var visual = editor.AddAttachedSymbol(parentData.ObjectId, 0, "!");
+            editor.UpdateAttachedSymbol(visual.ObjectId, data =>
+            {
+                data.OffsetX = 0;
+                data.OffsetY = 0;
+                data.Rotation = 30;
+            });
+            parent.MojiData.RotateAngle = 90;
+            parent.UpdateMojiView(true);
+            editor.NotifyContentChanged("親回転", parentData.ObjectId.ToString("D"));
+            session.MarkSaved();
+
+            var zeroLeft = Canvas.GetLeft(visual);
+            var zeroTop = Canvas.GetTop(visual);
+            editor.UpdateAttachedSymbol(visual.ObjectId, data => data.OffsetX = 1);
+            var deltaX = Canvas.GetLeft(visual) - zeroLeft;
+            var deltaY = Canvas.GetTop(visual) - zeroTop;
+            Assert.AreEqual(0, deltaX, 0.0001);
+            Assert.AreEqual(parentData.FontSize, deltaY, 0.0001);
+            var matrix = visual.RenderTransform.Value;
+            var composedAngle = Math.Atan2(matrix.M12, matrix.M11) * 180 / Math.PI;
+            if (composedAngle < 0) composedAngle += 360;
+            Assert.AreEqual(120, composedAngle, 0.0001);
+
+            editor.UpdateAttachedSymbol(visual.ObjectId, data => data.OffsetX = 0);
+            var em = parentData.FontSize;
+            Assert.IsTrue(editor.BeginAttachedSymbolGesture(visual.ObjectId, new Point(0, 0)));
+            Assert.IsTrue(editor.UpdateAttachedSymbolGesture(new Point(em, 0)));
+            Assert.IsTrue(editor.CommitAttachedSymbolGesture(new Point(em, 0)));
+            Assert.AreEqual(0, visual.SymbolData.OffsetX, 0.0001);
+            Assert.AreEqual(-1, visual.SymbolData.OffsetY, 0.0001);
+
+            Assert.IsTrue(session.Undo());
+            editor.BindPage(session.ActivePage!, null);
+            visual = editor.AttachedSymbolVisuals.Single();
+            Assert.AreEqual(0, visual.SymbolData.OffsetY, 0.0001);
+            Assert.IsTrue(session.Redo());
+            editor.BindPage(session.ActivePage!, null);
+            Assert.AreEqual(-1, editor.AttachedSymbolVisuals.Single().SymbolData.OffsetY, 0.0001);
         });
     }
 

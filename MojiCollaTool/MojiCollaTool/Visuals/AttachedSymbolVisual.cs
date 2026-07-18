@@ -77,8 +77,15 @@ namespace MojiCollaTool
 
             Width = Math.Max(1, formattedText.WidthIncludingTrailingWhitespace);
             Height = Math.Max(1, formattedText.Height);
-            Canvas.SetLeft(this, anchorBounds.Left + anchorBounds.Width / 2 + SymbolData.OffsetX * _parentText.FontSize - Width / 2);
-            Canvas.SetTop(this, anchorBounds.Top + anchorBounds.Height / 2 + SymbolData.OffsetY * _parentText.FontSize - Height / 2);
+            var parentRotation = _parentText.IsRotateActive ? _parentText.RotateAngle : 0;
+            var offset = new Vector(SymbolData.OffsetX * _parentText.FontSize, SymbolData.OffsetY * _parentText.FontSize);
+            if (parentRotation != 0)
+            {
+                var rotatedOffset = new RotateTransform(parentRotation).Transform(new Point(offset.X, offset.Y));
+                offset = new Vector(rotatedOffset.X, rotatedOffset.Y);
+            }
+            Canvas.SetLeft(this, anchorBounds.Left + anchorBounds.Width / 2 + offset.X - Width / 2);
+            Canvas.SetTop(this, anchorBounds.Top + anchorBounds.Height / 2 + offset.Y - Height / 2);
             RenderTransformOrigin = new Point(0.5, 0.5);
             var symbolRotation = new RotateTransform(SymbolData.Rotation);
             if (_parentText.IsRotateActive)

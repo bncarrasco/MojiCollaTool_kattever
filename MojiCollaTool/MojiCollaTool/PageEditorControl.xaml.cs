@@ -92,6 +92,22 @@ namespace MojiCollaTool
 
         public Guid? SelectedAttachedSymbolId => _selectedAttachedSymbol?.ObjectId;
 
+        internal void SelectAttachedSymbolFromUi(AttachedSymbolVisual visual)
+        {
+            if (visual == null || !_attachedSymbolVisuals.Contains(visual)) return;
+            SelectAttachedSymbol(visual);
+        }
+
+        internal void HandleMojiListItemClickFromUi(MojiPanel panel)
+        {
+            if (panel == null || !_mojiPanels.Contains(panel)) return;
+            SelectAttachedSymbol(null);
+            SelectBalloon(null);
+            _suppressSelectionSync = true;
+            try { MojiListView.SelectedItem = panel; }
+            finally { _suppressSelectionSync = false; }
+        }
+
         public void RestoreViewState(int scalePercent, Guid? selectedObjectId)
         {
             _runEvent = false;
@@ -172,6 +188,7 @@ namespace MojiCollaTool
                 MainCanvas.UpdateLayout();
                 foreach (var parent in _mojiPanels) RefreshAttachedSymbolsForParent(parent);
                 RestoreSelectionForPage(page.PageId);
+                foreach (var parent in _mojiPanels) parent.MojiWindow?.LoadMojiDataToWindow(parent.MojiData);
             }
             finally
             {
@@ -247,6 +264,7 @@ namespace MojiCollaTool
                 throw new InvalidOperationException("Attached symbol grapheme anchor is outside the parent text.");
             if (HasObjectId(candidate.ObjectId))
                 throw new InvalidOperationException($"Duplicate attached symbol object ID: {candidate.ObjectId}");
+            candidate.ZIndex = GetNextZIndex();
             var visual = new AttachedSymbolVisual(candidate, parent.MojiData);
             try
             {
@@ -278,7 +296,7 @@ namespace MojiCollaTool
                 OffsetX = defaultOffset.X,
                 OffsetY = defaultOffset.Y,
                 Scale = AttachedSymbolPlacement.DefaultScale,
-                ZIndex = _mojiPanels.Count + _balloonVisuals.Count + _attachedSymbolVisuals.Count,
+                ZIndex = GetNextZIndex(),
             };
             var visual = AddAttachedSymbol(symbol);
             RaiseContentChanged("付加記号追加");
@@ -550,7 +568,11 @@ namespace MojiCollaTool
 
         private void MojiListView_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
-            if (MojiListView.SelectedItem is MojiPanel mojiPanel) mojiPanel.ShowMojiWindow();
+            if (MojiListView.SelectedItem is MojiPanel mojiPanel)
+            {
+                HandleMojiListItemClickFromUi(mojiPanel);
+                mojiPanel.ShowMojiWindow();
+            }
         }
 
         private void CanvasEditButton_Click(object sender, RoutedEventArgs e)
@@ -663,9 +685,13 @@ namespace MojiCollaTool
             var visual = _attachedSymbolDrag.Visual;
             var dx = current.X - _attachedSymbolDrag.Start.X;
             var dy = current.Y - _attachedSymbolDrag.Start.Y;
+            var parentRotation = visual.ParentTextData.IsRotateActive ? visual.ParentTextData.RotateAngle : 0;
+            var localDelta = parentRotation == 0
+                ? new Vector(dx, dy)
+                : ToVector(new RotateTransform(-parentRotation).Transform(new Point(dx, dy)));
             var em = Math.Max(1, visual.ParentTextData.FontSize);
-            visual.SymbolData.OffsetX = _attachedSymbolDrag.Before.OffsetX + dx / em;
-            visual.SymbolData.OffsetY = _attachedSymbolDrag.Before.OffsetY + dy / em;
+            visual.SymbolData.OffsetX = _attachedSymbolDrag.Before.OffsetX + localDelta.X / em;
+            visual.SymbolData.OffsetY = _attachedSymbolDrag.Before.OffsetY + localDelta.Y / em;
             visual.Refresh(visual.AnchorBounds);
             return true;
         }
@@ -791,6 +817,7 @@ namespace MojiCollaTool
             visual.SymbolLostMouseCapture += AttachedSymbolVisual_LostMouseCapture;
             _attachedSymbolVisuals.Add(visual);
             MainCanvas.Children.Add(visual);
+            Canvas.SetZIndex(visual, visual.SymbolData.ZIndex);
             if (raiseContentChanged) RaiseContentChanged("付加記号追加");
         }
 
@@ -878,6 +905,8 @@ namespace MojiCollaTool
         private static bool AttachedSymbolEquivalent(AttachedSymbolData left, AttachedSymbolData right)
             => left.OffsetX == right.OffsetX && left.OffsetY == right.OffsetY &&
                left.Scale == right.Scale && left.Rotation == right.Rotation;
+
+        private static Vector ToVector(Point point) => new(point.X, point.Y);
 
         private void AddBalloonVisual(BalloonVisual visual, bool raiseContentChanged = true)
         {
@@ -1153,6 +1182,17 @@ namespace MojiCollaTool
                 || _attachedSymbolModels.Any(symbol => symbol.ObjectId == objectId)
                 || _attachedSymbolVisuals.Any(visual => visual.ObjectId == objectId);
 
+        private int GetNextZIndex()
+        {
+            var pageMaximum = _boundPage?.AllObjects.Select(item => item.ZIndex).DefaultIfEmpty(-1).Max() ?? -1;
+            var liveMaximum = _mojiPanels.Select(panel => panel.MojiData.ZIndex)
+                .Concat(_balloonVisuals.Select(visual => visual.BalloonData.ZIndex))
+                .Concat(_attachedSymbolModels.Select(symbol => symbol.ZIndex))
+                .DefaultIfEmpty(-1)
+                .Max();
+            return Math.Max(pageMaximum, liveMaximum) + 1;
+        }
+
         private void CapturePage(PageDocument page)
         {
             var sourceSymbols = _attachedSymbolModels.Select(PageDocument.CloneAttachedSymbolData).ToList();
@@ -1195,6 +1235,7 @@ namespace MojiCollaTool
                 if (parent != null) visual.ApplyData(PageDocument.CloneAttachedSymbolData(restored), parent.MojiData,
                     parent.GetGraphemeAnchorBounds(restored.GraphemeAnchor, MainCanvas));
             }
+            RebuildCanvasObjectOrder();
         }
 
         private static List<AttachedSymbolData> MergeAttachedSymbolStates(

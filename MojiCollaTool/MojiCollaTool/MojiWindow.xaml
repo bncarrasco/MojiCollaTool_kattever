@@ -13,7 +13,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
@@ -66,7 +66,7 @@
         <GroupBox Header="テキスト" Grid.Row="1">
             <TextBox x:Name="TextTextBox" Text="サンプル" AcceptsReturn="True" FontSize="20" TextWrapping="Wrap" FontFamily="{Binding ElementName=FontFamilyComboBox, Path=SelectedValue}" VerticalScrollBarVisibility="Visible" Margin="5" TextChanged="TextBox_TextChanged"/>
         </GroupBox>
-        <Expander Header="文字設定" Grid.Row="2" IsExpanded="True" MaxHeight="420" VerticalAlignment="Stretch">
+        <Expander x:Name="AttachedSymbolSettingsExpanderControl" Header="文字設定" Grid.Row="2" IsExpanded="True" MaxHeight="420" VerticalAlignment="Top">
             <ScrollViewer x:Name="AttachedSymbolSettingsScrollViewer" MaxHeight="410"
                           VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Orientation="Vertical">
@@ -181,7 +181,7 @@
                             <Button Content="追加" Margin="5,0,0,0" Click="AttachedSymbolAddButton_Click"/>
                         </StackPanel>
                         <TextBlock x:Name="AttachedSymbolErrorTextBlock" Foreground="IndianRed" TextWrapping="Wrap"/>
-                        <ListBox x:Name="AttachedSymbolListBox" Height="70" Margin="0,5,0,0" DisplayMemberPath="SymbolData.Text" SelectionChanged="AttachedSymbolListBox_SelectionChanged"/>
+                        <ListBox x:Name="AttachedSymbolListBox" Height="70" Margin="0,5,0,0" DisplayMemberPath="SymbolData.Text" SelectionChanged="AttachedSymbolListBox_SelectionChanged" PreviewMouseLeftButtonUp="AttachedSymbolListBox_PreviewMouseLeftButtonUp"/>
                         <TextBlock Text="選択中の対象文字"/>
                         <TextBlock x:Name="AttachedSymbolSelectedTextBlock" Margin="0,2,0,0"/>
                         <StackPanel Orientation="Horizontal">
@@ -213,7 +213,7 @@
                             <TextBox x:Name="AttachedSymbolForeColorTextBox" Width="95" TextChanged="AttachedSymbolPropertyTextChanged"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
-                            <Button Content="選択記号を削除" Click="AttachedSymbolRemoveButton_Click"/>
+                            <Button x:Name="AttachedSymbolRemoveButton" Content="選択記号を削除" Click="AttachedSymbolRemoveButton_Click"/>
                             <TextBlock Text="位置・倍率・回転はem基準" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </StackPanel>

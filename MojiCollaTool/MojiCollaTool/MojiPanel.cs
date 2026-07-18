@@ -34,11 +34,7 @@ namespace MojiCollaTool
 
         public PageEditorControl PageEditor => pageEditor;
 
-        public IReadOnlyList<AttachedSymbolVisual> AttachedSymbolVisuals => attachedSymbolVisuals;
-
         public IReadOnlyDictionary<int, DecoratedCharacterControl> GraphemeVisuals => graphemeControls;
-
-        public IEnumerable<AttachedSymbolData> AttachedSymbols => attachedSymbolVisuals.Select(item => item.SymbolData);
 
         /// <summary>
         /// 常に前面に表示するかどうかのフラグ
@@ -49,8 +45,6 @@ namespace MojiCollaTool
         /// 背景配置用のグリッド
         /// </summary>
         private Grid backgroundGrid = new Grid();
-        private Canvas attachedSymbolCanvas = new Canvas();
-
         /// <summary>
         /// 文字列を配置するパネル
         /// </summary>
@@ -66,8 +60,6 @@ namespace MojiCollaTool
         /// </summary>
         private DecoratedCharacterControlTotalPool decoratedCharacterControlTotalPool = new DecoratedCharacterControlTotalPool();
         private readonly Dictionary<int, DecoratedCharacterControl> graphemeControls = new();
-        private readonly List<AttachedSymbolVisual> attachedSymbolVisuals = new();
-
         /// <summary>
         /// 前回のパネルの幅
         /// 縦書きで開業が起きた際に、元の場所に戻すために使用する
@@ -121,9 +113,6 @@ namespace MojiCollaTool
             stackPanel.VerticalAlignment = VerticalAlignment.Center;
             stackPanel.HorizontalAlignment = HorizontalAlignment.Center;
             backgroundGrid.Children.Add(stackPanel);
-            attachedSymbolCanvas.IsHitTestVisible = true;
-            backgroundGrid.Children.Add(attachedSymbolCanvas);
-
             MouseDown += MojiPanel_MouseDown;
             MouseUp += MojiPanel_MouseUp;
             MouseMove += MojiPanel_MouseMove;
@@ -214,6 +203,7 @@ namespace MojiCollaTool
 
             MojiWindow = new MojiWindow(this);
             MojiWindow.Closed += MojiWindow_Closed;
+            MojiWindow.LoadMojiDataToWindow(MojiData);
         }
 
         private void MojiWindow_Closed(object? sender, EventArgs e)
@@ -249,8 +239,6 @@ namespace MojiCollaTool
         {
             if (_isDisposed) return;
             _isDisposed = true;
-
-            RemoveAllAttachedSymbols();
 
             var window = MojiWindow;
             if (window == null) return;
@@ -442,34 +430,7 @@ namespace MojiCollaTool
                 previousWidth = 0;
             }
 
-            RefreshAttachedSymbols();
             pageEditor.RefreshAttachedSymbolsForParent(this);
-        }
-
-        public AttachedSymbolVisual AddAttachedSymbol(AttachedSymbolData symbol)
-        {
-            if (symbol == null) throw new ArgumentNullException(nameof(symbol));
-            var visual = new AttachedSymbolVisual(symbol, MojiData);
-            attachedSymbolVisuals.Add(visual);
-            attachedSymbolCanvas.Children.Add(visual);
-            RefreshAttachedSymbols();
-            return visual;
-        }
-
-        public bool RemoveAttachedSymbol(Guid symbolId)
-        {
-            var visual = attachedSymbolVisuals.FirstOrDefault(item => item.ObjectId == symbolId);
-            if (visual == null) return false;
-            attachedSymbolVisuals.Remove(visual);
-            attachedSymbolCanvas.Children.Remove(visual);
-            return true;
-        }
-
-        public void RemoveAllAttachedSymbols()
-        {
-            foreach (var visual in attachedSymbolVisuals.ToArray())
-                attachedSymbolCanvas.Children.Remove(visual);
-            attachedSymbolVisuals.Clear();
         }
 
         public Rect GetGraphemeAnchorBounds(int graphemeIndex)
@@ -509,22 +470,5 @@ namespace MojiCollaTool
             return Rect.Empty;
         }
 
-        private void RefreshAttachedSymbols()
-        {
-            foreach (var visual in attachedSymbolVisuals)
-            {
-                if (visual.SymbolData.IsDetached || !visual.SymbolData.ParentId.HasValue ||
-                    visual.SymbolData.ParentId.Value != MojiData.ObjectId)
-                {
-                    visual.Visibility = Visibility.Hidden;
-                    visual.IsHitTestVisible = false;
-                    continue;
-                }
-
-                var bounds = GetGraphemeAnchorBounds(visual.SymbolData.GraphemeAnchor);
-                visual.Visibility = bounds.IsEmpty ? Visibility.Hidden : Visibility.Visible;
-                visual.ApplyData(visual.SymbolData, MojiData, bounds.IsEmpty ? new Rect(0, 0, 0, 0) : bounds);
-            }
-        }
     }
 }
