@@ -1,0 +1,104 @@
+using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+
+namespace MojiCollaTool
+{
+    /// <summary>
+    /// Lightweight page-level balloon visual. The visual owns no document
+    /// history; PageEditorControl commits its final data on pointer-up.
+    /// </summary>
+    public sealed class BalloonVisual : FrameworkElement
+    {
+        private static readonly Pen SelectionPen = CreateSelectionPen();
+        private readonly BalloonGeometryFactory _geometryFactory;
+
+        public BalloonVisual(BalloonData data, BalloonGeometryFactory? geometryFactory = null)
+        {
+            BalloonData = data ?? throw new ArgumentNullException(nameof(data));
+            _geometryFactory = geometryFactory ?? new BalloonGeometryFactory();
+            Focusable = false;
+            SnapsToDevicePixels = true;
+            IsHitTestVisible = data.IsVisible;
+            MouseLeftButtonDown += OnMouseLeftButtonDown;
+            MouseLeftButtonUp += OnMouseLeftButtonUp;
+            MouseMove += OnMouseMove;
+            LostMouseCapture += OnLostMouseCapture;
+            Refresh();
+        }
+
+        public BalloonData BalloonData { get; private set; }
+        public Guid ObjectId => BalloonData.ObjectId;
+        public bool IsSelected { get; set; }
+
+        public event MouseButtonEventHandler? BalloonMouseLeftButtonDown;
+        public event MouseButtonEventHandler? BalloonMouseLeftButtonUp;
+        public event MouseEventHandler? BalloonMouseMove;
+        public event MouseEventHandler? BalloonLostMouseCapture;
+
+        public void ApplyData(BalloonData data)
+        {
+            if (data == null) throw new ArgumentNullException(nameof(data));
+            BalloonData = data;
+            IsHitTestVisible = data.IsVisible;
+            Refresh();
+        }
+
+        public void Refresh()
+        {
+            var width = Math.Max(1, BalloonData.Bounds.Width);
+            var height = Math.Max(1, BalloonData.Bounds.Height);
+            Width = width;
+            Height = height;
+            Canvas.SetLeft(this, BalloonData.X);
+            Canvas.SetTop(this, BalloonData.Y);
+            RenderTransformOrigin = new Point(0.5, 0.5);
+            RenderTransform = new RotateTransform(BalloonData.Rotation);
+            InvalidateVisual();
+        }
+
+        protected override void OnRender(DrawingContext drawingContext)
+        {
+            base.OnRender(drawingContext);
+            if (!BalloonData.IsVisible) return;
+
+            var localBounds = new Rect(0, 0, Math.Max(0, BalloonData.Bounds.Width), Math.Max(0, BalloonData.Bounds.Height));
+            var geometry = _geometryFactory.Create(BalloonData.ShapeKind, localBounds);
+            var fill = new SolidColorBrush(BalloonData.Fill);
+            var stroke = new SolidColorBrush(BalloonData.Stroke);
+            var thickness = Math.Max(0, BalloonData.StrokeThickness);
+            var pen = thickness > 0 ? new Pen(stroke, thickness) : null;
+            drawingContext.DrawGeometry(fill, pen, geometry);
+
+            if (IsSelected)
+            {
+                var selectionBounds = new Rect(0, 0, ActualWidth > 0 ? ActualWidth : Width, ActualHeight > 0 ? ActualHeight : Height);
+                drawingContext.DrawRectangle(null, SelectionPen, selectionBounds);
+            }
+        }
+
+        protected override HitTestResult? HitTestCore(PointHitTestParameters hitTestParameters)
+        {
+            if (!BalloonData.IsVisible) return null;
+            var point = hitTestParameters.HitPoint;
+            return point.X >= 0 && point.Y >= 0 && point.X <= ActualWidth && point.Y <= ActualHeight
+                ? new PointHitTestResult(this, point)
+                : null;
+        }
+
+        private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BalloonMouseLeftButtonDown?.Invoke(this, e);
+        private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => BalloonMouseLeftButtonUp?.Invoke(this, e);
+        private void OnMouseMove(object sender, MouseEventArgs e) => BalloonMouseMove?.Invoke(this, e);
+        private void OnLostMouseCapture(object sender, MouseEventArgs e) => BalloonLostMouseCapture?.Invoke(this, e);
+
+        private static Pen CreateSelectionPen()
+        {
+            var pen = new Pen(Brushes.DodgerBlue, 1);
+            pen.DashStyle = DashStyles.Dash;
+            pen.Freeze();
+            return pen;
+        }
+    }
+}

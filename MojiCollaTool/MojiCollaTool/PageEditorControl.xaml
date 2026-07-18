@@ -54,6 +54,15 @@
             <local:UpDownTextBox x:Name="ScalingTextBox" ValueMinLimit="10" Step="10"
                                  ValueChanged="ScalingTextBox_ValueChanged"/>
             <Label Content="%" VerticalAlignment="Center"/>
+            <ComboBox x:Name="BalloonShapeComboBox" Width="120" Margin="18,0,4,0"
+                      SelectedIndex="0" VerticalAlignment="Center">
+                <ComboBoxItem Content="楕円" Tag="Ellipse"/>
+                <ComboBoxItem Content="角丸四角" Tag="RoundedRectangle"/>
+                <ComboBoxItem Content="四角" Tag="Rectangle"/>
+                <ComboBoxItem Content="モノローグ" Tag="Monologue"/>
+            </ComboBox>
+            <Button x:Name="AddBalloonButton" Content="フキダシ追加" Click="AddBalloonButton_Click"
+                    Margin="4,0,0,0" Padding="8,2"/>
         </StackPanel>
         <Button x:Name="CanvasEditButton" Grid.Row="1" Grid.Column="1" Margin="5"
                 Click="CanvasEditButton_Click">
