@@ -247,6 +247,30 @@ public class UndoRedoTests
     }
 
     [TestMethod]
+    public void RepeatedEditSaveCyclesReleaseTrimmedHistoryReferences()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("save trim cycles"));
+        var pageId = session.ActivePage!.PageId;
+
+        for (var cycle = 0; cycle < 6; cycle++)
+        {
+            for (var index = 0; index < 35; index++)
+            {
+                var value = cycle * 35 + index;
+                session.ExecutePage(pageId, page => page.Rename($"cycle-{value}"),
+                    $"保存cycle編集-{value}", $"save-cycle-{value}");
+            }
+            session.MarkSaved();
+        }
+
+        Assert.IsTrue(session.History.RetainedEntryCount <= session.History.Count);
+        Assert.IsTrue(session.History.RetainedNodeCount <= session.History.MaxEntries + 2,
+            $"retained nodes: {session.History.RetainedNodeCount}");
+        Assert.IsTrue(session.History.EstimatedBytes <= session.History.MaxBytes);
+    }
+
+    [TestMethod]
     public void DifferentCoalesceKeysDoNotMergeUnrelatedEdits()
     {
         using var workspace = new ApplicationWorkspace();

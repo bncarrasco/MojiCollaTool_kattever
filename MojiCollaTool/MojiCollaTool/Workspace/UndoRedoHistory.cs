@@ -102,6 +102,18 @@ namespace MojiCollaTool
         public IReadOnlyList<HistoryEntry> RedoEntries => new ReadOnlyCollection<HistoryEntry>(_redoStack);
         public long CurrentRevision => _current.Revision;
         internal object CurrentNode => _current;
+        internal int RetainedEntryCount => _nodes.Count;
+        internal int RetainedNodeCount
+        {
+            get
+            {
+                var nodes = new HashSet<HistoryNode>();
+                AddReachableNodes(_current, nodes);
+                AddReachableNodes(_savedNode, nodes);
+                foreach (var node in _nodes.Values) AddReachableNodes(node, nodes);
+                return nodes.Count;
+            }
+        }
 
         internal void MarkSavedNode(object node)
         {
@@ -278,28 +290,18 @@ namespace MojiCollaTool
                 {
                     var removed = _undoStack[0];
                     _undoStack.RemoveAt(0);
-                    var removedNode = _nodes.TryGetValue(removed, out var removedHistoryNode)
-                        ? removedHistoryNode : null;
-                    var removedWasSavedDescendant = removedNode != null &&
-                        IsSavedAncestorOf(removedNode) && !ReferenceEquals(removedNode, _savedNode);
-                    DetachNode(removed);
                     if (_undoStack.Count > 0 && _nodes.TryGetValue(_undoStack[0], out var boundary))
                     {
-                        // Keep the complete saved path available for dirty-page comparison.
-                        // Only an unrelated branch may be cut at the trim boundary.
-                        if (removedWasSavedDescendant)
-                        {
-                            boundary.Parent = _savedNode;
-                        }
-                        else if (!IsOnSavedPath(boundary) && !IsSavedAncestorOf(boundary))
-                        {
-                            boundary.Parent = _root;
-                        }
+                        // Reconnect a retained post-save branch to the compact saved anchor.
+                        // All entry-owned nodes can then be detached, including saved-path nodes.
+                        boundary.Parent = !ReferenceEquals(boundary, _savedNode) && IsSavedAncestorOf(boundary)
+                            ? _savedNode : _root;
                     }
-                    else if (!IsOnSavedPath(_current) && !IsSavedAncestorOf(_current))
+                    else
                     {
                         _current.Parent = _root;
                     }
+                    DetachNode(removed);
                 }
                 else if (_redoStack.Count > 0)
                 {
@@ -314,19 +316,8 @@ namespace MojiCollaTool
         private void DetachNode(HistoryEntry entry)
         {
             if (!_nodes.TryGetValue(entry, out var node)) return;
-            if (IsOnSavedPath(node)) return;
-            node.Parent = null;
             _nodes.Remove(entry);
-        }
-
-        private bool IsOnSavedPath(HistoryNode node)
-        {
-            for (var current = _savedNode; current != null; current = current.Parent)
-            {
-                if (ReferenceEquals(current, node)) return true;
-            }
-
-            return false;
+            node.Parent = null;
         }
 
         private bool IsSavedAncestorOf(HistoryNode node)
@@ -361,6 +352,13 @@ namespace MojiCollaTool
             for (var current = node; current != null; current = current.Parent) path.Add(current);
             path.Reverse();
             return path;
+        }
+
+        private static void AddReachableNodes(HistoryNode node, ISet<HistoryNode> nodes)
+        {
+            for (var current = node; current != null && nodes.Add(current); current = current.Parent)
+            {
+            }
         }
 
         private void EnsureTarget(ProjectDocument target)
