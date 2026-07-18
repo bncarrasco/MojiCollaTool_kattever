@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MojiCollaTool.Tests;
@@ -147,5 +148,114 @@ public class UndoRedoTests
         Assert.AreEqual(1, session.History.UndoCount);
         Assert.IsTrue(session.Undo());
         Assert.AreEqual("01", session.ActivePage!.Name);
+    }
+
+    [TestMethod]
+    public void CoalescedRevisionRemainsDirtyAfterSaveThenNextEdit()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("revision"));
+        var pageId = session.ActivePage!.PageId;
+
+        session.ExecutePage(pageId, page => page.Rename("入力1"), "文字入力", "object-1");
+        session.ExecutePage(pageId, page => page.Rename("入力2"), "文字入力", "object-1");
+        session.MarkSaved();
+        var savedRevision = session.SavedRevision;
+
+        session.ExecutePage(pageId, page => page.Rename("入力3"), "文字入力", "object-1");
+        session.ExecutePage(pageId, page => page.Rename("入力4"), "文字入力", "object-1");
+
+        Assert.IsTrue(session.IsDirty);
+        Assert.AreNotEqual(savedRevision, session.CurrentRevision);
+        Assert.AreEqual(savedRevision + 1, session.CurrentRevision);
+        Assert.AreEqual(session.CurrentRevision, session.History.CurrentRevision);
+    }
+
+    [TestMethod]
+    public void PageDirtyDoesNotIncludeSavedCommonNode()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("dirty pages"));
+        var first = session.ActivePage!;
+        var second = session.Document.AddPage("02");
+        session.MarkChanged(second.PageId, "ページ追加");
+        session.ExecutePage(first.PageId, page => page.Rename("保存済み"), "名前変更", "first");
+        session.MarkSaved();
+
+        session.ExecutePage(second.PageId, page => page.Rename("未保存"), "名前変更", "second");
+
+        Assert.IsFalse(session.IsPageDirty(first.PageId));
+        Assert.IsTrue(session.IsPageDirty(second.PageId));
+    }
+
+    [TestMethod]
+    public void FailedAssetRestoreRollsBackDocumentAndHistory()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("atomic"));
+        var pageId = session.ActivePage!.PageId;
+        session.ExecutePage(pageId, page => page.Rename("変更後"), "名前変更");
+        var revision = session.History.CurrentRevision;
+
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            session.History.Undo(session.Document, _ => throw new InvalidOperationException("asset failure")));
+
+        Assert.AreEqual("変更後", session.ActivePage!.Name);
+        Assert.IsTrue(session.History.CanUndo);
+        Assert.AreEqual(revision, session.History.CurrentRevision);
+    }
+
+    [TestMethod]
+    public void UndoRestoresActivePageAfterDeletingIt()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("active page"));
+        var first = session.ActivePage!;
+        var second = session.Document.AddPage("02");
+        session.ActivatePage(second.PageId);
+        session.MarkChanged(second.PageId, "ページ追加");
+
+        session.Execute(project => project.RemovePage(second.PageId), "ページ削除");
+        Assert.AreEqual(first.PageId, session.ActivePageId);
+        Assert.IsTrue(session.Undo());
+        Assert.AreEqual(second.PageId, session.ActivePageId);
+        Assert.IsTrue(session.Redo());
+        Assert.AreEqual(first.PageId, session.ActivePageId);
+    }
+
+    [TestMethod]
+    public void TrimmingCutsHistoryParentChain()
+    {
+        var document = new ProjectDocument("trim chain");
+        var history = new UndoRedoHistory(document, maxEntries: 2, maxBytes: 10000);
+        for (var index = 0; index < 20; index++)
+        {
+            history.Execute(document, project => project.Rename($"編集{index}"), "名前変更");
+        }
+
+        var currentField = typeof(UndoRedoHistory).GetField("_current", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var parentProperty = currentField.FieldType.GetProperty("Parent", BindingFlags.Instance | BindingFlags.Public)!;
+        var node = currentField.GetValue(history);
+        var depth = 0;
+        while (node != null && depth < 10)
+        {
+            node = parentProperty.GetValue(node);
+            depth++;
+        }
+
+        Assert.IsTrue(depth <= 2, $"trimmed history chain depth was {depth}");
+    }
+
+    [TestMethod]
+    public void DifferentCoalesceKeysDoNotMergeUnrelatedEdits()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("coalesce keys"));
+        var pageId = session.ActivePage!.PageId;
+
+        session.ExecutePage(pageId, page => page.Rename("文字"), "ページ編集", "text");
+        session.ExecutePage(pageId, page => page.Canvas.CanvasWidth = 100, "ページ編集", "canvas");
+
+        Assert.AreEqual(2, session.History.UndoCount);
     }
 }

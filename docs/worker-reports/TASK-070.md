@@ -12,6 +12,15 @@
 - transaction、500ms以内の同一ページ・同一操作のcoalesce、redo branch破棄、件数/推定byte上限trimを追加。
 - `Ctrl+Z`、`Ctrl+Y`、`Ctrl+Shift+Z`をWPF command routingへ接続。TextBox側の標準command処理を優先するrouteとした。
 
+## 指摘対応
+
+- coalesce時は履歴nodeのrevisionを維持し、sessionのCurrentRevisionを旧値へ戻す。保存後の次編集は新しいrevisionを払い出す。
+- page dirtyは保存nodeとの共通ancestor自体を除外して差分pathだけを集計する。
+- Undo/Redoのasset復元callbackが失敗した場合はdocumentを反対側へ戻し、stack/current nodeを変更しない。
+- active pageのbefore/after IDをentryに保持し、page削除のUndo/Redoで選択ページも復元する。
+- trim時は保持entryの境界parentをrootへ付け替え、古いHistoryNode chainを切断する。
+- UIイベントへ文字入力・スタイル変更・位置変更・キャンバス変更・画像変更などのoperation名とobject単位coalesce keyを付与した。
+
 ## 対応要件
 
 `REQ-UNDO-001`、`REQ-DIRTY-001`、`REQ-NFR-MEM-001`。
@@ -44,11 +53,11 @@ archive branchの実装はmerge/cherry-pickせず、履歴APIとテスト観点�
 ## 検証
 
 - Debug build: pass、0 warnings/0 errors。
-- Debug tests: 88 passed、0 failed。
+- Debug tests: 94 passed、0 failed。
 - Release build: pass、0 warnings/0 errors。
-- Release tests: 88 passed、0 failed。
+- Release tests: 94 passed、0 failed。
 - `git diff --check`: pass。
-- 自動テスト: page追加/削除/復元、名前変更、dirty saved revision、transaction、coalesce、redo branch、asset複製復元、trim継続編集、既存回帰。
+- 自動テスト: page追加/削除/復元、名前変更、dirty saved revision、transaction、coalesce、redo branch、asset複製復元、asset rollback、active page復元、共通node除外、trim chain切断、operation key分離、既存回帰。
 - Manual/UI: 縦書き/横書き入力、drag、複数project切替、About画面はNot verified。
 
 ## 既知の問題・後続影響

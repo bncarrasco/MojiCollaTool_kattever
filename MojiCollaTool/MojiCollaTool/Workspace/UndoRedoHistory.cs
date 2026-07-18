@@ -13,7 +13,10 @@ namespace MojiCollaTool
         internal HistoryEntry(string description, long revision, ProjectHistoryState before, ProjectHistoryState after,
             IEnumerable<Guid> affectedPageIds, long estimatedBytes,
             IReadOnlyList<ProjectAssetRestore>? beforeAssets = null,
-            IReadOnlyList<ProjectAssetRestore>? afterAssets = null)
+            IReadOnlyList<ProjectAssetRestore>? afterAssets = null,
+            Guid? beforeActivePageId = null,
+            Guid? afterActivePageId = null,
+            string? coalesceKey = null)
         {
             Description = description;
             Revision = revision;
@@ -23,6 +26,9 @@ namespace MojiCollaTool
             EstimatedBytes = estimatedBytes;
             BeforeAssets = beforeAssets ?? Array.Empty<ProjectAssetRestore>();
             AfterAssets = afterAssets ?? Array.Empty<ProjectAssetRestore>();
+            BeforeActivePageId = beforeActivePageId;
+            AfterActivePageId = afterActivePageId;
+            CoalesceKey = coalesceKey;
             CreatedAtUtc = DateTime.UtcNow;
         }
 
@@ -33,6 +39,9 @@ namespace MojiCollaTool
         public long EstimatedBytes { get; }
         internal IReadOnlyList<ProjectAssetRestore> BeforeAssets { get; }
         internal IReadOnlyList<ProjectAssetRestore> AfterAssets { get; }
+        internal Guid? BeforeActivePageId { get; }
+        internal Guid? AfterActivePageId { get; }
+        internal string? CoalesceKey { get; }
         internal DateTime CreatedAtUtc { get; }
 
         internal ProjectHistoryState Before { get; }
@@ -54,7 +63,7 @@ namespace MojiCollaTool
                 AffectedPageIds = new HashSet<Guid>(affectedPageIds);
             }
 
-            public HistoryNode? Parent { get; }
+            public HistoryNode? Parent { get; set; }
             public long Revision { get; }
             public HashSet<Guid> AffectedPageIds { get; }
         }
@@ -62,6 +71,8 @@ namespace MojiCollaTool
         private readonly List<HistoryEntry> _undoStack = new List<HistoryEntry>();
         private readonly List<HistoryEntry> _redoStack = new List<HistoryEntry>();
         private readonly Guid _projectId;
+        private readonly Dictionary<HistoryEntry, HistoryNode> _nodes = new Dictionary<HistoryEntry, HistoryNode>();
+        private readonly HistoryNode _root;
         private HistoryNode _current;
         private long _nextRevision = 1;
 
@@ -73,7 +84,8 @@ namespace MojiCollaTool
             _projectId = initialDocument.ProjectId;
             MaxEntries = maxEntries;
             MaxBytes = maxBytes;
-            _current = new HistoryNode(null, 0, Array.Empty<Guid>());
+            _root = new HistoryNode(null, 0, Array.Empty<Guid>());
+            _current = _root;
         }
 
         public int MaxEntries { get; }
@@ -106,7 +118,10 @@ namespace MojiCollaTool
         internal HistoryEntry Record(ProjectDocument before, ProjectDocument after,
             string description, IEnumerable<Guid> affectedPageIds, long revision,
             IReadOnlyList<ProjectAssetRestore>? beforeAssets = null,
-            IReadOnlyList<ProjectAssetRestore>? afterAssets = null)
+            IReadOnlyList<ProjectAssetRestore>? afterAssets = null,
+            Guid? beforeActivePageId = null,
+            Guid? afterActivePageId = null,
+            string? coalesceKey = null)
         {
             if (before == null) throw new ArgumentNullException(nameof(before));
             if (after == null) throw new ArgumentNullException(nameof(after));
@@ -120,13 +135,17 @@ namespace MojiCollaTool
             var affectedArray = affected.ToArray();
             var beforeState = before.CreateHistoryState(affectedArray);
             var afterState = after.CreateHistoryState(affectedArray);
-            return Record(beforeState, afterState, description, affectedArray, revision, beforeAssets, afterAssets);
+            return Record(beforeState, afterState, description, affectedArray, revision, beforeAssets, afterAssets,
+                beforeActivePageId, afterActivePageId, coalesceKey);
         }
 
         internal HistoryEntry Record(ProjectHistoryState before, ProjectHistoryState after,
             string description, IEnumerable<Guid> affectedPageIds, long revision,
             IReadOnlyList<ProjectAssetRestore>? beforeAssets = null,
-            IReadOnlyList<ProjectAssetRestore>? afterAssets = null)
+            IReadOnlyList<ProjectAssetRestore>? afterAssets = null,
+            Guid? beforeActivePageId = null,
+            Guid? afterActivePageId = null,
+            string? coalesceKey = null)
         {
             if (before == null) throw new ArgumentNullException(nameof(before));
             if (after == null) throw new ArgumentNullException(nameof(after));
@@ -142,12 +161,14 @@ namespace MojiCollaTool
             var copiedAfterAssets = CloneAssets(afterAssets);
             var entry = new HistoryEntry(description, revision, before, after, affected,
                 EstimateBytes(before, after, copiedBeforeAssets, copiedAfterAssets),
-                copiedBeforeAssets, copiedAfterAssets);
+                copiedBeforeAssets, copiedAfterAssets, beforeActivePageId, afterActivePageId, coalesceKey);
 
             // Clearing the list drops the only history-owned reference to the abandoned branch.
+            foreach (var abandoned in _redoStack) DetachNode(abandoned);
             _redoStack.Clear();
             _undoStack.Add(entry);
             _current = new HistoryNode(_current, revision, affected);
+            _nodes[entry] = _current;
             if (revision >= _nextRevision) _nextRevision = checked(revision + 1);
             Trim();
             return entry;
@@ -155,14 +176,15 @@ namespace MojiCollaTool
 
         internal bool TryCoalesceLast(ProjectDocument document, string description,
             IEnumerable<Guid> affectedPageIds, IReadOnlyList<ProjectAssetRestore> afterAssets,
-            TimeSpan window)
+            Guid? afterActivePageId, string? coalesceKey, TimeSpan window)
         {
             EnsureProject(document);
             if (_redoStack.Count != 0 || _undoStack.Count == 0) return false;
             var previous = _undoStack[_undoStack.Count - 1];
             if (!string.Equals(previous.Description, description, StringComparison.Ordinal) ||
                 DateTime.UtcNow - previous.CreatedAtUtc > window ||
-                !new HashSet<Guid>(previous.AffectedPageIds).SetEquals(affectedPageIds)) return false;
+                !new HashSet<Guid>(previous.AffectedPageIds).SetEquals(affectedPageIds) ||
+                !string.Equals(previous.CoalesceKey, coalesceKey, StringComparison.Ordinal)) return false;
 
             var affected = previous.AffectedPageIds.ToArray();
             var after = document.CreateHistoryState(affected);
@@ -170,16 +192,31 @@ namespace MojiCollaTool
             _undoStack[_undoStack.Count - 1] = new HistoryEntry(description, previous.Revision,
                 previous.Before, after, affected,
                 EstimateBytes(previous.Before, after, previous.BeforeAssets, copiedAfterAssets),
-                previous.BeforeAssets, copiedAfterAssets);
+                previous.BeforeAssets, copiedAfterAssets, previous.BeforeActivePageId, afterActivePageId, coalesceKey);
+            var node = _nodes[previous];
+            _nodes.Remove(previous);
+            _nodes[_undoStack[_undoStack.Count - 1]] = node;
             return true;
         }
 
         public HistoryEntry Undo(ProjectDocument target)
+            => Undo(target, restoreState: null);
+
+        internal HistoryEntry Undo(ProjectDocument target, Action<HistoryEntry>? restoreState)
         {
             EnsureTarget(target);
             if (!CanUndo) throw new InvalidOperationException("There is no operation to undo.");
             var entry = _undoStack[_undoStack.Count - 1];
             target.RestoreHistoryState(entry.Before);
+            try
+            {
+                restoreState?.Invoke(entry);
+            }
+            catch
+            {
+                target.RestoreHistoryState(entry.After);
+                throw;
+            }
             _undoStack.RemoveAt(_undoStack.Count - 1);
             _redoStack.Add(entry);
             _current = _current.Parent ?? throw new InvalidOperationException("History parent is missing.");
@@ -187,14 +224,27 @@ namespace MojiCollaTool
         }
 
         public HistoryEntry Redo(ProjectDocument target)
+            => Redo(target, restoreState: null);
+
+        internal HistoryEntry Redo(ProjectDocument target, Action<HistoryEntry>? restoreState)
         {
             EnsureTarget(target);
             if (!CanRedo) throw new InvalidOperationException("There is no operation to redo.");
             var entry = _redoStack[_redoStack.Count - 1];
             target.RestoreHistoryState(entry.After);
+            try
+            {
+                restoreState?.Invoke(entry);
+            }
+            catch
+            {
+                target.RestoreHistoryState(entry.Before);
+                throw;
+            }
             _redoStack.RemoveAt(_redoStack.Count - 1);
             _undoStack.Add(entry);
             _current = new HistoryNode(_current, entry.Revision, entry.AffectedPageIds);
+            _nodes[entry] = _current;
             return entry;
         }
 
@@ -205,8 +255,10 @@ namespace MojiCollaTool
             var savedPath = GetPath(saved);
             var common = currentPath.LastOrDefault(savedPath.Contains);
             var affected = new HashSet<Guid>();
-            foreach (var item in currentPath.SkipWhile(item => !ReferenceEquals(item, common))) affected.UnionWith(item.AffectedPageIds);
-            foreach (var item in savedPath.SkipWhile(item => !ReferenceEquals(item, common))) affected.UnionWith(item.AffectedPageIds);
+            var currentStart = common == null ? 0 : currentPath.IndexOf(common) + 1;
+            var savedStart = common == null ? 0 : savedPath.IndexOf(common) + 1;
+            foreach (var item in currentPath.Skip(currentStart)) affected.UnionWith(item.AffectedPageIds);
+            foreach (var item in savedPath.Skip(savedStart)) affected.UnionWith(item.AffectedPageIds);
             return affected;
         }
 
@@ -214,10 +266,35 @@ namespace MojiCollaTool
         {
             while (Count > MaxEntries || EstimatedBytes > MaxBytes)
             {
-                if (_undoStack.Count > 0) _undoStack.RemoveAt(0);
-                else if (_redoStack.Count > 0) _redoStack.RemoveAt(0);
+                if (_undoStack.Count > 0)
+                {
+                    var removed = _undoStack[0];
+                    _undoStack.RemoveAt(0);
+                    DetachNode(removed);
+                    if (_undoStack.Count > 0 && _nodes.TryGetValue(_undoStack[0], out var boundary))
+                    {
+                        boundary.Parent = _root;
+                    }
+                    else
+                    {
+                        _current.Parent = _root;
+                    }
+                }
+                else if (_redoStack.Count > 0)
+                {
+                    var removed = _redoStack[0];
+                    _redoStack.RemoveAt(0);
+                    DetachNode(removed);
+                }
                 else break;
             }
+        }
+
+        private void DetachNode(HistoryEntry entry)
+        {
+            if (!_nodes.TryGetValue(entry, out var node)) return;
+            node.Parent = null;
+            _nodes.Remove(entry);
         }
 
         private static long EstimateBytes(ProjectHistoryState before, ProjectHistoryState after,

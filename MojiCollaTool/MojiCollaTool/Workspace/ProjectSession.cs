@@ -21,6 +21,7 @@ namespace MojiCollaTool
         private IReadOnlyList<ProjectAssetRestore> _lastObservedAssets;
         private DateTime _lastChangeAtUtc;
         private string? _lastChangeDescription;
+        private string? _lastChangeCoalesceKey;
         private Guid[] _lastChangePages = Array.Empty<Guid>();
         private object _savedHistoryNode;
         private TransactionState? _transaction;
@@ -83,10 +84,13 @@ namespace MojiCollaTool
         public void MarkChanged(Guid pageId) => MarkChanged(pageId, "ページ編集");
 
         public void MarkChanged(Guid pageId, string description)
+            => MarkChanged(pageId, description, coalesceKey: null);
+
+        public void MarkChanged(Guid pageId, string description, string? coalesceKey)
         {
             EnsureOpen();
             Document.GetPage(pageId);
-            RecordObservedChange(description, new[] { pageId }, allowCoalesce: true);
+            RecordObservedChange(description, new[] { pageId }, allowCoalesce: true, coalesceKey: coalesceKey);
         }
 
         public void Execute(Action<ProjectDocument> mutation) => Execute(mutation, "編集");
@@ -96,31 +100,37 @@ namespace MojiCollaTool
             if (mutation == null) throw new ArgumentNullException(nameof(mutation));
             EnsureOpen();
             var before = _lastObservedSnapshot;
+            var beforeActivePageId = _activePageId;
             mutation(Document);
             EnsureActivePage();
             var affected = Document.Pages.Select(page => page.PageId).ToArray();
-            RecordObservedChange(description, affected, before, allowCoalesce: true);
+            RecordObservedChange(description, affected, before, allowCoalesce: true,
+                beforeActivePageId: beforeActivePageId);
         }
 
-        public void ExecutePage(Guid pageId, Action<PageDocument> mutation) => ExecutePage(pageId, mutation, "ページ編集");
+        public void ExecutePage(Guid pageId, Action<PageDocument> mutation) => ExecutePage(pageId, mutation, "ページ編集", null);
 
         public void ExecutePage(Guid pageId, Action<PageDocument> mutation, string description)
+            => ExecutePage(pageId, mutation, description, null);
+
+        public void ExecutePage(Guid pageId, Action<PageDocument> mutation, string description, string? coalesceKey)
         {
             if (mutation == null) throw new ArgumentNullException(nameof(mutation));
             EnsureOpen();
             var before = _lastObservedSnapshot;
+            var beforeActivePageId = _activePageId;
             mutation(Document.GetPage(pageId));
             EnsureActivePage();
-            RecordObservedChange(description, new[] { pageId }, before, allowCoalesce: true);
+            RecordObservedChange(description, new[] { pageId }, before, allowCoalesce: true,
+                beforeActivePageId: beforeActivePageId, coalesceKey: coalesceKey);
         }
 
         public bool Undo()
         {
             EnsureOpen();
             if (!History.CanUndo) return false;
-            var entry = History.Undo(Document);
-            RestoreAssets(entry.BeforeAssets);
-            EnsureActivePage();
+            var entry = History.Undo(Document, restoreState: candidate => RestoreAssets(candidate.BeforeAssets));
+            RestoreActivePage(entry.BeforeActivePageId);
             ResetCoalesceWindow();
             ApplyHistoryState();
             return true;
@@ -130,9 +140,8 @@ namespace MojiCollaTool
         {
             EnsureOpen();
             if (!History.CanRedo) return false;
-            var entry = History.Redo(Document);
-            RestoreAssets(entry.AfterAssets);
-            EnsureActivePage();
+            var entry = History.Redo(Document, restoreState: candidate => RestoreAssets(candidate.AfterAssets));
+            RestoreActivePage(entry.AfterActivePageId);
             ResetCoalesceWindow();
             ApplyHistoryState();
             return true;
@@ -141,7 +150,8 @@ namespace MojiCollaTool
         public IDisposable BeginTransaction(string description = "編集")
         {
             EnsureOpen();
-            if (_transaction == null) _transaction = new TransactionState(_lastObservedSnapshot, _lastObservedAssets, description);
+            if (_transaction == null) _transaction = new TransactionState(_lastObservedSnapshot, _lastObservedAssets,
+                _activePageId, description);
             else _transaction.Depth++;
             return new TransactionScope(this);
         }
@@ -220,13 +230,14 @@ namespace MojiCollaTool
             _transaction = null;
             if (transaction.AffectedPageIds.Count > 0)
             {
-                RecordObservedChange(transaction.Description, transaction.AffectedPageIds, transaction.Before, transaction.BeforeAssets, allowCoalesce: false);
+                RecordObservedChange(transaction.Description, transaction.AffectedPageIds, transaction.Before, transaction.BeforeAssets,
+                    allowCoalesce: false, beforeActivePageId: transaction.BeforeActivePageId);
             }
         }
 
         private void RecordObservedChange(string description, IEnumerable<Guid> affectedPageIds,
             ProjectDocument? before = null, IReadOnlyList<ProjectAssetRestore>? beforeAssets = null,
-            bool allowCoalesce = true)
+            bool allowCoalesce = true, Guid? beforeActivePageId = null, string? coalesceKey = null)
         {
             if (string.IsNullOrWhiteSpace(description)) throw new ArgumentException("Description is required.", nameof(description));
             var affected = affectedPageIds.Distinct().ToArray();
@@ -238,27 +249,32 @@ namespace MojiCollaTool
                 return;
             }
 
-            var revision = _nextRevision++;
             beforeAssets ??= _lastObservedAssets;
             var afterAssets = CaptureAssets();
+            var afterActivePageId = _activePageId;
             var canCoalesce = allowCoalesce && _currentRevision != _savedRevision &&
                 string.Equals(_lastChangeDescription, description, StringComparison.Ordinal) &&
+                string.Equals(_lastChangeCoalesceKey, coalesceKey, StringComparison.Ordinal) &&
                 _lastChangePages.SequenceEqual(affected) &&
                 DateTime.UtcNow - _lastChangeAtUtc <= TimeSpan.FromMilliseconds(500);
-            if (canCoalesce && History.TryCoalesceLast(Document, description, affected, afterAssets, TimeSpan.FromMilliseconds(500)))
+            if (canCoalesce && History.TryCoalesceLast(Document, description, affected, afterAssets,
+                afterActivePageId, coalesceKey, TimeSpan.FromMilliseconds(500)))
             {
-                _nextRevision--;
+                _currentRevision = History.CurrentRevision;
             }
             else
             {
-                History.Record(before ?? _lastObservedSnapshot, Document, description, affected, revision, beforeAssets, afterAssets);
+                var revision = _nextRevision++;
+                History.Record(before ?? _lastObservedSnapshot, Document, description, affected, revision, beforeAssets, afterAssets,
+                    beforeActivePageId, afterActivePageId, coalesceKey);
+                _currentRevision = revision;
             }
             _lastObservedSnapshot = Document.CreateHistorySnapshot();
             _lastObservedAssets = afterAssets;
             _lastChangeAtUtc = DateTime.UtcNow;
             _lastChangeDescription = description;
+            _lastChangeCoalesceKey = coalesceKey;
             _lastChangePages = affected;
-            _currentRevision = revision;
             RaiseRevisionChanged();
         }
 
@@ -284,6 +300,7 @@ namespace MojiCollaTool
         private void ResetCoalesceWindow()
         {
             _lastChangeDescription = null;
+            _lastChangeCoalesceKey = null;
             _lastChangePages = Array.Empty<Guid>();
             _lastChangeAtUtc = DateTime.MinValue;
         }
@@ -296,7 +313,16 @@ namespace MojiCollaTool
         private void EnsureActivePage()
         {
             if (_activePageId.HasValue && Document.ContainsPage(_activePageId.Value)) return;
-            _activePageId = Document.Pages[0].PageId;
+            RestoreActivePage(Document.Pages[0].PageId);
+        }
+
+        private void RestoreActivePage(Guid? pageId)
+        {
+            var restoredPageId = pageId.HasValue && Document.ContainsPage(pageId.Value)
+                ? pageId
+                : Document.Pages[0].PageId;
+            if (_activePageId == restoredPageId) return;
+            _activePageId = restoredPageId;
             OnPropertyChanged(nameof(ActivePageId));
             OnPropertyChanged(nameof(ActivePage));
         }
@@ -315,14 +341,17 @@ namespace MojiCollaTool
 
         private sealed class TransactionState
         {
-            public TransactionState(ProjectDocument before, IReadOnlyList<ProjectAssetRestore> beforeAssets, string description)
+            public TransactionState(ProjectDocument before, IReadOnlyList<ProjectAssetRestore> beforeAssets,
+                Guid? beforeActivePageId, string description)
             {
                 Before = before;
                 BeforeAssets = beforeAssets;
+                BeforeActivePageId = beforeActivePageId;
                 Description = description;
             }
             public ProjectDocument Before { get; }
             public IReadOnlyList<ProjectAssetRestore> BeforeAssets { get; }
+            public Guid? BeforeActivePageId { get; }
             public string Description { get; }
             public HashSet<Guid> AffectedPageIds { get; } = new HashSet<Guid>();
             public int Depth { get; set; }

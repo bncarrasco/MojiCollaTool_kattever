@@ -209,7 +209,7 @@ namespace MojiCollaTool
             CaptureEditorState();
             var page = ActiveSession.Document.AddPage();
             ActiveSession.ActivatePage(page.PageId);
-            ActiveSession.MarkChanged(page.PageId);
+            ActiveSession.MarkChanged(page.PageId, "ページ追加");
             BindActivePage();
             RefreshTabs();
         }
@@ -230,7 +230,7 @@ namespace MojiCollaTool
                 throw;
             }
             ActiveSession.ActivatePage(clone.PageId);
-            ActiveSession.MarkChanged(clone.PageId);
+            ActiveSession.MarkChanged(clone.PageId, "ページ複製");
             BindActivePage();
             RefreshTabs();
         }
@@ -301,7 +301,7 @@ namespace MojiCollaTool
                 PageEditor.ApplyImage(candidate, 1);
                 CanvasData.UpdateCanvasSize();
                 PageEditor.UpdateCanvas();
-                PageEditor.NotifyContentChanged();
+                PageEditor.NotifyContentChanged("画像変更");
                 _lastUsedDirectory = Path.GetDirectoryName(filePath);
             }
             catch (Exception ex)
@@ -339,7 +339,7 @@ namespace MojiCollaTool
                 CanvasData.ModifyImageSize();
                 CanvasData.UpdateCanvasSize();
                 PageEditor.UpdateCanvas();
-                PageEditor.NotifyContentChanged();
+                PageEditor.NotifyContentChanged("画像変更");
                 _lastUsedDirectory = Path.GetDirectoryName(dialog.FileName);
             }
             catch (Exception ex)
@@ -478,7 +478,8 @@ namespace MojiCollaTool
         {
             if (ActiveSession == null || ActivePage == null || PageEditor.BoundPage == null) return;
             CaptureEditorState();
-            ActiveSession.MarkChanged(ActivePage.PageId);
+            ActiveSession.MarkChanged(ActivePage.PageId, PageEditor.ContentChangeDescription,
+                PageEditor.ContentChangeCoalesceKey);
             RefreshTabs();
         }
 
