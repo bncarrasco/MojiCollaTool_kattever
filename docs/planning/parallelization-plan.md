@@ -57,18 +57,16 @@ TASK-000が先に完成しても単独で統合可能だが、第2陣のbaseはT
 - test framework導入が不適切なら、最小console characterization harnessを比較し、決定をreportへ残す。
 - 第三者codeの由来を確定できない場合、推測のnoticeを追加せず、該当fileと候補source、必要な専門確認を報告する。
 
-## 7. TASK-030統合後の現在wave
+## 7. TASK-060／TASK-190B統合後の現在wave
 
-基準HEADは `7fc27d5f454854ee0812f5267da7fe662485bc03`。依存DAG上は次の3taskが開始可能である。
+TASK-060とTASK-190Bは`develop`へ統合済み。依存DAG上は次の3taskが開始可能である。
 
 | Task | 依存状態 | 主な変更領域 | 並行判断 |
 | --- | --- | --- | --- |
-| TASK-060 | TASK-010統合済み | document/object model、serializer、tests。MainWindow変更禁止 | UI task 1件と安全に並行可能。P0基盤のため必須lane |
-| TASK-050 | TASK-030統合済み | export service、MainWindow/PageEditorの出力UI | TASK-060と並行可能。TASK-190BとはMainWindow/XAML競合のため不可 |
-| TASK-190B | TASK-020、TASK-190A統合済み | MainWindow/App/About、assembly/package metadata、license導線 | TASK-060と並行可能。TASK-050とは直列化 |
+| TASK-050 | TASK-030統合済み | export service、MainWindow/PageEditorの出力UI | TASK-070およびTASK-200と競合するため単独lane |
+| TASK-070 | TASK-020、TASK-060統合済み | history service、PageEditor input、MainWindow command bindings、tests | P0。TASK-050およびTASK-200と競合するため次の単独laneに推奨 |
+| TASK-200 | TASK-190B統合済み | XAML/CS全般の日本語UI inventoryと修正 | TASK-050およびTASK-070と競合するため単独lane |
 
-推奨waveは `TASK-060 + TASK-190B`。TASK-190Bは比較的小さく、未完了の配布時license/非公式表記を先に閉じられる。TASK-190B統合後、TASK-060が継続中でもTASK-050を開始できる。
+現在のtask粒度では安全に並行実装できる組み合わせはない。優先度と後続解放数から、次はTASK-070を単独で実施する。
 
-代替waveは `TASK-060 + TASK-050`。ユーザー価値として全ページ出力を優先する場合はこちらを選ぶ。いずれもTASK-050とTASK-190Bを同時開始しない。
-
-TASK-070はTASK-060完了後に依存解消するが、MainWindow/PageEditorを変更するため、その時点で進行中のTASK-050またはTASK-190Bとの競合を再判定する。
+TASK-070統合後はTASK-080、TASK-090、TASK-110、TASK-170、TASK-210、TASK-230が依存解消する。次waveでは、MainWindow/PageEditorを変更するTASK-050と、新規model/serializer中心でMainWindowを変更しないTASK-110を、file ownershipを指示書で固定したうえで並行候補として再評価する。

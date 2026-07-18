@@ -55,6 +55,18 @@
 - `docs/worker-reports/TASK-XXX.md` と、自分の行だけの `implementation-ledger.md` 更新をコミットへ含める。
 - `CHANGELOG.md`にはユーザー向けに意味のある変更だけを記録し、コミット一覧を転記しない。
 
+## Build and test SDK
+
+- 本repositoryの標準SDKは `global.json` が指定する .NET SDK 6.0.428 とする。
+- この環境では `C:\Users\user\.dotnet\dotnet.exe` を使用する。PATH上の `dotnet` が見つからない、または別versionを返すことだけを理由にSDK未導入と判断しない。
+- 作業開始時に `C:\Users\user\.dotnet\dotnet.exe --version` を実行し、`6.0.428`であることを確認して報告書へ記録する。
+- 通常の検証はrepository標準scriptを使用する。
+  - Debug build: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Debug`
+  - Release build: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Release`
+  - Test: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\test.ps1`
+- script外で`dotnet`を直接実行する必要がある場合も、`C:\Users\user\.dotnet\dotnet.exe`を明示する。
+- SDKの再インストール、更新、`global.json`変更はタスクscopeに含めず、必要に見える場合は実施前に司令役へ報告する。
+
 ## Completion report
 
 ワーカー報告には、Result、Summary、対応要件ID、ブランチ、worktree、Base/Result commit、変更ファイル、設計判断、ADR候補、指示からの逸脱、ビルド・テスト・手動確認、縦書き・横書き・日本語UI・互換性確認、既知の問題、後続影響、マージ注意、ロールバック方法を含める。
