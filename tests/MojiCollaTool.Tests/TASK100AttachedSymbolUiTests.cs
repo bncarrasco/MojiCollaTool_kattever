@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -12,6 +13,8 @@ namespace MojiCollaTool.Tests;
 [TestClass]
 public class TASK100AttachedSymbolUiTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
     [TestMethod]
     public void PageEditorBuildsOneTextVisualPerGraphemeCluster()
     {
@@ -300,6 +303,177 @@ public class TASK100AttachedSymbolUiTests
             page.AllObjects.Select(item => item.ObjectId).ToArray());
         CollectionAssert.AreEqual(new[] { 0, 1, 2 }, page.AllObjects.Select(item => item.ZIndex).ToArray());
     }
+
+    [TestMethod]
+    public void MixedCanonicalZOrderIsReflectedByRenderedVisualHierarchy()
+    {
+        RunOnSta(() =>
+        {
+            var page = new PageDocument("visual-z-order", new[] { new MojiData { FullText = "A" } });
+            var firstTextId = page.MojiDatas[0].ObjectId;
+            var balloon = new BalloonData { Bounds = new Rect(0, 0, 100, 60) };
+            page.AddBalloon(balloon);
+            var symbol = new AttachedSymbolData { ParentId = firstTextId, GraphemeAnchor = 0, Text = "!" };
+            page.AddAttachedSymbol(symbol);
+            var secondText = new MojiData { FullText = "B" };
+            page.AddMojiData(secondText);
+
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            var topLevelIds = editor.Canvas.Children.Cast<UIElement>()
+                .Where(child => child is MojiPanel || child is BalloonVisual)
+                .Select(child => child switch
+            {
+                MojiPanel panel => panel.MojiData.ObjectId,
+                BalloonVisual visual => visual.ObjectId,
+                _ => Guid.Empty
+            }).ToArray();
+            var expectedTopLevelIds = page.AllObjects
+                .Where(item => item is MojiData || item is BalloonData)
+                .Select(item => item.ObjectId).ToArray();
+            CollectionAssert.AreEqual(expectedTopLevelIds, topLevelIds);
+            Assert.AreEqual(symbol.ObjectId, editor.MojiPanels.Single(panel => panel.MojiData.ObjectId == firstTextId)
+                .AttachedSymbolVisuals.Single().ObjectId);
+            Assert.IsTrue(editor.MojiPanels.Single(panel => panel.MojiData.ObjectId == firstTextId)
+                .AttachedSymbolVisuals.Single().Visibility == Visibility.Visible);
+        });
+    }
+
+    [TestMethod]
+    public void TwoRecognizedFontsHaveFiniteAdjustableHorizontalAndVerticalPlacement()
+    {
+        RunOnSta(() =>
+        {
+            var fontNames = FontUtil.GetFontFamilies().Keys.Take(2).ToArray();
+            Assert.AreEqual(2, fontNames.Length, "The WPF test environment must expose at least two system fonts.");
+            var page = new PageDocument("fonts", new[]
+            {
+                new MojiData { FullText = "AB", FontFamilyName = fontNames[0] }
+            });
+            var symbol = new AttachedSymbolData
+            {
+                ParentId = page.MojiDatas[0].ObjectId,
+                GraphemeAnchor = 0,
+                Text = "!?",
+                FontFamilyName = fontNames[1]
+            };
+            page.AddAttachedSymbol(symbol);
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            var parent = editor.MojiPanels[0];
+            var visual = editor.AttachedSymbolVisuals.Single();
+            foreach (var direction in new[] { TextDirection.Yokogaki, TextDirection.Tategaki })
+            {
+                parent.MojiData.TextDirection = direction;
+                parent.UpdateMojiView(true);
+                Assert.IsFalse(visual.IsFontFallback);
+                Assert.IsTrue(IsFinite(Canvas.GetLeft(visual)) && IsFinite(Canvas.GetTop(visual)));
+                Assert.IsTrue(IsFinite(visual.AnchorBounds.Left) && IsFinite(visual.AnchorBounds.Top));
+                var before = Canvas.GetLeft(visual);
+                editor.UpdateAttachedSymbol(visual.ObjectId, data => data.OffsetX += 0.5);
+                Assert.AreNotEqual(before, Canvas.GetLeft(visual));
+            }
+        });
+    }
+
+    [TestMethod]
+    public void UiAddRemovePropertyAndDragHaveUndoRedoSavedDirtyAndRedoBranchSemantics()
+    {
+        RunOnSta(() =>
+        {
+            var document = new ProjectDocument("ui-history");
+            var page = document.Pages[0];
+            page.AddMojiData(new MojiData { FullText = "AB" });
+            using var session = new ProjectSession(document);
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+
+            var parentId = editor.MojiPanels[0].MojiData.ObjectId;
+            var visual = editor.AddAttachedSymbol(parentId, 0, "!");
+            Assert.IsTrue(session.IsDirty);
+            session.MarkSaved();
+            Assert.IsFalse(session.IsDirty);
+            var initialOffset = visual.SymbolData.OffsetX;
+
+            editor.UpdateAttachedSymbol(visual.ObjectId, data => data.OffsetX = initialOffset + 0.25);
+            Assert.IsTrue(session.IsDirty);
+            Assert.IsTrue(session.Undo());
+            editor.BindPage(session.ActivePage!, null);
+            TestContext.WriteLine($"property-undo expected={initialOffset:F6}; page={session.ActivePage!.AttachedSymbols.Single().OffsetX:F6}; visual={editor.AttachedSymbolVisuals.Single().SymbolData.OffsetX:F6}");
+            Assert.AreEqual(initialOffset, editor.AttachedSymbolVisuals.Single().SymbolData.OffsetX);
+            Assert.IsFalse(session.IsDirty);
+            Assert.IsTrue(session.Redo());
+            editor.BindPage(session.ActivePage!, null);
+            Assert.IsTrue(session.IsDirty);
+
+            visual = editor.AttachedSymbolVisuals.Single();
+            Assert.IsTrue(editor.BeginAttachedSymbolGesture(visual.ObjectId, new Point(0, 0)));
+            editor.UpdateAttachedSymbolGesture(new Point(12, 0));
+            Assert.IsTrue(editor.CommitAttachedSymbolGesture(new Point(12, 0)));
+            visual = editor.AttachedSymbolVisuals.Single();
+            Assert.IsTrue(session.Undo());
+            editor.BindPage(session.ActivePage!, null);
+            Assert.IsTrue(session.CanRedo);
+
+            visual = editor.AttachedSymbolVisuals.Single();
+            Assert.IsTrue(editor.RemoveAttachedSymbol(visual.ObjectId));
+            Assert.IsFalse(session.CanRedo, "A UI remove must discard the undone drag redo branch.");
+            Assert.IsTrue(session.Undo());
+            editor.BindPage(session.ActivePage!, null);
+            Assert.AreEqual(1, editor.AttachedSymbolVisuals.Count);
+            Assert.IsTrue(session.Redo());
+            editor.BindPage(session.ActivePage!, null);
+            Assert.AreEqual(0, editor.AttachedSymbolVisuals.Count);
+        });
+    }
+
+    [TestMethod]
+    public void MultipleAttachedSymbolsRefreshAndDragPerformanceIsMeasured()
+    {
+        string measurement = string.Empty;
+        RunOnSta(() =>
+        {
+            var page = new PageDocument("symbol-performance", new[] { new MojiData { FullText = "A" } });
+            var parentId = page.MojiDatas[0].ObjectId;
+            for (var i = 0; i < 24; i++)
+            {
+                page.AddAttachedSymbol(new AttachedSymbolData
+                {
+                    ParentId = parentId,
+                    GraphemeAnchor = 0,
+                    Text = i % 2 == 0 ? "!?" : "\u3099"
+                });
+            }
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            var panel = editor.MojiPanels[0];
+
+            var refreshWatch = Stopwatch.StartNew();
+            for (var i = 0; i < 50; i++) panel.UpdateMojiView(false);
+            refreshWatch.Stop();
+
+            var visual = editor.AttachedSymbolVisuals[0];
+            var dragWatch = Stopwatch.StartNew();
+            for (var i = 0; i < 25; i++)
+            {
+                Assert.IsTrue(editor.BeginAttachedSymbolGesture(visual.ObjectId, new Point(0, 0)));
+                editor.UpdateAttachedSymbolGesture(new Point(i + 1, 0));
+                editor.CommitAttachedSymbolGesture(new Point(i + 1, 0));
+            }
+            dragWatch.Stop();
+            measurement = $"attached-symbols={editor.AttachedSymbolVisuals.Count}; refresh-50-ms={refreshWatch.Elapsed.TotalMilliseconds:F3}; drag-25-ms={dragWatch.Elapsed.TotalMilliseconds:F3}";
+            Assert.IsTrue(refreshWatch.Elapsed < TimeSpan.FromSeconds(5));
+            Assert.IsTrue(dragWatch.Elapsed < TimeSpan.FromSeconds(5));
+        });
+        TestContext.WriteLine(measurement);
+    }
+
+    private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 
     private static void RunOnSta(Action action)
     {
