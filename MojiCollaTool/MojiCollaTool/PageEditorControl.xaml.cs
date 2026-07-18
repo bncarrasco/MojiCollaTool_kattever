@@ -128,6 +128,16 @@ namespace MojiCollaTool
             }
         }
 
+        internal void ReloadBoundPage()
+        {
+            if (_boundPage == null) return;
+            var page = _boundPage;
+            var source = _assetSource;
+            var sink = _assetSink;
+            _boundPage = null;
+            BindPage(page, source, sink);
+        }
+
         public void AddNewMojiPanel() => AddMojiPanel(new MojiPanel(GetNextMojiId(), this));
 
         public void AddMojiPanel(MojiPanel mojiPanel)
@@ -166,20 +176,39 @@ namespace MojiCollaTool
         public void LoadImage(string filePath, int imageNumber)
         {
             if (imageNumber is < 1 or > 2) throw new ArgumentOutOfRangeException(nameof(imageNumber));
-
-            var imageSource = ImageUtil.LoadImageSource2(filePath);
-            var image = imageNumber == 1 ? ImageControl1 : ImageControl2;
-            image.Source = imageSource;
-            var imageData = new ImageData((int)imageSource.Width, (int)imageSource.Height);
-
-            if (imageNumber == 1) CanvasData.ImageData1 = imageData;
-            else CanvasData.ImageData2 = imageData;
-            if (_boundPage != null && _assetSink != null)
+            var candidate = _boundPage != null && _assetSink is ProjectSessionAssetStore store
+                ? store.PrepareImage(filePath)
+                : CreateCandidate(filePath);
+            if (_boundPage != null && _assetSink is ProjectSessionAssetStore assetStore)
             {
-                using var content = File.OpenRead(filePath);
-                _assetSink.SaveImage(_boundPage.PageId, imageNumber, Path.GetExtension(filePath), content);
+                var assets = assetStore.GetPageAssets(_boundPage.PageId)
+                    .Where(asset => asset.ImageNumber != imageNumber)
+                    .Append(candidate.ToAsset(_boundPage.PageId, imageNumber))
+                    .ToArray();
+                assetStore.ReplacePageAssets(_boundPage.PageId, assets);
             }
+            ApplyImage(candidate, imageNumber);
             RaiseContentChanged();
+        }
+
+        public void ApplyImage(ProjectImageCandidate candidate, int imageNumber)
+        {
+            ThrowIfDisposed();
+            if (candidate == null) throw new ArgumentNullException(nameof(candidate));
+            if (imageNumber is < 1 or > 2) throw new ArgumentOutOfRangeException(nameof(imageNumber));
+            var imageSource = CreateImageSource(candidate.Content);
+            (imageNumber == 1 ? ImageControl1 : ImageControl2).Source = imageSource;
+            if (imageNumber == 1) CanvasData.ImageData1 = candidate.ToImageData();
+            else CanvasData.ImageData2 = candidate.ToImageData();
+        }
+
+        public void ClearImage(int imageNumber)
+        {
+            ThrowIfDisposed();
+            if (imageNumber is < 1 or > 2) throw new ArgumentOutOfRangeException(nameof(imageNumber));
+            (imageNumber == 1 ? ImageControl1 : ImageControl2).Source = null;
+            if (imageNumber == 1) CanvasData.ImageData1.Init();
+            else CanvasData.ImageData2.Init();
         }
 
         public void UnloadImage(int imageNumber)
@@ -187,6 +216,8 @@ namespace MojiCollaTool
             if (imageNumber is < 1 or > 2) throw new ArgumentOutOfRangeException(nameof(imageNumber));
             (imageNumber == 1 ? ImageControl1 : ImageControl2).Source = null;
         }
+
+        internal void NotifyContentChanged() => RaiseContentChanged();
 
         public void CloseCanvasEditor()
         {
@@ -358,6 +389,28 @@ namespace MojiCollaTool
             imageSource.Freeze();
             var image = imageNumber == 1 ? ImageControl1 : ImageControl2;
             image.Source = imageSource;
+        }
+
+        private static BitmapImage CreateImageSource(byte[] content)
+        {
+            using var stream = new MemoryStream(content, writable: false);
+            var imageSource = new BitmapImage();
+            imageSource.BeginInit();
+            imageSource.CacheOption = BitmapCacheOption.OnLoad;
+            imageSource.StreamSource = stream;
+            imageSource.EndInit();
+            imageSource.Freeze();
+            return imageSource;
+        }
+
+        private static ProjectImageCandidate CreateCandidate(string filePath)
+        {
+            var imageSource = ImageUtil.LoadImageSource2(filePath);
+            return new ProjectImageCandidate(
+                Path.GetExtension(filePath),
+                File.ReadAllBytes(filePath),
+                (int)imageSource.Width,
+                (int)imageSource.Height);
         }
 
         private void RaiseContentChanged()

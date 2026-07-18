@@ -66,14 +66,14 @@ namespace MojiCollaTool
         private void Window_Activated(object sender, EventArgs e)
         {
             // MojiWindowは直接MojiDataを変更するため、再アクティブ化時に文書へ反映します。
-            if (!_closing && ActiveSession != null) CommitEditorChanges();
+            if (!_closing && ActiveSession != null) CaptureEditorState();
             PageEditor.RefreshMojiList();
         }
 
         private void ProjectTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_refreshingTabs || e.AddedItems.Count == 0 || e.AddedItems[0] is not TabItem tab || tab.Tag is not ProjectSession session) return;
-            CommitEditorChanges();
+            CaptureEditorState();
             _workspace.SetActiveSession(session);
             BindActivePage();
             RefreshTabs();
@@ -82,7 +82,7 @@ namespace MojiCollaTool
         private void PageTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_refreshingTabs || e.AddedItems.Count == 0 || e.AddedItems[0] is not TabItem tab || tab.Tag is not PageDocument page || ActiveSession == null) return;
-            CommitEditorChanges();
+            CaptureEditorState();
             ActiveSession.ActivatePage(page.PageId);
             BindActivePage();
             RefreshTabs();
@@ -102,7 +102,12 @@ namespace MojiCollaTool
                         Header = CreateTabHeader($"{session.Document.Name}{(session.IsDirty ? "*" : string.Empty)}", session),
                     });
                 }
-                if (ActiveSession != null) ProjectTabs.SelectedValue = ActiveSession;
+                if (ActiveSession != null)
+                {
+                    ProjectTabs.SelectedItem = ProjectTabs.Items
+                        .OfType<TabItem>()
+                        .FirstOrDefault(tab => ReferenceEquals(tab.Tag, ActiveSession));
+                }
                 else ProjectTabs.SelectedIndex = -1;
 
                 PageTabs.Items.Clear();
@@ -116,7 +121,9 @@ namespace MojiCollaTool
                             Header = $"{page.Name}{(ActiveSession.IsPageDirty(page.PageId) ? "*" : string.Empty)}",
                         });
                     }
-                    PageTabs.SelectedValue = ActivePage;
+                    PageTabs.SelectedItem = PageTabs.Items
+                        .OfType<TabItem>()
+                        .FirstOrDefault(tab => ReferenceEquals(tab.Tag, ActivePage));
                 }
             }
             finally
@@ -143,7 +150,7 @@ namespace MojiCollaTool
 
         private void InitButton_Click(object sender, RoutedEventArgs e)
         {
-            CommitEditorChanges();
+            CaptureEditorState();
             _workspace.Open(new ProjectDocument());
             RefreshTabs();
         }
@@ -151,7 +158,7 @@ namespace MojiCollaTool
         private void AddPageButton_Click(object sender, RoutedEventArgs e)
         {
             if (ActiveSession == null) return;
-            CommitEditorChanges();
+            CaptureEditorState();
             var page = ActiveSession.Document.AddPage();
             ActiveSession.ActivatePage(page.PageId);
             ActiveSession.MarkChanged(page.PageId);
@@ -162,7 +169,7 @@ namespace MojiCollaTool
         private void DuplicatePageButton_Click(object sender, RoutedEventArgs e)
         {
             if (ActiveSession == null || ActivePage == null) return;
-            CommitEditorChanges();
+            CaptureEditorState();
             var source = ActivePage;
             var clone = ActiveSession.Document.ClonePage(source.PageId);
             try
@@ -233,22 +240,33 @@ namespace MojiCollaTool
         private void ReplaceImage(string filePath)
         {
             if (ActiveSession == null || ActivePage == null) return;
+            var session = ActiveSession;
+            var page = ActivePage;
+            var oldAssets = session.AssetStore.GetPageAssets(page.PageId);
             try
             {
-                CommitEditorChanges();
-                ActiveSession.AssetStore.RemoveImage(ActivePage.PageId, 1);
-                ActiveSession.AssetStore.RemoveImage(ActivePage.PageId, 2);
-                CanvasData.Init();
-                PageEditor.UnloadImage(1);
-                PageEditor.UnloadImage(2);
-                PageEditor.LoadImage(filePath, 1);
+                CaptureEditorState();
+                var candidate = session.AssetStore.PrepareImage(filePath);
+                session.AssetStore.ReplacePageAssets(page.PageId, new[] { candidate.ToAsset(page.PageId, 1) });
+                PageEditor.ClearImage(1);
+                PageEditor.ClearImage(2);
+                PageEditor.ApplyImage(candidate, 1);
                 CanvasData.UpdateCanvasSize();
                 PageEditor.UpdateCanvas();
-                CommitEditorChanges();
+                PageEditor.NotifyContentChanged();
                 _lastUsedDirectory = Path.GetDirectoryName(filePath);
             }
             catch (Exception ex)
             {
+                try
+                {
+                    session.AssetStore.ReplacePageAssets(page.PageId, oldAssets);
+                    PageEditor.ReloadBoundPage();
+                }
+                catch (Exception restoreException)
+                {
+                    ex = new AggregateException(ex, restoreException);
+                }
                 ShowError("画像入れ替え処理に失敗しました。", ex);
             }
         }
@@ -257,21 +275,36 @@ namespace MojiCollaTool
         {
             var dialog = CreateOpenFileDialog("画像ファイル|*.jpg;*.jpeg;*.png");
             if (dialog.ShowDialog() != true || ActiveSession == null || ActivePage == null) return;
+            var session = ActiveSession;
+            var page = ActivePage;
+            var oldAssets = session.AssetStore.GetPageAssets(page.PageId);
             try
             {
-                CommitEditorChanges();
-                ActiveSession.AssetStore.RemoveImage(ActivePage.PageId, 2);
-                CanvasData.ImageData2.Init();
-                PageEditor.UnloadImage(2);
-                PageEditor.LoadImage(dialog.FileName, 2);
+                CaptureEditorState();
+                var candidate = session.AssetStore.PrepareImage(dialog.FileName);
+                var newAssets = oldAssets
+                    .Where(asset => asset.ImageNumber != 2)
+                    .Append(candidate.ToAsset(page.PageId, 2))
+                    .ToArray();
+                session.AssetStore.ReplacePageAssets(page.PageId, newAssets);
+                PageEditor.ApplyImage(candidate, 2);
                 CanvasData.ModifyImageSize();
                 CanvasData.UpdateCanvasSize();
                 PageEditor.UpdateCanvas();
-                CommitEditorChanges();
+                PageEditor.NotifyContentChanged();
                 _lastUsedDirectory = Path.GetDirectoryName(dialog.FileName);
             }
             catch (Exception ex)
             {
+                try
+                {
+                    session.AssetStore.ReplacePageAssets(page.PageId, oldAssets);
+                    PageEditor.ReloadBoundPage();
+                }
+                catch (Exception restoreException)
+                {
+                    ex = new AggregateException(ex, restoreException);
+                }
                 ShowError("2枚目の画像追加処理に失敗しました。", ex);
             }
         }
@@ -319,7 +352,7 @@ namespace MojiCollaTool
         {
             var session = ActiveSession;
             if (session == null) return true;
-            CommitEditorChanges();
+            CaptureEditorState();
             var filePath = session.FilePath;
             if (string.IsNullOrEmpty(filePath))
             {
@@ -396,9 +429,14 @@ namespace MojiCollaTool
         private void CommitEditorChanges()
         {
             if (ActiveSession == null || ActivePage == null || PageEditor.BoundPage == null) return;
-            PageEditor.CapturePage();
+            CaptureEditorState();
             ActiveSession.MarkChanged(ActivePage.PageId);
             RefreshTabs();
+        }
+
+        private void CaptureEditorState()
+        {
+            PageEditor.CapturePage();
         }
 
         private void BindActivePage()
@@ -412,7 +450,7 @@ namespace MojiCollaTool
             var policy = ClosePolicyFor(session);
             if (policy == null) return;
             var wasActive = ReferenceEquals(ActiveSession, session);
-            PageEditor.CapturePage();
+            CaptureEditorState();
             if (_workspace.CloseSession(session, policy.Value))
             {
                 if (wasActive)
@@ -444,7 +482,7 @@ namespace MojiCollaTool
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             if (_closing) return;
-            CommitEditorChanges();
+            CaptureEditorState();
             foreach (var session in _workspace.Sessions.ToArray())
             {
                 if (!ReferenceEquals(ActiveSession, session))

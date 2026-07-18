@@ -66,6 +66,7 @@ namespace MojiCollaTool
         private PageEditorControl pageEditor;
 
         private Nullable<Point> dragStart = null;
+        private bool dragMoved;
 
         /// <summary>
         /// パネルがダブルクリックされたことを示すフラグ
@@ -150,6 +151,7 @@ namespace MojiCollaTool
 
                 MojiData.X = p2.X - dragStart.Value.X;
                 MojiData.Y = p2.Y - dragStart.Value.Y;
+                dragMoved = true;
 
                 Margin = new Thickness(MojiData.X, MojiData.Y, 0, 0);
             }
@@ -164,8 +166,10 @@ namespace MojiCollaTool
                 MojiData.X = VisualOffset.X;
                 MojiData.Y = VisualOffset.Y;
                 MojiWindow?.UpdateXY(MojiData.X, MojiData.Y);
+                if (dragMoved) pageEditor.NotifyContentChanged();
             }
             dragStart = null;
+            dragMoved = false;
             element.ReleaseMouseCapture();
 
             //  パネルがダブルクリックされた場合の後処理
@@ -212,8 +216,11 @@ namespace MojiCollaTool
         {
             var element = (UIElement)sender;
             dragStart = e.GetPosition(element);
+            dragMoved = false;
             element.CaptureMouse();
         }
+
+        internal void NotifyContentChanged() => pageEditor.NotifyContentChanged();
 
         private void MojiPanel_Unloaded(object sender, RoutedEventArgs e)
         {

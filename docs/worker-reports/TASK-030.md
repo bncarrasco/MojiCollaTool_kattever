@@ -13,6 +13,10 @@
 - 同一pathの相対表記・絶対表記の重複をworkspaceの既存path正規化で拒否し、既存tabをactive化。
 - `PageEditorControl`へ最小限のpage bind/capture/unbindを追加し、active pageだけを表示。
 - page複製時に画像bytesを新PageIdへ複製し、page削除・session closeでasset storeを解放。
+- captureと実変更通知を分離し、cleanなtab切替・保存・bind/unbindではdirtyを発生させないよう修正。
+- MojiPanelのdrag完了、MojiWindow、CanvasEditWindow、文字追加削除、画像変更からContentChangedを通知。
+- RefreshTabsはTabItem.Tagとactive modelの参照一致でSelectedItemを復元。
+- 画像候補をdecode・bytes検証してからpage assetを一括置換し、失敗時にasset・metadata・表示を復元。
 
 ## 対応要件・ADR
 
@@ -36,17 +40,22 @@
 - Base commit: `8875af4696663f34a6ba72f255b2f9e209578dd2`
 - 開始時HEAD: `70386485419c3d9dbcb09ee9c2c7493e5e66b50b`
 - Result commit: `124e3e4ff0883dcffeaecc6d28cf724abc291b39`
+- Review fix commit: 後続のレビュー修正commitで確定
 
 ## Changed files
 
 - `MojiCollaTool/MojiCollaTool/MainWindow.xaml`
 - `MojiCollaTool/MojiCollaTool/MainWindow.xaml.cs`
 - `MojiCollaTool/MojiCollaTool/PageEditorControl.xaml.cs`
+- `MojiCollaTool/MojiCollaTool/CanvasEditWindow.xaml.cs`
+- `MojiCollaTool/MojiCollaTool/MojiPanel.cs`
+- `MojiCollaTool/MojiCollaTool/MojiWindow.xaml.cs`
 - `MojiCollaTool/MojiCollaTool/Document/PageDocument.cs`
 - `MojiCollaTool/MojiCollaTool/Workspace/ApplicationWorkspace.cs`
 - `MojiCollaTool/MojiCollaTool/Workspace/ProjectSession.cs`
 - `MojiCollaTool/MojiCollaTool/Workspace/ProjectSessionAssetStore.cs`
 - `tests/MojiCollaTool.Tests/ProjectSessionAssetStoreTests.cs`
+- `tests/MojiCollaTool.Tests/TASK030ReviewTests.cs`
 - `CHANGELOG.md`
 - `docs/planning/implementation-ledger.md`
 - `docs/worker-reports/TASK-030.md`
@@ -57,10 +66,10 @@
 | --- | --- |
 | `powershell.exe -ExecutionPolicy Bypass -File eng\build.ps1 -Configuration Debug` | Pass: 0 warnings, 0 errors |
 | `powershell.exe -ExecutionPolicy Bypass -File eng\build.ps1 -Configuration Release` | Pass: 0 warnings, 0 errors |
-| `powershell.exe -ExecutionPolicy Bypass -File eng\test.ps1` | Pass: 63 passed, 0 failed |
+| `powershell.exe -ExecutionPolicy Bypass -File eng\test.ps1` | Pass: 71 passed, 0 failed |
 | `git diff --check` | Pass |
 
-追加テストはsessionごとのasset store隔離、page複製時の新PageId保存、session close時のstore解放を確認します。既存60件を維持し、TASK-030追加3件を含む63件です。
+追加テストはcaptureとdirtyの分離、MojiPanel drag／MojiWindow／Canvas編集通知、active tab復元、画像2枚の失敗時保護、2project×3page隔離、保存成功後のdirty解除、close拒否を確認します。既存60件を維持し、TASK-030追加11件を含む71件です。
 
 ## Manual / UI / compatibility
 
@@ -71,7 +80,7 @@
 
 ## Known risks / downstream impact
 
-- `PageEditorControl`の既存MojiWindowが直接変更する`MojiData`はwindow再アクティブ化時にcaptureするadapter方式。Undo/Redo本体はTASK-070の範囲。
+- `PageEditorControl`の既存MojiWindowが直接変更する`MojiData`は変更イベント後にcaptureするadapter方式。Undo/Redo本体はTASK-070の範囲。
 - 旧global Workingを直接参照するlegacy UI経路はTASK-030のworkspace shellからは使用しないが、旧形式互換API自体は後続互換用途のため残存。
 - UIの実STA操作確認は未実施。TASK-050/TASK-170はこの二段tab・session/page境界を前提に後続実装する。
 

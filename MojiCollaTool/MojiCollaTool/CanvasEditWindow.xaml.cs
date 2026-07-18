@@ -118,6 +118,7 @@ namespace MojiCollaTool
             UpdateView();
 
             _pageEditor?.UpdateCanvas();
+            _pageEditor?.NotifyContentChanged();
         }
 
         private Color GetCanvasColorButtonColor()
@@ -140,6 +141,7 @@ namespace MojiCollaTool
             if (dialogResult.HasValue && dialogResult.Value)
             {
                 CanvasColorButton.Background = new SolidColorBrush(colorSelectorWindow.NextBrush.Color);
+                _pageEditor?.NotifyContentChanged();
             }
             else
             {
@@ -176,6 +178,7 @@ namespace MojiCollaTool
             UpdateView();
 
             _pageEditor?.UpdateCanvas();
+            _pageEditor?.NotifyContentChanged();
         }
 
         private void ResetButton_Click(object sender, RoutedEventArgs e)
@@ -188,6 +191,7 @@ namespace MojiCollaTool
             UpdateView();
 
             _pageEditor?.UpdateCanvas();
+            _pageEditor?.NotifyContentChanged();
         }
 
     }

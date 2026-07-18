@@ -154,6 +154,7 @@ namespace MojiCollaTool
             _mojiPanel.MojiData.RotateAngle = RotateTextBox.Value;
 
             _mojiPanel.UpdateMojiView(isTextDecoraitonUpdated);
+            if (_runEvent) _mojiPanel.NotifyContentChanged();
         }
 
         private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -208,6 +209,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.ForeColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.NotifyContentChanged();
             });
         }
 
@@ -218,6 +220,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.BorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.NotifyContentChanged();
             });
         }
 
@@ -228,6 +231,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.SecondBorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.NotifyContentChanged();
             });
         }
 
@@ -238,6 +242,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.BackgroundBoxColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.NotifyContentChanged();
             });
         }
 
@@ -248,6 +253,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.BackgroundBoxBorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.NotifyContentChanged();
             });
         }
 
@@ -305,6 +311,7 @@ namespace MojiCollaTool
                 LoadMojiDataToWindow(_mojiPanel.MojiData);
 
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.NotifyContentChanged();
             }
             catch (Exception ex)
             {

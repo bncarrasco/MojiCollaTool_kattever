@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Windows.Media.Imaging;
 
 namespace MojiCollaTool
 {
@@ -68,6 +69,69 @@ namespace MojiCollaTool
 
             // ReadProjectの復元は全件検証後、空のstageを一度だけ置換します。
             ReplaceWith(prepared);
+        }
+
+        public ProjectImageCandidate PrepareImage(string filePath)
+        {
+            EnsureOpen();
+            if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("Image path is required.", nameof(filePath));
+            var bytes = File.ReadAllBytes(filePath);
+            if (bytes.Length == 0 || bytes.Length > VersionedProjectFormat.MaxEntrySize)
+            {
+                throw new InvalidDataException("Image asset is empty or too large.");
+            }
+
+            try
+            {
+                using var stream = new MemoryStream(bytes, writable: false);
+                var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                if (decoder.Frames.Count == 0) throw new InvalidDataException("Image contains no frame.");
+                var frame = decoder.Frames[0];
+                if (frame.PixelWidth <= 0 || frame.PixelHeight <= 0)
+                {
+                    throw new InvalidDataException("Image dimensions are invalid.");
+                }
+
+                return new ProjectImageCandidate(
+                    NormalizeExtension(Path.GetExtension(filePath)),
+                    bytes,
+                    frame.PixelWidth,
+                    frame.PixelHeight);
+            }
+            catch (InvalidDataException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidDataException("Image could not be decoded.", ex);
+            }
+        }
+
+        public IReadOnlyList<ProjectAssetRestore> GetPageAssets(Guid pageId)
+        {
+            EnsureOpen();
+            return ReadAllAssets()
+                .Where(asset => asset.PageId == pageId)
+                .Select(asset => new ProjectAssetRestore(asset.PageId, asset.ImageNumber, asset.Extension, asset.Content.ToArray()))
+                .ToArray();
+        }
+
+        public void ReplacePageAssets(Guid pageId, IReadOnlyList<ProjectAssetRestore> assets)
+        {
+            EnsureOpen();
+            if (assets == null) throw new ArgumentNullException(nameof(assets));
+            var replacements = new List<AssetValue>(assets.Count);
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var asset in assets)
+            {
+                if (asset.PageId != pageId) throw new InvalidDataException("Asset refers to another page.");
+                ValidateImageNumber(asset.ImageNumber);
+                if (!keys.Add(Key(asset.PageId, asset.ImageNumber))) throw new InvalidDataException("Duplicate page asset.");
+                replacements.Add(new AssetValue(asset.PageId, asset.ImageNumber, NormalizeExtension(asset.Extension), asset.Content.ToArray()));
+            }
+
+            ReplaceWith(ReadAllAssets().Where(asset => asset.PageId != pageId).Concat(replacements));
         }
 
         public void CopyPageAssets(PageDocument source, PageDocument target)
@@ -206,5 +270,26 @@ namespace MojiCollaTool
             public string Extension { get; }
             public byte[] Content { get; }
         }
+    }
+
+    public sealed class ProjectImageCandidate
+    {
+        public ProjectImageCandidate(string extension, byte[] content, int width, int height)
+        {
+            Extension = extension ?? throw new ArgumentNullException(nameof(extension));
+            Content = content ?? throw new ArgumentNullException(nameof(content));
+            Width = width;
+            Height = height;
+        }
+
+        public string Extension { get; }
+        public byte[] Content { get; }
+        public int Width { get; }
+        public int Height { get; }
+
+        public ProjectAssetRestore ToAsset(Guid pageId, int imageNumber)
+            => new ProjectAssetRestore(pageId, imageNumber, Extension, Content.ToArray());
+
+        public ImageData ToImageData() => new ImageData(Width, Height);
     }
 }
