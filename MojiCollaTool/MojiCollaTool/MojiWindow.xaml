@@ -161,6 +161,56 @@
                         </StackPanel>
                     </StackPanel>
                 </GroupBox>
+                <GroupBox Header="付加記号">
+                    <StackPanel Margin="5">
+                        <TextBlock Text="対象書記素"/>
+                        <ComboBox x:Name="AttachedSymbolGraphemeComboBox" DisplayMemberPath="DisplayText" SelectedValuePath="Index" SelectionChanged="AttachedSymbolGraphemeComboBox_SelectionChanged"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                            <ComboBox x:Name="AttachedSymbolCandidateComboBox" Width="80" SelectedIndex="0" SelectionChanged="AttachedSymbolCandidateComboBox_SelectionChanged">
+                                <ComboBoxItem Content="!"/>
+                                <ComboBoxItem Content="?"/>
+                                <ComboBoxItem Content="!?"/>
+                                <ComboBoxItem Content="!!"/>
+                                <ComboBoxItem Content="?!"/>
+                            </ComboBox>
+                            <TextBox x:Name="AttachedSymbolTextBox" Width="100" Margin="5,0,0,0" Text="!"/>
+                            <Button Content="追加" Margin="5,0,0,0" Click="AttachedSymbolAddButton_Click"/>
+                        </StackPanel>
+                        <ListBox x:Name="AttachedSymbolListBox" Height="70" Margin="0,5,0,0" DisplayMemberPath="SymbolData.Text" SelectionChanged="AttachedSymbolListBox_SelectionChanged"/>
+                        <TextBlock Text="選択中の対象文字"/>
+                        <TextBlock x:Name="AttachedSymbolSelectedTextBlock" Margin="0,2,0,0"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Label Content="X"/>
+                            <TextBox x:Name="AttachedSymbolOffsetXTextBox" Width="55" TextChanged="AttachedSymbolPropertyTextChanged"/>
+                            <Label Content="Y"/>
+                            <TextBox x:Name="AttachedSymbolOffsetYTextBox" Width="55" TextChanged="AttachedSymbolPropertyTextChanged"/>
+                            <Label Content="倍率"/>
+                            <TextBox x:Name="AttachedSymbolScaleTextBox" Width="55" TextChanged="AttachedSymbolPropertyTextChanged"/>
+                            <Label Content="回転"/>
+                            <TextBox x:Name="AttachedSymbolRotationTextBox" Width="55" TextChanged="AttachedSymbolPropertyTextChanged"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox x:Name="AttachedSymbolInheritFontCheckBox" Content="フォント継承" Checked="AttachedSymbolInheritanceChanged" Unchecked="AttachedSymbolInheritanceChanged" Margin="0,0,8,0"/>
+                            <CheckBox x:Name="AttachedSymbolInheritColorCheckBox" Content="色継承" Checked="AttachedSymbolInheritanceChanged" Unchecked="AttachedSymbolInheritanceChanged" Margin="0,0,8,0"/>
+                            <CheckBox x:Name="AttachedSymbolInheritBorderCheckBox" Content="縁取り継承" Checked="AttachedSymbolInheritanceChanged" Unchecked="AttachedSymbolInheritanceChanged"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Label Content="個別フォント"/>
+                            <ComboBox x:Name="AttachedSymbolFontFamilyComboBox" Width="180" SelectedValuePath="Text" SelectionChanged="AttachedSymbolFontFamilyComboBox_SelectionChanged"/>
+                            <TextBlock x:Name="AttachedSymbolFontStatusTextBlock" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Label Content="個別サイズ"/>
+                            <TextBox x:Name="AttachedSymbolFontSizeTextBox" Width="55" TextChanged="AttachedSymbolPropertyTextChanged"/>
+                            <Label Content="個別色"/>
+                            <TextBox x:Name="AttachedSymbolForeColorTextBox" Width="95" TextChanged="AttachedSymbolPropertyTextChanged"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="選択記号を削除" Click="AttachedSymbolRemoveButton_Click"/>
+                            <TextBlock Text="位置・倍率・回転はem基準" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
             </StackPanel>
         </Expander>
     </Grid>

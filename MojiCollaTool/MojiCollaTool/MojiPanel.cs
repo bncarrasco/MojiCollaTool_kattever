@@ -32,6 +32,14 @@ namespace MojiCollaTool
 
         public MojiWindow? MojiWindow { get; set; }
 
+        public PageEditorControl PageEditor => pageEditor;
+
+        public IReadOnlyList<AttachedSymbolVisual> AttachedSymbolVisuals => attachedSymbolVisuals;
+
+        public IReadOnlyDictionary<int, DecoratedCharacterControl> GraphemeVisuals => graphemeControls;
+
+        public IEnumerable<AttachedSymbolData> AttachedSymbols => attachedSymbolVisuals.Select(item => item.SymbolData);
+
         /// <summary>
         /// 常に前面に表示するかどうかのフラグ
         /// </summary>
@@ -41,6 +49,7 @@ namespace MojiCollaTool
         /// 背景配置用のグリッド
         /// </summary>
         private Grid backgroundGrid = new Grid();
+        private Canvas attachedSymbolCanvas = new Canvas();
 
         /// <summary>
         /// 文字列を配置するパネル
@@ -56,6 +65,8 @@ namespace MojiCollaTool
         /// 文字オブジェクトを再利用のためのオブジェクトプール
         /// </summary>
         private DecoratedCharacterControlTotalPool decoratedCharacterControlTotalPool = new DecoratedCharacterControlTotalPool();
+        private readonly Dictionary<int, DecoratedCharacterControl> graphemeControls = new();
+        private readonly List<AttachedSymbolVisual> attachedSymbolVisuals = new();
 
         /// <summary>
         /// 前回のパネルの幅
@@ -110,6 +121,8 @@ namespace MojiCollaTool
             stackPanel.VerticalAlignment = VerticalAlignment.Center;
             stackPanel.HorizontalAlignment = HorizontalAlignment.Center;
             backgroundGrid.Children.Add(stackPanel);
+            attachedSymbolCanvas.IsHitTestVisible = true;
+            backgroundGrid.Children.Add(attachedSymbolCanvas);
 
             MouseDown += MojiPanel_MouseDown;
             MouseUp += MojiPanel_MouseUp;
@@ -237,6 +250,8 @@ namespace MojiCollaTool
             if (_isDisposed) return;
             _isDisposed = true;
 
+            RemoveAllAttachedSymbols();
+
             var window = MojiWindow;
             if (window == null) return;
 
@@ -275,6 +290,7 @@ namespace MojiCollaTool
 
             //  文字オブジェクトプールの使用状況をリセットする
             decoratedCharacterControlTotalPool.ResetUsedCounter();
+            graphemeControls.Clear();
 
             //  文字パネルの位置を設定する
             Margin = new Thickness(MojiData.X, MojiData.Y, 0, 0);
@@ -292,8 +308,20 @@ namespace MojiCollaTool
                     break;
             }
 
-            //  改行ごとに分ける
-            var lines = MojiData.GetTextLines();
+            // 改行と本文は書記素単位で分ける。char列にするとサロゲート
+            // pair、結合文字、ZWJ sequenceが分割されてしまう。
+            var lines = new List<List<GraphemeCluster>> { new List<GraphemeCluster>() };
+            foreach (var grapheme in GraphemeService.Segment(MojiData.FullText))
+            {
+                if (grapheme.Text == "\r\n" || grapheme.Text == "\r" || grapheme.Text == "\n")
+                {
+                    lines.Add(new List<GraphemeCluster>());
+                }
+                else
+                {
+                    lines.Last().Add(grapheme);
+                }
+            }
 
             List<Panel> linePanels = new List<Panel>();
 
@@ -319,18 +347,20 @@ namespace MojiCollaTool
                         break;
                 }
 
-                var characters = new List<Char>(line);
-
                 //  空の行だった場合、配置されずにずれるため、全角スペースを入れておく
-                if (characters.Count <= 0)
+                if (line.Count <= 0)
                 {
-                    characters.Add('　');
+                    var placeholder = decoratedCharacterControlTotalPool.GetDecoratedCharacterControl('　', MojiData);
+                    linePanel.Children.Add(placeholder);
                 }
-
-                foreach (var character in characters)
+                else foreach (var grapheme in line)
                 {
                     //  縦書きのために、１文字ずつ文字を作成する
-                    DecoratedCharacterControl decoratedCharacterControl = decoratedCharacterControlTotalPool.GetDecoratedCharacterControl(character, MojiData);
+                    var decoratedCharacterControl = new DecoratedCharacterControl(grapheme.Text, MojiData)
+                    {
+                        GraphemeIndex = grapheme.Index,
+                    };
+                    graphemeControls[grapheme.Index] = decoratedCharacterControl;
 
                     //  行パネルに追加する
                     linePanel.Children.Add(decoratedCharacterControl);
@@ -411,6 +441,60 @@ namespace MojiCollaTool
                 //  横書きの際は使用しないため、0に戻しておく
                 //  縦横切り替えでウォーキングが際限なくずれるのが面倒なため
                 previousWidth = 0;
+            }
+
+            RefreshAttachedSymbols();
+        }
+
+        public AttachedSymbolVisual AddAttachedSymbol(AttachedSymbolData symbol)
+        {
+            if (symbol == null) throw new ArgumentNullException(nameof(symbol));
+            var visual = new AttachedSymbolVisual(symbol, MojiData);
+            attachedSymbolVisuals.Add(visual);
+            attachedSymbolCanvas.Children.Add(visual);
+            RefreshAttachedSymbols();
+            return visual;
+        }
+
+        public bool RemoveAttachedSymbol(Guid symbolId)
+        {
+            var visual = attachedSymbolVisuals.FirstOrDefault(item => item.ObjectId == symbolId);
+            if (visual == null) return false;
+            attachedSymbolVisuals.Remove(visual);
+            attachedSymbolCanvas.Children.Remove(visual);
+            return true;
+        }
+
+        public void RemoveAllAttachedSymbols()
+        {
+            foreach (var visual in attachedSymbolVisuals.ToArray())
+                attachedSymbolCanvas.Children.Remove(visual);
+            attachedSymbolVisuals.Clear();
+        }
+
+        public Rect GetGraphemeAnchorBounds(int graphemeIndex)
+        {
+            if (!graphemeControls.TryGetValue(graphemeIndex, out var control)) return Rect.Empty;
+            var size = new Size(Math.Max(1, control.ActualWidth > 0 ? control.ActualWidth : control.Width),
+                Math.Max(1, control.ActualHeight > 0 ? control.ActualHeight : control.Height));
+            return control.TransformToVisual(backgroundGrid).TransformBounds(new Rect(new Point(0, 0), size));
+        }
+
+        private void RefreshAttachedSymbols()
+        {
+            foreach (var visual in attachedSymbolVisuals)
+            {
+                if (visual.SymbolData.IsDetached || !visual.SymbolData.ParentId.HasValue ||
+                    visual.SymbolData.ParentId.Value != MojiData.ObjectId)
+                {
+                    visual.Visibility = Visibility.Hidden;
+                    visual.IsHitTestVisible = false;
+                    continue;
+                }
+
+                var bounds = GetGraphemeAnchorBounds(visual.SymbolData.GraphemeAnchor);
+                visual.Visibility = bounds.IsEmpty ? Visibility.Hidden : Visibility.Visible;
+                visual.ApplyData(visual.SymbolData, MojiData, bounds.IsEmpty ? new Rect(0, 0, 0, 0) : bounds);
             }
         }
     }

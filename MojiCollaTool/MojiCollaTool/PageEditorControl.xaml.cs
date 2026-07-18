@@ -21,6 +21,7 @@ namespace MojiCollaTool
         private readonly List<MojiPanel> _mojiPanels = new();
         private readonly ObservableCollection<MojiPanel> _viewMojiPanels = new();
         private readonly List<BalloonVisual> _balloonVisuals = new();
+        private readonly List<AttachedSymbolVisual> _attachedSymbolVisuals = new();
         private readonly BalloonGeometryFactory _balloonGeometryFactory = new();
         private readonly Dictionary<Rectangle, ResizeHandle> _resizeHandles = new();
         private readonly Dictionary<Guid, Guid?> _selectedObjectIdsByPage = new();
@@ -32,7 +33,9 @@ namespace MojiCollaTool
         private IProjectAssetSink? _assetSink;
         private bool _suppressChanges;
         private BalloonVisual? _selectedBalloon;
+        private AttachedSymbolVisual? _selectedAttachedSymbol;
         private BalloonDragState? _balloonDrag;
+        private AttachedSymbolDragState? _attachedSymbolDrag;
         private bool _restoringBalloon;
 
         private const double DefaultBalloonWidth = 240;
@@ -57,6 +60,10 @@ namespace MojiCollaTool
 
         public IReadOnlyList<BalloonVisual> BalloonVisuals => _balloonVisuals;
 
+        public IReadOnlyList<AttachedSymbolVisual> AttachedSymbolVisuals => _attachedSymbolVisuals;
+
+        public IEnumerable<AttachedSymbolData> AttachedSymbols => _attachedSymbolVisuals.Select(visual => visual.SymbolData);
+
         public IEnumerable<BalloonData> Balloons => _balloonVisuals.Select(visual => visual.BalloonData);
 
         public IEnumerable<MojiData> MojiDatas => _mojiPanels.Select(panel => panel.MojiData);
@@ -75,10 +82,13 @@ namespace MojiCollaTool
 
         public int ScalePercent => ScalingTextBox.Value;
 
-        public Guid? SelectedObjectId => (MojiListView.SelectedItem as MojiPanel)?.MojiData.ObjectId
+        public Guid? SelectedObjectId => _selectedAttachedSymbol?.ObjectId
+            ?? (MojiListView.SelectedItem as MojiPanel)?.MojiData.ObjectId
             ?? _selectedBalloon?.ObjectId;
 
         public Guid? SelectedBalloonId => _selectedBalloon?.ObjectId;
+
+        public Guid? SelectedAttachedSymbolId => _selectedAttachedSymbol?.ObjectId;
 
         public void RestoreViewState(int scalePercent, Guid? selectedObjectId)
         {
@@ -129,6 +139,7 @@ namespace MojiCollaTool
                 CloseCanvasEditor();
                 RemoveAllMojiPanel();
                 RemoveAllBalloonVisuals();
+                RemoveAllAttachedSymbolVisuals();
                 UnloadImage(1);
                 UnloadImage(2);
                 _boundPage = page;
@@ -145,6 +156,11 @@ namespace MojiCollaTool
                 foreach (var balloon in page.Balloons)
                 {
                     AddBalloonVisual(new BalloonVisual(PageDocument.CloneBalloonData(balloon), _balloonGeometryFactory), raiseContentChanged: false);
+                }
+                foreach (var symbol in page.AttachedSymbols)
+                {
+                    var parent = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == symbol.ParentId);
+                    if (parent != null) AddAttachedSymbolVisual(parent.AddAttachedSymbol(symbol.Clone()), raiseContentChanged: false);
                 }
                 RebuildCanvasObjectOrder();
                 RestoreSelectionForPage(page.PageId);
@@ -171,6 +187,7 @@ namespace MojiCollaTool
                 CloseCanvasEditor();
                 RemoveAllMojiPanel();
                 RemoveAllBalloonVisuals();
+                RemoveAllAttachedSymbolVisuals();
                 UnloadImage(1);
                 UnloadImage(2);
                 _boundPage = null;
@@ -207,6 +224,72 @@ namespace MojiCollaTool
             _viewMojiPanels.Add(mojiPanel);
             MainCanvas.Children.Add(mojiPanel);
             RaiseContentChanged("文字追加");
+        }
+
+        public AttachedSymbolVisual AddAttachedSymbol(AttachedSymbolData symbol)
+        {
+            ThrowIfDisposed();
+            if (symbol == null) throw new ArgumentNullException(nameof(symbol));
+            var parent = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == symbol.ParentId);
+            if (parent == null) throw new InvalidOperationException("付加記号の親文字が見つかりません。");
+            if (_attachedSymbolVisuals.Any(visual => visual.ObjectId == symbol.ObjectId))
+                throw new InvalidOperationException($"Duplicate attached symbol object ID: {symbol.ObjectId}");
+            var visual = parent.AddAttachedSymbol(symbol);
+            AddAttachedSymbolVisual(visual, raiseContentChanged: false);
+            SelectAttachedSymbol(visual);
+            return visual;
+        }
+
+        public AttachedSymbolVisual AddAttachedSymbol(Guid parentObjectId, int graphemeAnchor, string text)
+        {
+            if (string.IsNullOrEmpty(text)) throw new ArgumentException("付加記号を入力してください。", nameof(text));
+            var parent = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == parentObjectId)
+                ?? throw new InvalidOperationException("付加記号の親文字が見つかりません。");
+            var defaultOffset = AttachedSymbolPlacement.GetDefaultOffset(parent.MojiData.TextDirection, text);
+            var symbol = new AttachedSymbolData
+            {
+                ParentId = parentObjectId,
+                GraphemeAnchor = graphemeAnchor,
+                AnchorText = graphemeAnchor >= 0 && graphemeAnchor < parent.MojiData.GraphemeCount
+                    ? parent.MojiData.GetGrapheme(graphemeAnchor).Text : null,
+                Text = text,
+                OffsetX = defaultOffset.X,
+                OffsetY = defaultOffset.Y,
+                Scale = AttachedSymbolPlacement.DefaultScale,
+                ZIndex = _mojiPanels.Count + _balloonVisuals.Count + _attachedSymbolVisuals.Count,
+            };
+            var visual = AddAttachedSymbol(symbol);
+            RaiseContentChanged("付加記号追加");
+            return visual;
+        }
+
+        public void UpdateAttachedSymbol(Guid symbolId, Action<AttachedSymbolData> update,
+            string description = "付加記号編集", string? coalesceKey = null)
+        {
+            if (update == null) throw new ArgumentNullException(nameof(update));
+            var visual = _attachedSymbolVisuals.FirstOrDefault(item => item.ObjectId == symbolId)
+                ?? throw new KeyNotFoundException($"Attached symbol was not found: {symbolId}");
+            var candidate = visual.SymbolData.Clone();
+            update(candidate);
+            if (candidate.ObjectId != symbolId) throw new InvalidOperationException("An attached symbol ID cannot be changed.");
+            candidate.Validate();
+            var parent = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == candidate.ParentId);
+            if (!candidate.IsDetached && parent == null) throw new InvalidOperationException("付加記号の親文字が見つかりません。");
+            if (parent != null && candidate.GraphemeAnchor >= parent.MojiData.GraphemeCount)
+                throw new InvalidOperationException("付加記号の書記素アンカーが範囲外です。");
+            visual.ApplyData(candidate, parent?.MojiData ?? visual.ParentTextData, visual.AnchorBounds);
+            RaiseContentChanged(description, coalesceKey ?? symbolId.ToString("D"));
+        }
+
+        public bool RemoveAttachedSymbol(Guid symbolId)
+        {
+            var visual = _attachedSymbolVisuals.FirstOrDefault(item => item.ObjectId == symbolId);
+            if (visual == null) return false;
+            var parent = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == visual.SymbolData.ParentId);
+            parent?.RemoveAttachedSymbol(symbolId);
+            RemoveAttachedSymbolVisual(visual);
+            RaiseContentChanged("付加記号削除");
+            return true;
         }
 
         public BalloonVisual AddNewBalloon(BalloonShapeKind shape = BalloonShapeKind.Ellipse)
@@ -252,6 +335,17 @@ namespace MojiCollaTool
         public void RemoveMojiPanel(MojiPanel mojiPanel)
         {
             if (!_mojiPanels.Remove(mojiPanel)) return;
+
+            // Keep a removed parent's symbols as explicit detached objects so
+            // the model can persist the safe, non-crashing orphan state.
+            foreach (var visual in _attachedSymbolVisuals.Where(item => item.SymbolData.ParentId == mojiPanel.MojiData.ObjectId).ToArray())
+            {
+                visual.SymbolData.ParentId = null;
+                visual.SymbolData.IsDetached = true;
+                visual.SymbolData.AnchorText = null;
+                visual.Visibility = Visibility.Hidden;
+                visual.IsHitTestVisible = false;
+            }
 
             _viewMojiPanels.Remove(mojiPanel);
             mojiPanel.Dispose();
@@ -330,6 +424,7 @@ namespace MojiCollaTool
             foreach (var panel in _mojiPanels.ToArray()) panel.Dispose();
             _mojiPanels.Clear();
             _viewMojiPanels.Clear();
+            RemoveAllAttachedSymbolVisuals();
             RemoveAllBalloonVisuals();
             MainCanvas.Children.Clear();
             FileDropped = null;
@@ -526,6 +621,8 @@ namespace MojiCollaTool
         internal void HandleCanvasClickSource(object? source)
         {
             if (source is Rectangle rectangle && _resizeHandles.ContainsKey(rectangle)) return;
+            if (source is AttachedSymbolVisual) return;
+            SelectAttachedSymbol(null);
             SelectBalloon(null);
         }
 
@@ -544,6 +641,15 @@ namespace MojiCollaTool
             {
                 SelectBalloon(null);
                 MojiListView.SelectedItem = textPanel;
+                return;
+            }
+
+            var attachedSymbol = selectedObjectId.HasValue
+                ? _attachedSymbolVisuals.FirstOrDefault(visual => visual.ObjectId == selectedObjectId.Value)
+                : null;
+            if (attachedSymbol != null)
+            {
+                SelectAttachedSymbol(attachedSymbol);
                 return;
             }
 
@@ -571,6 +677,110 @@ namespace MojiCollaTool
         {
             HandleCanvasClickSource(e.OriginalSource);
         }
+
+        private void AddAttachedSymbolVisual(AttachedSymbolVisual visual, bool raiseContentChanged = true)
+        {
+            if (_attachedSymbolVisuals.Any(candidate => candidate.ObjectId == visual.ObjectId))
+                throw new InvalidOperationException($"Duplicate attached symbol object ID: {visual.ObjectId}");
+
+            visual.SymbolMouseLeftButtonDown += AttachedSymbolVisual_MouseLeftButtonDown;
+            visual.SymbolMouseLeftButtonUp += AttachedSymbolVisual_MouseLeftButtonUp;
+            visual.SymbolMouseMove += AttachedSymbolVisual_MouseMove;
+            visual.SymbolLostMouseCapture += AttachedSymbolVisual_LostMouseCapture;
+            _attachedSymbolVisuals.Add(visual);
+            if (raiseContentChanged) RaiseContentChanged("付加記号追加");
+        }
+
+        private void RemoveAttachedSymbolVisual(AttachedSymbolVisual visual)
+        {
+            if (!_attachedSymbolVisuals.Remove(visual)) return;
+            visual.SymbolMouseLeftButtonDown -= AttachedSymbolVisual_MouseLeftButtonDown;
+            visual.SymbolMouseLeftButtonUp -= AttachedSymbolVisual_MouseLeftButtonUp;
+            visual.SymbolMouseMove -= AttachedSymbolVisual_MouseMove;
+            visual.SymbolLostMouseCapture -= AttachedSymbolVisual_LostMouseCapture;
+            if (ReferenceEquals(_selectedAttachedSymbol, visual)) SelectAttachedSymbol(null);
+        }
+
+        private void RemoveAllAttachedSymbolVisuals()
+        {
+            _attachedSymbolDrag = null;
+            SelectAttachedSymbol(null);
+            foreach (var visual in _attachedSymbolVisuals.ToArray()) RemoveAttachedSymbolVisual(visual);
+        }
+
+        private void SelectAttachedSymbol(AttachedSymbolVisual? visual)
+        {
+            if (ReferenceEquals(_selectedAttachedSymbol, visual))
+            {
+                if (visual != null) visual.Refresh(visual.AnchorBounds);
+                return;
+            }
+            if (_selectedAttachedSymbol != null)
+            {
+                _selectedAttachedSymbol.IsSelected = false;
+                _selectedAttachedSymbol.Refresh(_selectedAttachedSymbol.AnchorBounds);
+            }
+            _selectedAttachedSymbol = visual;
+            if (visual != null)
+            {
+                visual.IsSelected = true;
+                var parent = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == visual.SymbolData.ParentId);
+                if (parent != null) MojiListView.SelectedItem = parent;
+                SelectBalloon(null);
+                visual.Refresh(visual.AnchorBounds);
+            }
+        }
+
+        private void AttachedSymbolVisual_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not AttachedSymbolVisual visual || e.ChangedButton != MouseButton.Left || visual.SymbolData.IsLocked)
+            {
+                e.Handled = true;
+                return;
+            }
+            SelectAttachedSymbol(visual);
+            _attachedSymbolDrag = new AttachedSymbolDragState(visual, e.GetPosition(MainCanvas), visual.SymbolData.Clone());
+            visual.CaptureMouse();
+            e.Handled = true;
+        }
+
+        private void AttachedSymbolVisual_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (_attachedSymbolDrag == null || sender is not AttachedSymbolVisual visual ||
+                !ReferenceEquals(visual, _attachedSymbolDrag.Visual) || e.LeftButton != MouseButtonState.Pressed) return;
+            var current = e.GetPosition(MainCanvas);
+            var dx = current.X - _attachedSymbolDrag.Start.X;
+            var dy = current.Y - _attachedSymbolDrag.Start.Y;
+            var em = Math.Max(1, visual.ParentTextData.FontSize);
+            visual.SymbolData.OffsetX = _attachedSymbolDrag.Before.OffsetX + dx / em;
+            visual.SymbolData.OffsetY = _attachedSymbolDrag.Before.OffsetY + dy / em;
+            visual.Refresh(visual.AnchorBounds);
+            e.Handled = true;
+        }
+
+        private void AttachedSymbolVisual_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_attachedSymbolDrag == null || sender is not AttachedSymbolVisual visual ||
+                !ReferenceEquals(visual, _attachedSymbolDrag.Visual)) return;
+            var changed = !AttachedSymbolEquivalent(_attachedSymbolDrag.Before, visual.SymbolData);
+            _attachedSymbolDrag = null;
+            visual.ReleaseMouseCapture();
+            if (changed) RaiseContentChanged("付加記号位置変更", visual.ObjectId.ToString("D"));
+            e.Handled = true;
+        }
+
+        private void AttachedSymbolVisual_LostMouseCapture(object sender, MouseEventArgs e)
+        {
+            if (_attachedSymbolDrag == null || sender is not AttachedSymbolVisual visual ||
+                !ReferenceEquals(visual, _attachedSymbolDrag.Visual)) return;
+            var before = _attachedSymbolDrag.Before;
+            _attachedSymbolDrag = null;
+            visual.ApplyData(before, visual.ParentTextData, visual.AnchorBounds);
+        }
+
+        private static bool AttachedSymbolEquivalent(AttachedSymbolData left, AttachedSymbolData right)
+            => left.OffsetX == right.OffsetX && left.OffsetY == right.OffsetY &&
+               left.Scale == right.Scale && left.Rotation == right.Rotation;
 
         private void AddBalloonVisual(BalloonVisual visual, bool raiseContentChanged = true)
         {
@@ -607,6 +817,7 @@ namespace MojiCollaTool
 
         private void SelectBalloon(BalloonVisual? visual)
         {
+            if (visual != null) SelectAttachedSymbol(null);
             if (ReferenceEquals(_selectedBalloon, visual))
             {
                 UpdateResizeHandles();
@@ -839,8 +1050,18 @@ namespace MojiCollaTool
             page.Canvas.ImageMarginBottom = CanvasData.ImageMarginBottom;
             page.Canvas.ImageMarginRight = CanvasData.ImageMarginRight;
             page.Canvas.CanvasColor = CanvasData.CanvasColor;
+            // Keep visual edits (including offset/scale/rotation) before the
+            // model performs text-anchor reconciliation.
+            page.SetAttachedSymbols(_attachedSymbolVisuals.Select(visual => visual.SymbolData));
             page.SetMojiDatas(_mojiPanels.Select(panel => panel.MojiData));
             page.SetBalloons(_balloonVisuals.Select(visual => visual.BalloonData));
+            foreach (var visual in _attachedSymbolVisuals)
+            {
+                var restored = page.AttachedSymbols.FirstOrDefault(symbol => symbol.ObjectId == visual.ObjectId);
+                if (restored == null) continue;
+                var parent = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == restored.ParentId);
+                if (parent != null) visual.ApplyData(PageDocument.CloneAttachedSymbolData(restored), parent.MojiData, parent.GetGraphemeAnchorBounds(restored.GraphemeAnchor));
+            }
         }
 
         private void LoadStoredImage(PageDocument page, int imageNumber)
@@ -909,5 +1130,19 @@ namespace MojiCollaTool
         TopRight = Top | Right,
         BottomLeft = Bottom | Left,
         BottomRight = Bottom | Right,
+    }
+
+    internal sealed class AttachedSymbolDragState
+    {
+        public AttachedSymbolDragState(AttachedSymbolVisual visual, Point start, AttachedSymbolData before)
+        {
+            Visual = visual;
+            Start = start;
+            Before = before;
+        }
+
+        public AttachedSymbolVisual Visual { get; }
+        public Point Start { get; }
+        public AttachedSymbolData Before { get; }
     }
 }
