@@ -9,7 +9,7 @@
 - 付加記号のドラッグは操作完了時に1件の履歴として記録し、capture lossでは編集前へ戻します。
 - detached付加記号を可視visualと分離して保持し、親削除・ページ切替・保存再読込でも失わないようにしました。追加時の検証とCaptureの試行検証を原子的に行い、不正入力でUI／文書／履歴が変化しないようにしました。
 - 濁点・半濁点・装飾継承・文字間隔設定、実スクロール領域、非表示visual抑止、完全grapheme文字列pool、gesture単位のdrag履歴を追加しました。
-- 受入テストを17件へ拡張し、重なる座標のmixed実描画Z-orderと保存再読込、相互排他的selection、入力拒否とScrollViewer viewport、2種類の認識済みフォントの横／縦配置、UI経路の履歴・dirty状態・redo branch、24個の付加記号refresh／drag性能を自動検証しました。
+- 受入テストを20件へ拡張し、ParentId別の実UI一覧CRUD、追加直後canonical ZIndex、親回転local offset／drag、同一行再クリック、Expander折りたたみ、重なる座標のmixed実描画Z-orderと保存再読込、相互排他的selection、入力拒否、2種類の認識済みフォントの横／縦配置、UI経路の履歴・dirty状態・redo branch、24個の付加記号refresh／drag性能を自動検証しました。
 
 ### TASK-120
 

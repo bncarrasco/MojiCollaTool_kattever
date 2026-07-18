@@ -8,10 +8,12 @@
 - SDK: `C:\Users\user\.dotnet\dotnet.exe` / `6.0.428`
 - Functional base: `4402a6101c457a615bb86412981954d1ea1e0171`
 - Round 3開始HEAD: `528e9be3aaad93ae1f20b2c2ba2aa58892ca39ce`
+- Round 4開始HEAD: `dec1ab9f9fa436fe400e00ea3dd5adbca1c42f44`
 - Round 3開始時Git確認: branchは`feature/TASK-100-attached-symbol-ui`、statusはclean、`F:/github/MojiCollaTool-worktrees/TASK-100`は`git worktree list --porcelain`で登録済み、SDKは`6.0.428`。
 - 完全実装コミット: `864a95d76b5d34f7ac491e619464724908ad13d0`
 - Round 2受入実装コミット: `6dc0f1f00b40be7b8f29057cb3d18d2c74abd15c`
 - Round 3実装コミット／最終実装コミット: `bfe9f455240860d7248ca968a147ef07d06234ea`
+- Round 4実装コミット／最終実装コミット: `44dc0b71190af458532b07da87916b21c8a34bbc`
 - 最終報告書コミット: 本報告書更新コミット（full hashは最終handoffで報告）
 
 ## 2. 実装内容
@@ -29,6 +31,19 @@
 - 文字・フキダシ・付加記号を`PageDocument.AllObjects`の順序で同じ`MainCanvas`へ配置し、保存再読込後も混在Z-orderを復元。
 - 設定画面のAuto行をstar行へ変更し、有限のMaxHeightを持つScrollViewerとして内容超過時に実スクロール可能化。
 - 未接続ContentControlを含む測定環境でも、親の論理座標・サイズ・回転から付加記号位置を再現し、実UIではVisual変換を使用。
+- 文字設定画面はPageEditorのMainCanvas直下visualをParentIdで絞って表示し、選択・property編集・削除・Undo/Redoを同一visualへ接続。旧MojiPanel内symbol hostを撤去。
+- UI追加直後とCapture後にcanonical ZIndexを同期し、再bindなしでも文字・フキダシ・付加記号の描画順を維持。
+- OffsetX/Yを親local座標として親回転へ合成し、回転中dragのglobal deltaをlocal軸へ逆変換。親回転と固有rotationを合成。
+- 同じ親文字行の再クリックで付加記号／フキダシを解除し、text選択へ切替。
+- 設定rowをAutoへ戻し、展開時の有限viewport／スクロールと折りたたみ時のheader相当高さを両立。
+
+### Round 4対応項目
+
+- FIX-100-06: top-level visualのParentId別一覧と、実UIの選択・編集・削除・Undo/Redoを接続。旧親内hostを削除。
+- FIX-100-07: 新規追加・Capture後にcanonical ZIndexとMainCanvas順序を即時同期。
+- FIX-100-08: 親回転をoffset vectorとdrag deltaへ合成し、90度回転・固有rotation・Undo/Redoを数値検証。
+- FIX-100-09: 同一親文字行のPreviewMouseLeftButtonUpでもsymbol／balloonを解除してtext選択へ切替。
+- FIX-100-10: 設定rowをAutoへ変更し、展開時のScrollViewer viewportと折りたたみ時の空白抑制を検証。
 
 ## 3. 変更ファイル
 
@@ -41,7 +56,6 @@
 - `MojiCollaTool/MojiCollaTool/MojiWindow.xaml`
 - `MojiCollaTool/MojiCollaTool/MojiWindow.xaml.cs`
 - `MojiCollaTool/MojiCollaTool/PageEditorControl.xaml`
-- `MojiCollaTool/MojiCollaTool/Visuals/AttachedSymbolVisual.cs`
 - `MojiCollaTool/MojiCollaTool/FontUtil.cs`
 - `tests/MojiCollaTool.Tests/TASK100AttachedSymbolUiTests.cs`
 - `docs/worker-reports/TASK-100.md`
@@ -51,7 +65,7 @@
 
 ## 4. 自動検証範囲
 
-`TASK100AttachedSymbolUiTests`は17件です。
+`TASK100AttachedSymbolUiTests`は20件です。
 
 - variation selector、skin tone、ZWJ、国旗2個、CRLF、空行。
 - 横書き／縦書き、2種類のWPF認識済みsystem font、有限な配置、offset調整、親の移動・サイズ・回転追従。
@@ -61,6 +75,10 @@
 - 文字／付加記号／フキダシ／未選択、存在しないID、ページ切替の相互排他的な選択復元。
 - ScrollViewerのmeasure／arrange後の有限viewportと`ScrollableHeight > 0`。
 - UI追加境界での空文字・長さ超過・無効anchor・親なしの日本語拒否と不変性。
+- top-level visualのParentId別一覧、実UIの追加・選択・property編集・削除・Undo/Redo、異なる親の一覧分離。
+- UI追加直後のcanonical ZIndexと、Undo/Redo後の再描画順。
+- 親90度回転、非zero offset、固有rotation、回転中drag delta、Undo/Redoの数値検証。
+- 同じ親文字行の再クリックによるtext選択切替、Expander展開／折りたたみ時の実効高さ。
 - add、remove、property、dragのUI controller経路におけるUndo／Redo、saved dirty、redo branch破棄。
 - 2回drag＝2 Undo、capture loss、page/project切替、selection復元、Dispose。
 - detached保持、親削除、保存再読込、`IsVisible=false`。
@@ -72,8 +90,8 @@
 
 Debug実行時、24個の付加記号を配置し、同一parentをrefresh／dragしました。
 
-- refresh 50回: **583.493 ms**
-- drag 25回: **18.930 ms**
+- refresh 50回: **611.673 ms**
+- drag 25回: **18.842 ms**
 - 計測テストの閾値: 各5,000 ms未満
 
 FontUtilの全system font列挙は初回のみ実行し、以後はLazy cacheを使用します。
@@ -82,9 +100,9 @@ FontUtilの全system font列挙は初回のみ実行し、以後はLazy cacheを
 
 - `C:\Users\user\.dotnet\dotnet.exe --version`: pass、`6.0.428`
 - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Debug`: pass、0 warnings / 0 errors
-- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\test.ps1`: pass、172 passed / 0 failed
+- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\test.ps1`: pass、175 passed / 0 failed
 - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Release`: pass、0 warnings / 0 errors
-- `C:\Users\user\.dotnet\dotnet.exe test .\tests\MojiCollaTool.Tests\MojiCollaTool.Tests.csproj -c Release --no-build`: pass、172 passed / 0 failed
+- `C:\Users\user\.dotnet\dotnet.exe test .\tests\MojiCollaTool.Tests\MojiCollaTool.Tests.csproj -c Release --no-build`: pass、175 passed / 0 failed
 - `git diff --check`: pass
 - 最終status: clean（最終報告書コミット後）
 
@@ -96,4 +114,4 @@ FontUtilの全system font列挙は初回のみ実行し、以後はLazy cacheを
 
 ## 8. ロールバック
 
-今回の追加受入実装だけを戻す場合は、`git revert 6dc0f1f00b40be7b8f29057cb3d18d2c74abd15c`を使用する。TASK-100全体を戻す場合は、後続の報告・台帳コミットを含め、対象コミットを新しい順に`git revert`する。`reset --hard`、push、merge、rebaseは使用していない。
+Round 4だけを戻す場合は、`git revert 44dc0b71190af458532b07da87916b21c8a34bbc`を使用する。Round 3以前の追加受入実装だけを戻す場合は、`git revert 6dc0f1f00b40be7b8f29057cb3d18d2c74abd15c`を使用する。TASK-100全体を戻す場合は、後続の報告・台帳コミットを含め、対象コミットを新しい順に`git revert`する。`reset --hard`、push、merge、rebaseは使用していない。
