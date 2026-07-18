@@ -2,7 +2,7 @@
 
 ## Result
 
-実装完了。初回実装commit: `90b0b63e2cb0a0b91253cf4bf199b73938f1c732`。本修正のfollow-up commitは最終handoff時に記録します。
+実装完了。初回実装commit: `90b0b63e2cb0a0b91253cf4bf199b73938f1c732`。修正commit: `053f81cda1993ff04e726d60ba2679840bc42e02`。
 
 ## Summary
 
