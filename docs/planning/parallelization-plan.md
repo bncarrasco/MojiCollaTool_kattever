@@ -83,3 +83,14 @@ TASK-070は`develop`へ統合済みであり、TASK-080、TASK-090、TASK-110、
 両taskは同一の`develop`開始commitからworktreeを作成する。共有台帳・CHANGELOG以外の横断fileを同時変更せず、範囲外変更が必要になった場合は実装前に司令役へ報告する。TASK-050はTASK-200と、TASK-110はTASK-090/TASK-230と同時開始しない。
 
 本waveは完了し、TASK-110を`fd307beec9d0cf6c8865f219a99ca44ce2353733`、TASK-050を`726ba07e2dcfff0fe4e43e929a24731de3c6059f`で`develop`へ統合した。統合状態のDebug/Release buildは警告0・エラー0、全testは各124/124成功。
+
+## 9. TASK-050／TASK-110統合後wave
+
+次waveはTASK-090とTASK-120を並行実施する。両taskは後続TASK-100とTASK-130をそれぞれ解放し、model/schema laneとPageEditor/render laneへ分離できる。
+
+| Task | 所有領域 | 変更禁止領域 | 並行判断 |
+| --- | --- | --- | --- |
+| TASK-090 | grapheme service、AttachedSymbol model、MojiDataの必要最小限拡張、versioned serializer、model/history/Unicode tests | PageEditor、MainWindow、balloon visual/Geometry、フキダシUI | Unicode/model/schema laneとして実施 |
+| TASK-120 | balloon Geometry factory/cache、balloon visual、PageEditorの追加・選択・move/resize、必要最小限のMainWindow command、render/performance tests | MojiData、AttachedSymbol、VersionedProjectFormat、project schema | balloon render/UI laneとして実施 |
+
+共有の`PageDocument`とhistory基盤は既存APIを利用し、一般refactorを行わない。範囲外変更が必要な場合は実装前に司令役へ報告する。TASK-090はTASK-100/TASK-230と、TASK-120はTASK-080/TASK-170/TASK-200/TASK-210と同時開始しない。

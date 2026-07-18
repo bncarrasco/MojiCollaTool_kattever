@@ -31,3 +31,12 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | TASK-050 | `feature/TASK-050-batch-page-export` | `F:/github/MojiCollaTool-worktrees/TASK-050` | `aa16cbc774b578ccd53b5101d919a44f546c63d8` | TASK-030、TASK-070統合済み | `docs/worker-prompts/TASK-050.md`（local-only） | Complete; integrated at `726ba07e2dcfff0fe4e43e929a24731de3c6059f` |
 | TASK-110 | `feature/TASK-110-balloon-model` | `F:/github/MojiCollaTool-worktrees/TASK-110` | `aa16cbc774b578ccd53b5101d919a44f546c63d8` | TASK-060、TASK-070統合済み | `docs/worker-prompts/TASK-110.md`（local-only） | Complete; integrated at `fd307beec9d0cf6c8865f219a99ca44ce2353733` |
+
+## TASK-050／TASK-110統合後wave
+
+下記2taskは、本台帳更新を含む同一の`develop`開始commitから司令役が正式なworktreeを登録し、各worktreeへlocal-onlyのAGENTSとworker promptを配置する。
+
+| Task | Branch | Worktree path | Functional base | Dependencies | Worker prompt | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| TASK-090 | `feature/TASK-090-attached-symbol-model` | `F:/github/MojiCollaTool-worktrees/TASK-090` | 本wave開始commit | TASK-060、TASK-070統合済み | `docs/worker-prompts/TASK-090.md`（local-only） | Kickoff ready; TASK-120と並行 |
+| TASK-120 | `feature/TASK-120-balloon-editor` | `F:/github/MojiCollaTool-worktrees/TASK-120` | 本wave開始commit | TASK-110統合済み | `docs/worker-prompts/TASK-120.md`（local-only） | Kickoff ready; TASK-090と並行 |
