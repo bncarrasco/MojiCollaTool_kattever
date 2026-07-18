@@ -40,7 +40,7 @@
 - Base commit: `8875af4696663f34a6ba72f255b2f9e209578dd2`
 - 開始時HEAD: `70386485419c3d9dbcb09ee9c2c7493e5e66b50b`
 - Result commit: `124e3e4ff0883dcffeaecc6d28cf724abc291b39`
-- Review fix commit: 後続のレビュー修正commitで確定
+- Review fix commit: `d7ec6847d33c06a118f6339425566ee4843bd6d9`
 
 ## Changed files
 
