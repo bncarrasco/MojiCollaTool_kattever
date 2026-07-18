@@ -136,11 +136,15 @@ namespace MojiCollaTool
         [XmlArray("Balloons")]
         [XmlArrayItem("Balloon")]
         public List<BalloonData> Balloons { get; set; } = new List<BalloonData>();
+
+        [XmlArray("AttachedSymbols")]
+        [XmlArrayItem("AttachedSymbol")]
+        public List<AttachedSymbolData> AttachedSymbols { get; set; } = new List<AttachedSymbolData>();
     }
 
     public static class VersionedProjectFormat
     {
-        public const string CurrentVersion = "2.1";
+        public const string CurrentVersion = "2.2";
         public const string ProductName = "MojiCollaTool Katteban";
         public const string ManifestEntryName = "manifest.xml";
         public const int MaxArchiveEntries = 4096;
@@ -410,6 +414,7 @@ namespace MojiCollaTool
                     // individual ZIndex values directly.
                     Objects = page.CreateObjectSnapshot().ToList(),
                     Balloons = page.Balloons.Select(PageDocument.CloneBalloonData).ToList(),
+                    AttachedSymbols = page.AttachedSymbols.Select(PageDocument.CloneAttachedSymbolData).ToList(),
                 };
                 WriteEntry(archive, VersionedProjectFormat.CanonicalPagePath(page.PageId), VersionedProjectFormat.Serialize(VersionedProjectFormat.PageSerializer, pageFile));
                 WriteAssetEntry(archive, preparedImage1);
@@ -681,7 +686,8 @@ namespace MojiCollaTool
                     pageFile.Name ?? manifestPage.Name,
                     canvas,
                     pageFile.Objects ?? Enumerable.Empty<MojiData>(),
-                    pageFile.Balloons ?? Enumerable.Empty<BalloonData>()));
+                    pageFile.Balloons ?? Enumerable.Empty<BalloonData>(),
+                    pageFile.AttachedSymbols ?? Enumerable.Empty<AttachedSymbolData>()));
             }
 
             if (string.IsNullOrWhiteSpace(manifest.ProjectName))

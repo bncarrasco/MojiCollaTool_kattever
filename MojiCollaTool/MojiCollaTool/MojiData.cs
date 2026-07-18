@@ -66,6 +66,18 @@ namespace MojiCollaTool
 
         public string FullText { get; set; } = "サンプル";
 
+        /// <summary>
+        /// Grapheme-aware view of <see cref="FullText"/>. The returned ranges
+        /// use UTF-16 offsets for compatibility with WPF text APIs.
+        /// </summary>
+        [System.Xml.Serialization.XmlIgnore]
+        public IReadOnlyList<GraphemeCluster> Graphemes => GraphemeService.Segment(FullText);
+
+        [System.Xml.Serialization.XmlIgnore]
+        public int GraphemeCount => GraphemeService.Count(FullText);
+
+        public GraphemeCluster GetGrapheme(int graphemeIndex) => GraphemeService.GetAt(FullText, graphemeIndex);
+
         public string ExampleText => new string(FullText.Replace(Environment.NewLine, string.Empty).Take(10).ToArray());
 
         public double X { get; set; }
