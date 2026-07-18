@@ -23,9 +23,26 @@
 - 機能追加とリファクタリングを分け、レビュー可能でビルド可能な単位を維持する。
 - 保存処理では既存ファイルの保護を優先し、未検証の互換性を保証済みと表現しない。
 
+## Git worktree bootstrap
+
+- 実装作業は、司令役が指定したbranch、worktree、functional base commit、開始時HEADでのみ開始する。開始時HEADはtask指示書または司令役のkickoff指示にexact hashで示す。
+- 正式なworktreeは `git worktree add` で作成され、主repositoryの `git worktree list --porcelain` に登録されている必要がある。repositoryフォルダーのコピーはworktreeとして扱わない。
+- repository全体、`.git` directory、linked worktreeの `.git` fileをコピーしない。コピー先で `git init`、偽の `.git` 作成、共有Git管理領域の手動編集を行わない。
+- Git metadata権限、`dubious ownership`、worktree作成失敗が発生した場合は、実装を始めず司令役へ報告する。フォルダーコピーや未管理作業コピーへ切り替えてはならない。
+- 自分の `docs/worker-prompts/TASK-XXX.md` が存在しない、またはbranch/worktree/functional base/開始時HEADの指定がない場合は開始せず司令役へ報告する。
+- 最初の編集前に、次を実行して指示書の期待値と一致することを確認する。
+  - `git rev-parse --show-toplevel`
+  - `git branch --show-current`
+  - `git rev-parse HEAD`
+  - `git status --short`
+  - `git worktree list --porcelain`
+- `git status --short`は開始時にcleanでなければならない。例外が必要な場合は、変更所有者と扱いを司令役へ確認する。
+- 依存タスクはfunctional baseへ統合済みであることを確認する。開始時HEADがfunctional baseより後の場合、その差分は司令役が明示した指示書・運用文書等に限定する。他feature branchや古い作業コピーをbaseの代用にしない。
+- 上記確認結果を作業報告の「開始時Git確認」へ記録する。
+
 ## Worker rules
 
-- 最初に本ファイルと自分の `docs/worker-prompts/TASK-XXX.md` を読む。
+- 最初に本ファイル、`docs/worker-prompts/README.md`、自分の `docs/worker-prompts/TASK-XXX.md` を読む。
 - 割り当てられたタスクだけを実施し、スコープ外の改善や先行実装を行わない。
 - 指示書と実コードに矛盾があれば、実装前に司令役へ報告する。
 - ユーザーの未コミット変更、他worktree、他ワーカーのブランチを変更しない。
