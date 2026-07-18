@@ -30,13 +30,14 @@ public class LegacyProjectReaderTests
     {
         using var scope = new TemporaryDirectory();
         var path = CreateLegacyArchive(scope, imageCount: 1);
-        var sink = new RecordingAssets();
+        var sink = new NonBatchRecordingAssets();
 
         var result = DataIO.ReadProject(path, sink);
 
         Assert.AreEqual(ProjectFormatKind.Legacy, result.Format);
         Assert.AreEqual(1, sink.Restored.Count);
         Assert.AreEqual(1, sink.Restored[0].ImageNumber);
+        Assert.AreEqual(1, sink.SaveImageCallCount);
     }
 
     [TestMethod]
@@ -185,6 +186,21 @@ public class LegacyProjectReaderTests
         {
             Restored.AddRange(assets.Select(asset =>
                 new RestoredAsset(asset.PageId, asset.ImageNumber, asset.Extension, asset.Content)));
+        }
+    }
+
+    private sealed class NonBatchRecordingAssets : IProjectAssetSink
+    {
+        public List<RestoredAsset> Restored { get; } = new List<RestoredAsset>();
+
+        public int SaveImageCallCount { get; private set; }
+
+        public void SaveImage(Guid pageId, int imageNumber, string extension, Stream content)
+        {
+            SaveImageCallCount++;
+            using var copy = new MemoryStream();
+            content.CopyTo(copy);
+            Restored.Add(new RestoredAsset(pageId, imageNumber, extension, copy.ToArray()));
         }
     }
 
