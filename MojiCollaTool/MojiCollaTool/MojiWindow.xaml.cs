@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -28,6 +29,8 @@ namespace MojiCollaTool
         /// 画面の本当の破棄処理を制御するために用意している
         /// </summary>
         public bool IsHideOnly { get; set; } = true;
+
+        internal ScrollViewer AttachedSymbolSettingsViewer => AttachedSymbolSettingsScrollViewer;
 
         private bool _runEvent = false;
         private bool _updatingAttachedSymbolUi;
@@ -324,13 +327,60 @@ namespace MojiCollaTool
 
         private void AttachedSymbolAddButton_Click(object sender, RoutedEventArgs e)
         {
-            if (AttachedSymbolGraphemeComboBox.SelectedValue is not int graphemeIndex || string.IsNullOrEmpty(AttachedSymbolTextBox.Text))
+            AttachedSymbolErrorTextBlock.Text = string.Empty;
+            if (AttachedSymbolGraphemeComboBox.SelectedValue is not int graphemeIndex)
             {
-                MainWindow.ShowInfoDialog("対象書記素と付加記号を指定してください。", "付加記号");
+                AttachedSymbolErrorTextBlock.Text = "対象書記素を指定してください。";
                 return;
             }
-            var visual = _mojiPanel.PageEditor.AddAttachedSymbol(_mojiPanel.MojiData.ObjectId, graphemeIndex, AttachedSymbolTextBox.Text);
-            LoadAttachedSymbolsToWindow(visual);
+            if (!TryAddAttachedSymbolFromUi(graphemeIndex, AttachedSymbolTextBox.Text, out var error))
+            {
+                AttachedSymbolErrorTextBlock.Text = error;
+                return;
+            }
+            AttachedSymbolErrorTextBlock.Text = string.Empty;
+        }
+
+        internal bool TryAddAttachedSymbolFromUi(int graphemeIndex, string text, out string error)
+        {
+            error = string.Empty;
+            if (string.IsNullOrEmpty(text))
+            {
+                error = "付加記号を入力してください。";
+                return false;
+            }
+            if (text.Length > 256)
+            {
+                error = "付加記号は256文字以内で入力してください。";
+                return false;
+            }
+            if (graphemeIndex < 0 || graphemeIndex >= _mojiPanel.MojiData.GraphemeCount)
+            {
+                error = "対象書記素の位置が範囲外です。";
+                return false;
+            }
+            if (!_mojiPanel.PageEditor.MojiPanels.Any(panel => panel.MojiData.ObjectId == _mojiPanel.MojiData.ObjectId))
+            {
+                error = "親文字が見つかりません。";
+                return false;
+            }
+
+            try
+            {
+                var visual = _mojiPanel.PageEditor.AddAttachedSymbol(_mojiPanel.MojiData.ObjectId, graphemeIndex, text);
+                LoadAttachedSymbolsToWindow(visual);
+                return true;
+            }
+            catch (InvalidDataException)
+            {
+                error = "付加記号の入力値が不正です。";
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                error = "付加記号を追加できません。対象文字と親を確認してください。";
+                return false;
+            }
         }
 
         private void AttachedSymbolListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

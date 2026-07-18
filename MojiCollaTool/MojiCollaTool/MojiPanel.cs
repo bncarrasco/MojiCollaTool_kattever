@@ -268,6 +268,7 @@ namespace MojiCollaTool
         {
             //  文字パネルの位置を設定する
             Margin = new Thickness(MojiData.X, MojiData.Y, 0, 0);
+            pageEditor.RefreshAttachedSymbolsForParent(this);
         }
 
         /// <summary>
@@ -442,6 +443,7 @@ namespace MojiCollaTool
             }
 
             RefreshAttachedSymbols();
+            pageEditor.RefreshAttachedSymbolsForParent(this);
         }
 
         public AttachedSymbolVisual AddAttachedSymbol(AttachedSymbolData symbol)
@@ -472,10 +474,39 @@ namespace MojiCollaTool
 
         public Rect GetGraphemeAnchorBounds(int graphemeIndex)
         {
+            return GetGraphemeAnchorBounds(graphemeIndex, backgroundGrid);
+        }
+
+        public Rect GetGraphemeAnchorBounds(int graphemeIndex, Visual relativeTo)
+        {
             if (!graphemeControls.TryGetValue(graphemeIndex, out var control)) return Rect.Empty;
+            if (!backgroundGrid.IsAncestorOf(control))
+                return Rect.Empty;
             var size = new Size(Math.Max(1, control.ActualWidth > 0 ? control.ActualWidth : control.Width),
                 Math.Max(1, control.ActualHeight > 0 ? control.ActualHeight : control.Height));
-            return control.TransformToVisual(backgroundGrid).TransformBounds(new Rect(new Point(0, 0), size));
+            var localBounds = control.TransformToVisual(backgroundGrid).TransformBounds(new Rect(new Point(0, 0), size));
+            if (ReferenceEquals(relativeTo, backgroundGrid)) return localBounds;
+            if (relativeTo.IsAncestorOf(backgroundGrid))
+            {
+                try { return backgroundGrid.TransformToVisual(relativeTo).TransformBounds(localBounds); }
+                catch (InvalidOperationException) { }
+            }
+
+            // ContentControl templates are not materialized in headless/unit-test hosts. In that
+            // case the text grid is still measurable, so map its logical bounds through the
+            // persisted parent position and rotation used by the canvas.
+            if (ReferenceEquals(relativeTo, pageEditor.Canvas))
+            {
+                var panelSize = new Size(
+                    Math.Max(1, backgroundGrid.ActualWidth > 0 ? backgroundGrid.ActualWidth : backgroundGrid.DesiredSize.Width),
+                    Math.Max(1, backgroundGrid.ActualHeight > 0 ? backgroundGrid.ActualHeight : backgroundGrid.DesiredSize.Height));
+                if (MojiData.IsRotateActive)
+                    localBounds = new RotateTransform(MojiData.RotateAngle, panelSize.Width / 2, panelSize.Height / 2)
+                        .TransformBounds(localBounds);
+                return new Rect(MojiData.X + localBounds.X, MojiData.Y + localBounds.Y,
+                    localBounds.Width, localBounds.Height);
+            }
+            return Rect.Empty;
         }
 
         private void RefreshAttachedSymbols()

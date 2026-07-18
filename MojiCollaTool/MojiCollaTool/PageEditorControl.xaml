@@ -33,6 +33,7 @@
         </Grid>
         <GroupBox Header="文字リスト" Grid.Row="0" Grid.Column="1">
             <ListView x:Name="MojiListView" HorizontalContentAlignment="Stretch"
+                      SelectionChanged="MojiListView_SelectionChanged"
                       PreviewMouseLeftButtonUp="MojiListView_PreviewMouseLeftButtonUp">
                 <ListView.ItemTemplate>
                     <DataTemplate>

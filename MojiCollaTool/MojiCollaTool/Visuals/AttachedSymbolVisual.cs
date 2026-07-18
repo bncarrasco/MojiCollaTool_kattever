@@ -80,7 +80,18 @@ namespace MojiCollaTool
             Canvas.SetLeft(this, anchorBounds.Left + anchorBounds.Width / 2 + SymbolData.OffsetX * _parentText.FontSize - Width / 2);
             Canvas.SetTop(this, anchorBounds.Top + anchorBounds.Height / 2 + SymbolData.OffsetY * _parentText.FontSize - Height / 2);
             RenderTransformOrigin = new Point(0.5, 0.5);
-            RenderTransform = new RotateTransform(SymbolData.Rotation);
+            var symbolRotation = new RotateTransform(SymbolData.Rotation);
+            if (_parentText.IsRotateActive)
+            {
+                var transformGroup = new TransformGroup();
+                transformGroup.Children.Add(new RotateTransform(_parentText.RotateAngle));
+                transformGroup.Children.Add(symbolRotation);
+                RenderTransform = transformGroup;
+            }
+            else
+            {
+                RenderTransform = symbolRotation;
+            }
             _geometry = formattedText.BuildGeometry(new Point(0, 0));
             RebuildChildren(_geometry);
             IsHitTestVisible = SymbolData.IsVisible && !SymbolData.IsDetached;

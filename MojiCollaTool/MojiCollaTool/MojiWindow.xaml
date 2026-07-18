@@ -13,7 +13,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="auto"/>
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
@@ -66,8 +66,9 @@
         <GroupBox Header="テキスト" Grid.Row="1">
             <TextBox x:Name="TextTextBox" Text="サンプル" AcceptsReturn="True" FontSize="20" TextWrapping="Wrap" FontFamily="{Binding ElementName=FontFamilyComboBox, Path=SelectedValue}" VerticalScrollBarVisibility="Visible" Margin="5" TextChanged="TextBox_TextChanged"/>
         </GroupBox>
-        <Expander Header="文字設定" Grid.Row="2" IsExpanded="True">
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Expander Header="文字設定" Grid.Row="2" IsExpanded="True" MaxHeight="420" VerticalAlignment="Stretch">
+            <ScrollViewer x:Name="AttachedSymbolSettingsScrollViewer" MaxHeight="410"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Orientation="Vertical">
                 <GroupBox Header="座標">
                     <StackPanel Orientation="Horizontal" Margin="5">
@@ -176,9 +177,10 @@
                                 <ComboBoxItem Content="濁点" Tag="゙"/>
                                 <ComboBoxItem Content="半濁点" Tag="゚"/>
                             </ComboBox>
-                            <TextBox x:Name="AttachedSymbolTextBox" Width="100" Margin="5,0,0,0" Text="!"/>
+                            <TextBox x:Name="AttachedSymbolTextBox" Width="100" MaxLength="256" Margin="5,0,0,0" Text="!"/>
                             <Button Content="追加" Margin="5,0,0,0" Click="AttachedSymbolAddButton_Click"/>
                         </StackPanel>
+                        <TextBlock x:Name="AttachedSymbolErrorTextBlock" Foreground="IndianRed" TextWrapping="Wrap"/>
                         <ListBox x:Name="AttachedSymbolListBox" Height="70" Margin="0,5,0,0" DisplayMemberPath="SymbolData.Text" SelectionChanged="AttachedSymbolListBox_SelectionChanged"/>
                         <TextBlock Text="選択中の対象文字"/>
                         <TextBlock x:Name="AttachedSymbolSelectedTextBlock" Margin="0,2,0,0"/>

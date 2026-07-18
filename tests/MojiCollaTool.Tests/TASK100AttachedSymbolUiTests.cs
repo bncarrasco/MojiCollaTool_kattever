@@ -36,6 +36,131 @@ public class TASK100AttachedSymbolUiTests
     }
 
     [TestMethod]
+    public void SelectionRestoreIsMutuallyExclusiveAcrossTextSymbolBalloonNullInvalidAndPages()
+    {
+        RunOnSta(() =>
+        {
+            var document = new ProjectDocument("selection-exclusive");
+            var first = document.Pages[0];
+            var text = new MojiData { FullText = "AB" };
+            first.AddMojiData(text);
+            var balloon = new BalloonData { Bounds = new Rect(0, 0, 100, 60) };
+            first.AddBalloon(balloon);
+            var symbol = new AttachedSymbolData { ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "!" };
+            first.AddAttachedSymbol(symbol);
+            var second = document.AddPage("second");
+            second.AddMojiData(new MojiData { FullText = "C" });
+            using var session = new ProjectSession(document);
+            using var editor = new PageEditorControl();
+            editor.BindPage(first, null);
+
+            editor.RestoreViewState(100, symbol.ObjectId);
+            Assert.AreEqual(symbol.ObjectId, editor.SelectedObjectId);
+            Assert.AreEqual(symbol.ObjectId, editor.SelectedAttachedSymbolId);
+            Assert.IsNull(editor.SelectedBalloonId);
+
+            editor.RestoreViewState(100, text.ObjectId);
+            Assert.AreEqual(text.ObjectId, editor.SelectedObjectId);
+            Assert.IsNull(editor.SelectedAttachedSymbolId);
+            Assert.IsNull(editor.SelectedBalloonId);
+
+            editor.RestoreViewState(100, symbol.ObjectId);
+            editor.RestoreViewState(100, balloon.ObjectId);
+            Assert.AreEqual(balloon.ObjectId, editor.SelectedObjectId);
+            Assert.IsNull(editor.SelectedAttachedSymbolId);
+            Assert.AreEqual(balloon.ObjectId, editor.SelectedBalloonId);
+
+            editor.RestoreViewState(100, null);
+            Assert.IsNull(editor.SelectedObjectId);
+            Assert.IsNull(editor.SelectedAttachedSymbolId);
+            Assert.IsNull(editor.SelectedBalloonId);
+            editor.RestoreViewState(100, Guid.NewGuid());
+            Assert.IsNull(editor.SelectedObjectId);
+            Assert.IsNull(editor.SelectedAttachedSymbolId);
+            Assert.IsNull(editor.SelectedBalloonId);
+
+            editor.RestoreViewState(100, balloon.ObjectId);
+            session.ActivatePage(second.PageId);
+            editor.BindPage(second, null);
+            Assert.IsNull(editor.SelectedObjectId);
+            session.ActivatePage(first.PageId);
+            editor.BindPage(first, null);
+            Assert.AreEqual(balloon.ObjectId, editor.SelectedObjectId);
+            Assert.IsNull(editor.SelectedAttachedSymbolId);
+            Assert.AreEqual(balloon.ObjectId, editor.SelectedBalloonId);
+        });
+    }
+
+    [TestMethod]
+    public void AttachedSymbolUiRejectsInvalidInputWithoutChangingDocumentVisualSelectionHistoryOrDirty()
+    {
+        RunOnSta(() =>
+        {
+            var document = new ProjectDocument("ui-validation");
+            var page = document.Pages[0];
+            page.AddMojiData(new MojiData { FullText = "AB" });
+            using var session = new ProjectSession(document);
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            var valid = editor.AddAttachedSymbol(editor.MojiPanels[0].MojiData.ObjectId, 0, "!");
+            editor.CapturePage();
+            editor.RestoreViewState(100, valid.ObjectId);
+            var window = editor.MojiPanels[0].MojiWindow!;
+            Assert.AreEqual(256, ((TextBox)window.FindName("AttachedSymbolTextBox")).MaxLength);
+
+            var beforeDocument = page.AttachedSymbols.Select(item => item.Clone()).ToArray();
+            var beforeVisualCount = editor.AttachedSymbolVisuals.Count;
+            var beforeSelected = editor.SelectedObjectId;
+            var beforeUndo = session.UndoCount;
+            var beforeRevision = session.CurrentRevision;
+            var beforeDirty = session.IsDirty;
+
+            Assert.IsFalse(window.TryAddAttachedSymbolFromUi(0, string.Empty, out var emptyError));
+            Assert.IsTrue(emptyError.Contains("入力してください", StringComparison.Ordinal));
+            Assert.AreEqual("!", valid.SymbolData.Text);
+            Assert.IsFalse(window.TryAddAttachedSymbolFromUi(0, new string('x', 257), out var longError));
+            Assert.IsTrue(longError.Contains("256文字以内", StringComparison.Ordinal));
+            Assert.IsFalse(window.TryAddAttachedSymbolFromUi(99, "?", out var anchorError));
+            Assert.IsTrue(anchorError.Contains("範囲外", StringComparison.Ordinal));
+
+            var orphan = new MojiPanel(new MojiData { FullText = "A" }, editor);
+            var orphanWindow = orphan.MojiWindow!;
+            Assert.IsFalse(orphanWindow.TryAddAttachedSymbolFromUi(0, "?", out var parentError));
+            Assert.IsTrue(parentError.Contains("親文字", StringComparison.Ordinal));
+            orphan.Dispose();
+
+            CollectionAssert.AreEqual(beforeDocument.Select(item => item.ObjectId).ToArray(),
+                page.AttachedSymbols.Select(item => item.ObjectId).ToArray());
+            Assert.AreEqual(beforeVisualCount, editor.AttachedSymbolVisuals.Count);
+            Assert.AreEqual(beforeSelected, editor.SelectedObjectId);
+            Assert.AreEqual(beforeUndo, session.UndoCount);
+            Assert.AreEqual(beforeRevision, session.CurrentRevision);
+            Assert.AreEqual(beforeDirty, session.IsDirty);
+        });
+    }
+
+    [TestMethod]
+    public void AttachedSymbolSettingsScrollViewerHasFiniteViewportAndScrollableContent()
+    {
+        RunOnSta(() =>
+        {
+            using var editor = new PageEditorControl();
+            var page = new PageDocument("scroll", new[] { new MojiData { FullText = "A" } });
+            editor.BindPage(page, null);
+            var window = editor.MojiPanels[0].MojiWindow!;
+            var root = (Grid)window.Content;
+            root.Measure(new Size(800, 900));
+            root.Arrange(new Rect(0, 0, 800, 900));
+            root.UpdateLayout();
+            var scrollViewer = window.AttachedSymbolSettingsViewer;
+            Assert.IsTrue(scrollViewer.ViewportHeight > 0);
+            Assert.IsTrue(scrollViewer.ActualHeight <= 410.1);
+            Assert.IsTrue(scrollViewer.ScrollableHeight > 0,
+                $"viewport={scrollViewer.ViewportHeight}; extent={scrollViewer.ExtentHeight}; actual={scrollViewer.ActualHeight}");
+        });
+    }
+
+    [TestMethod]
     public void AttachedSymbolUiCaptureReanchorsAndSupportsUndoRedo()
     {
         RunOnSta(() =>
@@ -309,33 +434,58 @@ public class TASK100AttachedSymbolUiTests
     {
         RunOnSta(() =>
         {
-            var page = new PageDocument("visual-z-order", new[] { new MojiData { FullText = "A" } });
-            var firstTextId = page.MojiDatas[0].ObjectId;
-            var balloon = new BalloonData { Bounds = new Rect(0, 0, 100, 60) };
+            var document = new ProjectDocument("visual-z-order");
+            var page = document.Pages[0];
+            var firstText = new MojiData { FullText = "A", X = 0, Y = 0 };
+            page.AddMojiData(firstText);
+            var firstTextId = firstText.ObjectId;
+            var balloon = new BalloonData { X = 0, Y = 0, Bounds = new Rect(0, 0, 100, 60) };
             page.AddBalloon(balloon);
             var symbol = new AttachedSymbolData { ParentId = firstTextId, GraphemeAnchor = 0, Text = "!" };
             page.AddAttachedSymbol(symbol);
-            var secondText = new MojiData { FullText = "B" };
+            var secondText = new MojiData { FullText = "B", X = 0, Y = 0 };
             page.AddMojiData(secondText);
 
             using var editor = new PageEditorControl();
             editor.BindPage(page, null);
-            var topLevelIds = editor.Canvas.Children.Cast<UIElement>()
-                .Where(child => child is MojiPanel || child is BalloonVisual)
-                .Select(child => child switch
+            static UIElement[] RenderedObjects(PageEditorControl pageEditor) => pageEditor.Canvas.Children.Cast<UIElement>()
+                .Where(child => child is MojiPanel || child is BalloonVisual || child is AttachedSymbolVisual)
+                .ToArray();
+            var rendered = RenderedObjects(editor);
+            var renderedIds = rendered.Select(child => child switch
             {
                 MojiPanel panel => panel.MojiData.ObjectId,
                 BalloonVisual visual => visual.ObjectId,
+                AttachedSymbolVisual visual => visual.ObjectId,
                 _ => Guid.Empty
             }).ToArray();
-            var expectedTopLevelIds = page.AllObjects
-                .Where(item => item is MojiData || item is BalloonData)
-                .Select(item => item.ObjectId).ToArray();
-            CollectionAssert.AreEqual(expectedTopLevelIds, topLevelIds);
-            Assert.AreEqual(symbol.ObjectId, editor.MojiPanels.Single(panel => panel.MojiData.ObjectId == firstTextId)
-                .AttachedSymbolVisuals.Single().ObjectId);
-            Assert.IsTrue(editor.MojiPanels.Single(panel => panel.MojiData.ObjectId == firstTextId)
-                .AttachedSymbolVisuals.Single().Visibility == Visibility.Visible);
+            CollectionAssert.AreEqual(page.AllObjects.Select(item => item.ObjectId).ToArray(), renderedIds);
+            CollectionAssert.AreEqual(page.AllObjects.Select(item => item.ZIndex).ToArray(),
+                rendered.Select(Canvas.GetZIndex).ToArray());
+            Assert.AreEqual(symbol.ObjectId, ((AttachedSymbolVisual)rendered.Single(item => item is AttachedSymbolVisual)).ObjectId);
+
+            var path = Path.Combine(Path.GetTempPath(), $"task100-z-{Guid.NewGuid():N}.mctzip");
+            try
+            {
+                DataIO.WriteVersionedProject(path, document);
+                var restored = DataIO.ReadVersionedProject(path);
+                using var reloadedEditor = new PageEditorControl();
+                reloadedEditor.BindPage(restored.Pages[0], null);
+                var reloaded = RenderedObjects(reloadedEditor);
+                CollectionAssert.AreEqual(renderedIds, reloaded.Select(child => child switch
+                {
+                    MojiPanel panel => panel.MojiData.ObjectId,
+                    BalloonVisual visual => visual.ObjectId,
+                    AttachedSymbolVisual visual => visual.ObjectId,
+                    _ => Guid.Empty
+                }).ToArray());
+                CollectionAssert.AreEqual(page.AllObjects.Select(item => item.ZIndex).ToArray(),
+                    reloaded.Select(Canvas.GetZIndex).ToArray());
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
         });
     }
 
