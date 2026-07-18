@@ -14,7 +14,7 @@
 - Start worktree: 主repositoryの`git worktree list --porcelain`に登録済み
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` => `6.0.428`
 - Result commit: `bec5f16cfbdb288a448dfb37cdec9cc3af7f6c83`
-- Follow-up correction: JPEG合成時に`CanvasBackgroundRect`を変更せず、`MainCanvas`の白い背面で透明部分だけを合成するよう修正。
+- Follow-up correction commit: `fadef5e4d8aaa641d46aaee092773ce44b926858`。JPEG合成時に`CanvasBackgroundRect`を変更せず、`MainCanvas`の白い背面で透明部分だけを合成するよう修正。
 
 ## Changed files
 
