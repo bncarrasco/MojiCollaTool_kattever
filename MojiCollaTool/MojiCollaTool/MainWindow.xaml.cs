@@ -27,7 +27,7 @@ namespace MojiCollaTool
         {
             InitializeComponent();
             _lastUsedDirectory = DataIO.GetExeDirPath();
-            Title = $"MojiCollaTool 勝手版 ver{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version}";
+            Title = $"{ProductIdentity.DisplayName} ver{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version}";
             _workspace.PropertyChanged += Workspace_PropertyChanged;
             PageEditor.FileDropped += PageEditor_FileDropped;
             PageEditor.ContentChanged += PageEditor_ContentChanged;
@@ -153,6 +153,12 @@ namespace MojiCollaTool
             CaptureEditorState();
             _workspace.Open(new ProjectDocument());
             RefreshTabs();
+        }
+
+        private void AboutMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            var about = new AboutWindow { Owner = this };
+            about.ShowDialog();
         }
 
         private void AddPageButton_Click(object sender, RoutedEventArgs e)
