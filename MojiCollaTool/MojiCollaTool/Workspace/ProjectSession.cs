@@ -71,14 +71,14 @@ namespace MojiCollaTool
         {
             EnsureOpen();
             var affected = _activePageId.HasValue ? new[] { _activePageId.Value } : Document.Pages.Select(page => page.PageId);
-            RecordObservedChange("編集", affected, allowCoalesce: false);
+            RecordObservedChange("編集", affected, allowCoalesce: false, beforeActivePageId: _activePageId);
         }
 
         public void MarkChanged(string description)
         {
             EnsureOpen();
             var affected = _activePageId.HasValue ? new[] { _activePageId.Value } : Document.Pages.Select(page => page.PageId);
-            RecordObservedChange(description, affected, allowCoalesce: true);
+            RecordObservedChange(description, affected, allowCoalesce: true, beforeActivePageId: _activePageId);
         }
 
         public void MarkChanged(Guid pageId) => MarkChanged(pageId, "ページ編集");
@@ -90,7 +90,8 @@ namespace MojiCollaTool
         {
             EnsureOpen();
             Document.GetPage(pageId);
-            RecordObservedChange(description, new[] { pageId }, allowCoalesce: true, coalesceKey: coalesceKey);
+            RecordObservedChange(description, new[] { pageId }, allowCoalesce: true,
+                beforeActivePageId: _activePageId, coalesceKey: coalesceKey);
         }
 
         public void Execute(Action<ProjectDocument> mutation) => Execute(mutation, "編集");
@@ -129,8 +130,9 @@ namespace MojiCollaTool
         {
             EnsureOpen();
             if (!History.CanUndo) return false;
+            var previousActivePage = ActivePage;
             var entry = History.Undo(Document, restoreState: candidate => RestoreAssets(candidate.BeforeAssets));
-            RestoreActivePage(entry.BeforeActivePageId);
+            RestoreActivePage(entry.BeforeActivePageId, previousActivePage);
             ResetCoalesceWindow();
             ApplyHistoryState();
             return true;
@@ -140,8 +142,9 @@ namespace MojiCollaTool
         {
             EnsureOpen();
             if (!History.CanRedo) return false;
+            var previousActivePage = ActivePage;
             var entry = History.Redo(Document, restoreState: candidate => RestoreAssets(candidate.AfterAssets));
-            RestoreActivePage(entry.AfterActivePageId);
+            RestoreActivePage(entry.AfterActivePageId, previousActivePage);
             ResetCoalesceWindow();
             ApplyHistoryState();
             return true;
@@ -162,6 +165,7 @@ namespace MojiCollaTool
             if (_savedRevision == _currentRevision) return;
             _savedRevision = _currentRevision;
             _savedHistoryNode = History.CurrentNode;
+            History.MarkSavedNode(_savedHistoryNode);
             ResetCoalesceWindow();
             OnPropertyChanged(nameof(SavedRevision));
             OnPropertyChanged(nameof(IsDirty));
@@ -316,15 +320,24 @@ namespace MojiCollaTool
             RestoreActivePage(Document.Pages[0].PageId);
         }
 
-        private void RestoreActivePage(Guid? pageId)
+        private void RestoreActivePage(Guid? pageId, PageDocument? previousActivePage = null)
         {
             var restoredPageId = pageId.HasValue && Document.ContainsPage(pageId.Value)
                 ? pageId
                 : Document.Pages[0].PageId;
-            if (_activePageId == restoredPageId) return;
-            _activePageId = restoredPageId;
-            OnPropertyChanged(nameof(ActivePageId));
-            OnPropertyChanged(nameof(ActivePage));
+            var pageIdChanged = _activePageId != restoredPageId;
+            if (pageIdChanged)
+            {
+                _activePageId = restoredPageId;
+                OnPropertyChanged(nameof(ActivePageId));
+            }
+
+            // RestoreHistoryState creates new PageDocument instances. Notify even when
+            // the selected ID is unchanged so bindings can rebind to the restored object.
+            if (pageIdChanged || !ReferenceEquals(previousActivePage, ActivePage))
+            {
+                OnPropertyChanged(nameof(ActivePage));
+            }
         }
 
         private void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));

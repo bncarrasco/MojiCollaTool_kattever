@@ -258,4 +258,118 @@ public class UndoRedoTests
 
         Assert.AreEqual(2, session.History.UndoCount);
     }
+
+    [TestMethod]
+    public void NormalEditUndoKeepsSecondPageSelected()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("normal active page"));
+        session.Execute(project =>
+        {
+            var page = project.AddPage("02");
+            session.ActivatePage(page.PageId);
+        }, "ページ追加");
+        var second = session.ActivePage!;
+
+        second.Rename("edited");
+        session.MarkChanged(second.PageId, "ページ編集", "second-page");
+
+        Assert.IsTrue(session.Undo());
+        Assert.AreEqual(second.PageId, session.ActivePageId);
+        Assert.AreEqual("02", session.ActivePage!.Name);
+    }
+
+    [TestMethod]
+    public void AddAndDuplicateUndoRedoRestoreSelectedPage()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("page selection"));
+        var first = session.ActivePage!;
+
+        Guid addedPageId = Guid.Empty;
+        session.Execute(project =>
+        {
+            var page = project.AddPage("02");
+            addedPageId = page.PageId;
+            session.ActivatePage(page.PageId);
+        }, "ページ追加");
+        Assert.AreEqual(addedPageId, session.ActivePageId);
+        Assert.IsTrue(session.Undo());
+        Assert.AreEqual(first.PageId, session.ActivePageId);
+        Assert.IsTrue(session.Redo());
+        Assert.AreEqual(addedPageId, session.ActivePageId);
+
+        var source = session.ActivePage!;
+        Guid clonePageId = Guid.Empty;
+        session.Execute(project =>
+        {
+            var clone = project.ClonePage(source.PageId);
+            clonePageId = clone.PageId;
+            session.ActivatePage(clone.PageId);
+        }, "ページ複製");
+        Assert.AreEqual(clonePageId, session.ActivePageId);
+        Assert.IsTrue(session.Undo());
+        Assert.AreEqual(source.PageId, session.ActivePageId);
+        Assert.IsTrue(session.Redo());
+        Assert.AreEqual(clonePageId, session.ActivePageId);
+    }
+
+    [TestMethod]
+    public void BranchAfterUndoDoesNotDirtySavedCommonPage()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("saved branch"));
+        var first = session.ActivePage!;
+        var second = session.Document.AddPage("02");
+        session.MarkChanged(second.PageId, "ページ追加", "add-second");
+        session.ExecutePage(first.PageId, page => page.Rename("saved"), "名前変更", "first");
+        session.MarkSaved();
+
+        session.ExecutePage(first.PageId, page => page.Rename("temporary"), "名前変更", "first");
+        Assert.IsTrue(session.Undo());
+        session.ExecutePage(second.PageId, page => page.Rename("branch"), "名前変更", "second");
+
+        Assert.IsFalse(session.IsPageDirty(first.PageId));
+        Assert.IsTrue(session.IsPageDirty(second.PageId));
+    }
+
+    [TestMethod]
+    public void TrimmedSavedNodeStillLeavesUnchangedPageClean()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("saved trim"));
+        var first = session.ActivePage!;
+        var second = session.Document.AddPage("02");
+        session.MarkChanged(second.PageId, "ページ追加", "add-second");
+        session.ExecutePage(first.PageId, page => page.Rename("saved"), "名前変更", "first");
+        session.MarkSaved();
+
+        for (var index = 0; index < 110; index++)
+        {
+            var value = index;
+            session.ExecutePage(second.PageId, page => page.Rename($"edit-{value}"),
+                $"編集-{value}", $"second-{value}");
+        }
+
+        Assert.IsFalse(session.IsPageDirty(first.PageId));
+        Assert.IsTrue(session.IsPageDirty(second.PageId));
+    }
+
+    [TestMethod]
+    public void SameIdPageRestoreRaisesActivePageNotification()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("same page id"));
+        var pageId = session.ActivePage!.PageId;
+        session.ExecutePage(pageId, page => page.Rename("changed"), "名前変更", "page");
+        var activePageNotifications = 0;
+        session.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(ProjectSession.ActivePage)) activePageNotifications++;
+        };
+
+        Assert.IsTrue(session.Undo());
+        Assert.AreEqual(pageId, session.ActivePageId);
+        Assert.IsTrue(activePageNotifications > 0);
+    }
 }

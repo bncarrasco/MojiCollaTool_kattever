@@ -205,32 +205,38 @@ namespace MojiCollaTool
 
         private void AddPageButton_Click(object sender, RoutedEventArgs e)
         {
-            if (ActiveSession == null) return;
+            var session = ActiveSession;
+            if (session == null) return;
             CaptureEditorState();
-            var page = ActiveSession.Document.AddPage();
-            ActiveSession.ActivatePage(page.PageId);
-            ActiveSession.MarkChanged(page.PageId, "ページ追加");
+            session.Execute(project =>
+            {
+                var page = project.AddPage();
+                session.ActivatePage(page.PageId);
+            }, "ページ追加");
             BindActivePage();
             RefreshTabs();
         }
 
         private void DuplicatePageButton_Click(object sender, RoutedEventArgs e)
         {
-            if (ActiveSession == null || ActivePage == null) return;
-            CaptureEditorState();
+            var session = ActiveSession;
             var source = ActivePage;
-            var clone = ActiveSession.Document.ClonePage(source.PageId);
-            try
+            if (session == null || source == null) return;
+            CaptureEditorState();
+            session.Execute(project =>
             {
-                ActiveSession.AssetStore.CopyPageAssets(source, clone);
-            }
-            catch
-            {
-                ActiveSession.Document.RemovePage(clone.PageId);
-                throw;
-            }
-            ActiveSession.ActivatePage(clone.PageId);
-            ActiveSession.MarkChanged(clone.PageId, "ページ複製");
+                var clone = project.ClonePage(source.PageId);
+                try
+                {
+                    session.AssetStore.CopyPageAssets(source, clone);
+                }
+                catch
+                {
+                    project.RemovePage(clone.PageId);
+                    throw;
+                }
+                session.ActivatePage(clone.PageId);
+            }, "ページ複製");
             BindActivePage();
             RefreshTabs();
         }
@@ -247,7 +253,7 @@ namespace MojiCollaTool
             try
             {
                 ActiveSession.AssetStore.RemovePage(page.PageId);
-                ActiveSession.Execute(project => project.RemovePage(page.PageId));
+                ActiveSession.Execute(project => project.RemovePage(page.PageId), "ページ削除");
                 BindActivePage();
                 RefreshTabs();
             }

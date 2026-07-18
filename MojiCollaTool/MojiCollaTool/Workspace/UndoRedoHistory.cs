@@ -74,6 +74,7 @@ namespace MojiCollaTool
         private readonly Dictionary<HistoryEntry, HistoryNode> _nodes = new Dictionary<HistoryEntry, HistoryNode>();
         private readonly HistoryNode _root;
         private HistoryNode _current;
+        private HistoryNode _savedNode;
         private long _nextRevision = 1;
 
         public UndoRedoHistory(ProjectDocument initialDocument, int maxEntries = 100, long maxBytes = 64L * 1024 * 1024)
@@ -86,6 +87,7 @@ namespace MojiCollaTool
             MaxBytes = maxBytes;
             _root = new HistoryNode(null, 0, Array.Empty<Guid>());
             _current = _root;
+            _savedNode = _root;
         }
 
         public int MaxEntries { get; }
@@ -100,6 +102,12 @@ namespace MojiCollaTool
         public IReadOnlyList<HistoryEntry> RedoEntries => new ReadOnlyCollection<HistoryEntry>(_redoStack);
         public long CurrentRevision => _current.Revision;
         internal object CurrentNode => _current;
+
+        internal void MarkSavedNode(object node)
+        {
+            if (node is not HistoryNode saved) throw new ArgumentException("The node does not belong to this history.", nameof(node));
+            _savedNode = saved;
+        }
 
         public HistoryEntry Execute(ProjectDocument document, Action<ProjectDocument> mutation,
             string description = "編集", IEnumerable<Guid>? affectedPageIds = null)
@@ -270,12 +278,25 @@ namespace MojiCollaTool
                 {
                     var removed = _undoStack[0];
                     _undoStack.RemoveAt(0);
+                    var removedNode = _nodes.TryGetValue(removed, out var removedHistoryNode)
+                        ? removedHistoryNode : null;
+                    var removedWasSavedDescendant = removedNode != null &&
+                        IsSavedAncestorOf(removedNode) && !ReferenceEquals(removedNode, _savedNode);
                     DetachNode(removed);
                     if (_undoStack.Count > 0 && _nodes.TryGetValue(_undoStack[0], out var boundary))
                     {
-                        boundary.Parent = _root;
+                        // Keep the complete saved path available for dirty-page comparison.
+                        // Only an unrelated branch may be cut at the trim boundary.
+                        if (removedWasSavedDescendant)
+                        {
+                            boundary.Parent = _savedNode;
+                        }
+                        else if (!IsOnSavedPath(boundary) && !IsSavedAncestorOf(boundary))
+                        {
+                            boundary.Parent = _root;
+                        }
                     }
-                    else
+                    else if (!IsOnSavedPath(_current) && !IsSavedAncestorOf(_current))
                     {
                         _current.Parent = _root;
                     }
@@ -293,8 +314,29 @@ namespace MojiCollaTool
         private void DetachNode(HistoryEntry entry)
         {
             if (!_nodes.TryGetValue(entry, out var node)) return;
+            if (IsOnSavedPath(node)) return;
             node.Parent = null;
             _nodes.Remove(entry);
+        }
+
+        private bool IsOnSavedPath(HistoryNode node)
+        {
+            for (var current = _savedNode; current != null; current = current.Parent)
+            {
+                if (ReferenceEquals(current, node)) return true;
+            }
+
+            return false;
+        }
+
+        private bool IsSavedAncestorOf(HistoryNode node)
+        {
+            for (var current = node; current != null; current = current.Parent)
+            {
+                if (ReferenceEquals(current, _savedNode)) return true;
+            }
+
+            return false;
         }
 
         private static long EstimateBytes(ProjectHistoryState before, ProjectHistoryState after,

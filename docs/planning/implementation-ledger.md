@@ -5,6 +5,12 @@
 | Task | Status | Branch | Worktree | Base commit | Result commit | Requirements | ADR | Build | Tests | Manual/UI/Compatibility | Review/Integration | Blocker | Next |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
+### TASK-070 follow-up handoff
+
+- Implementation commit: `4c71e43e5aa70881f5fae38272ba9e9ed4cbda01`
+- Current handoff commit before this follow-up: `9360249bb74b6be1876686b4b7ed1ace93930f02`
+- Follow-up validation: Debug 99/99 passed; Release 99/99 passed; 0 failed.
+
 ## TASK-005 handoff update
 
 | Task | Status | Branch | Worktree | Base | Requirements | Build | Tests | Compatibility / error handling | Next |

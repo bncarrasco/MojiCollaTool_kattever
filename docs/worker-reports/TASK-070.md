@@ -2,6 +2,14 @@
 
 ## Result
 
+### Final handoff record
+
+- Implementation commit: `4c71e43e5aa70881f5fae38272ba9e9ed4cbda01`
+- Current handoff commit before this follow-up: `9360249bb74b6be1876686b4b7ed1ace93930f02`
+- This follow-up adds active-page restoration, saved-path-safe trim, and the final regression cases.
+- Validation: Debug 99/99 passed; Release 99/99 passed; 0 failed.
+
+
 実装完了。指摘対応commit: `4c71e43`（最終handoff hashはdocs更新後に確定）。
 
 ## Summary
