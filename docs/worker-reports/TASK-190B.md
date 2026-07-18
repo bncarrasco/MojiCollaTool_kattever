@@ -4,6 +4,8 @@
 
 実装完了。アプリのタイトル、About画面、Assembly/package metadataを`MojiCollaTool 勝手版`に統一し、非公式フォークであること、公式版・原作者とは無関係であること、原作者へ問い合わせないことをアプリ内に表示した。
 
+Commit: `ea339b9` (`Implement TASK-190B fork branding`)
+
 ## 対応要件
 
 - REQ-FORK-001

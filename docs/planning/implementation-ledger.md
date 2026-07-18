@@ -32,6 +32,6 @@
 | TASK-170 | Planned | - | - | - | - | CLIPBOARD | ADR-0001/4 | Not run | Not run | Not verified | - | 030,070 | dependency後 |
 | TASK-180 | Planned | - | - | - | - | BACKGROUND-FX | - | Not run | Not run | Not verified | - | TASK-140 | future |
 | TASK-190A | Complete | `feature/TASK-190A-fork-documentation` | `F:/github/MojiCollaTool-worktrees/TASK-190A` | `adf5fd8` | `d297bb6`, `7f2679f`, `2682a0b` | FORK,DEPS | - | N/A: docs-only | N/A: docs-only | README/notice review済み。配布時対応はT190B | Integrated to `develop` at `88c7062` | なし | TASK-190B |
-| TASK-190B | In progress | `feature/TASK-190B-app-branding` | `F:/github/MojiCollaTool-worktrees/TASK-190B` | `1e64a71`（develop） | - | FORK,UI | - | Not run（SDK 6.0.428 unavailable） | Not run | Not verified | title/About/Assembly metadata/branding testを実装。build/testはSDK不足 | なし | TASK-200 |
+| TASK-190B | Complete | `feature/TASK-190B-app-branding` | `F:/github/MojiCollaTool-worktrees/TASK-190B` | `1e64a71`（develop） | `ea339b9` | FORK,UI | - | Not run（SDK 6.0.428 unavailable） | Not run | Not verified | title/About/Assembly metadata/branding testを実装。XAML/static inspect pass、build/testはSDK不足 | Pending integration review | TASK-200 |
 | TASK-200 | Planned | - | - | - | - | UI | - | Not run | Not run | Not verified | - | TASK-190B | 190B後 |
 | TASK-210/220/230 | Planned | - | - | - | - | OPS,SNAP,SELECT,GROUP | ADR-0003/4 | Not run | Not run | Not verified | - | task-breakdown参照 | future |
