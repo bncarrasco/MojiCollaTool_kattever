@@ -317,7 +317,10 @@ namespace MojiCollaTool
         {
             if (!_nodes.TryGetValue(entry, out var node)) return;
             _nodes.Remove(entry);
-            node.Parent = null;
+            // A saved node can be on the redo branch when a new edit abandons it.
+            // Keep that node as a tiny common-prefix anchor, but release the entry
+            // (and therefore its mementos/assets) from the history map.
+            if (!ReferenceEquals(node, _savedNode)) node.Parent = null;
         }
 
         private bool IsSavedAncestorOf(HistoryNode node)

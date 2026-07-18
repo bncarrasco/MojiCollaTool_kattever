@@ -358,6 +358,34 @@ public class UndoRedoTests
     }
 
     [TestMethod]
+    public void AbandonedSavedRedoBranchKeepsCommonPageClean()
+    {
+        using var workspace = new ApplicationWorkspace();
+        var session = workspace.Open(new ProjectDocument("saved redo branch"));
+        var pageA = session.ActivePage!;
+        PageDocument? pageB = null;
+        PageDocument? pageC = null;
+        session.Execute(project =>
+        {
+            pageB = project.AddPage("B");
+            pageC = project.AddPage("C");
+        }, "ページ追加");
+        session.MarkSaved();
+
+        session.ExecutePage(pageC!.PageId, page => page.Rename("C changed"), "C編集", "page-c");
+        session.ExecutePage(pageA.PageId, page => page.Rename("A saved"), "A編集", "page-a");
+        session.MarkSaved();
+
+        // Undo moves the saved A operation to redo. Editing B abandons that redo branch.
+        Assert.IsTrue(session.Undo());
+        session.ExecutePage(pageB!.PageId, page => page.Rename("B branch"), "B編集", "page-b");
+
+        Assert.IsTrue(session.IsPageDirty(pageA.PageId));
+        Assert.IsTrue(session.IsPageDirty(pageB.PageId));
+        Assert.IsFalse(session.IsPageDirty(pageC.PageId));
+    }
+
+    [TestMethod]
     public void TrimmedSavedNodeStillLeavesUnchangedPageClean()
     {
         using var workspace = new ApplicationWorkspace();
