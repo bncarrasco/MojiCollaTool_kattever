@@ -5,6 +5,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+using System.Windows.Input;
 using Microsoft.Win32;
 
 namespace MojiCollaTool
@@ -26,6 +27,11 @@ namespace MojiCollaTool
         public MainWindow()
         {
             InitializeComponent();
+            CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, UndoCommand_Executed, UndoCommand_CanExecute));
+            CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, RedoCommand_Executed, RedoCommand_CanExecute));
+            InputBindings.Add(new KeyBinding(ApplicationCommands.Undo, Key.Z, ModifierKeys.Control));
+            InputBindings.Add(new KeyBinding(ApplicationCommands.Redo, Key.Y, ModifierKeys.Control));
+            InputBindings.Add(new KeyBinding(ApplicationCommands.Redo, Key.Z, ModifierKeys.Control | ModifierKeys.Shift));
             _lastUsedDirectory = DataIO.GetExeDirPath();
             Title = $"{ProductIdentity.DisplayName} ver{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version}";
             _workspace.PropertyChanged += Workspace_PropertyChanged;
@@ -61,6 +67,42 @@ namespace MojiCollaTool
         private void PageEditor_ContentChanged(object? sender, EventArgs e)
         {
             CommitEditorChanges();
+        }
+
+        private void UndoCommand_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        {
+            e.CanExecute = ActiveSession?.CanUndo == true;
+            e.Handled = true;
+        }
+
+        private void RedoCommand_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+        {
+            e.CanExecute = ActiveSession?.CanRedo == true;
+            e.Handled = true;
+        }
+
+        private void UndoCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ActiveSession == null) return;
+            CaptureEditorState();
+            if (ActiveSession.Undo())
+            {
+                BindActivePage();
+                RefreshTabs();
+            }
+            e.Handled = true;
+        }
+
+        private void RedoCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ActiveSession == null) return;
+            CaptureEditorState();
+            if (ActiveSession.Redo())
+            {
+                BindActivePage();
+                RefreshTabs();
+            }
+            e.Handled = true;
         }
 
         private void Window_Activated(object sender, EventArgs e)

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### TASK-070
+
+- Undo/Redo、保存revisionによるdirty表示、ページ・画像assetのatomic復元、連続入力のcoalesceを追加しました。
+- `Ctrl+Z`、`Ctrl+Y`、`Ctrl+Shift+Z`で現在のプロジェクトだけを操作できるようにしました。
+
 ### TASK-190B
 
 - アプリのタイトル、About画面、Assembly/package metadataを`MojiCollaTool 勝手版`に統一しました。
