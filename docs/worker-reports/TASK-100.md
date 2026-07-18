@@ -6,7 +6,7 @@
 - Branch: `feature/TASK-100-attached-symbol-ui`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-100`
 - Functional base / kickoff HEAD: `4402a6101c457a615bb86412981954d1ea1e0171`
-- Result implementation commit: （commit後に更新）
+- Result implementation commit: `4727e170d62d0fd71f0991187c3108dd5b68b4f5`
 - SDK: `6.0.428`（`C:\Users\user\.dotnet\dotnet.exe`）
 
 ## Implementation
