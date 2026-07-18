@@ -356,10 +356,8 @@ namespace MojiCollaTool
                 else foreach (var grapheme in line)
                 {
                     //  縦書きのために、１文字ずつ文字を作成する
-                    var decoratedCharacterControl = new DecoratedCharacterControl(grapheme.Text, MojiData)
-                    {
-                        GraphemeIndex = grapheme.Index,
-                    };
+                    var decoratedCharacterControl = decoratedCharacterControlTotalPool.GetDecoratedCharacterControl(grapheme.Text, MojiData);
+                    decoratedCharacterControl.GraphemeIndex = grapheme.Index;
                     graphemeControls[grapheme.Index] = decoratedCharacterControl;
 
                     //  行パネルに追加する

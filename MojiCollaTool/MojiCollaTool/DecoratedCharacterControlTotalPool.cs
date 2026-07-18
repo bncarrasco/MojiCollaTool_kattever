@@ -12,7 +12,7 @@ namespace MojiCollaTool
         /// <summary>
         /// 文字オブジェクトの再利用プールとなる辞書
         /// </summary>
-        private Dictionary<char, DecoratedCharacterControlPool> pool = new Dictionary<char, DecoratedCharacterControlPool>();
+        private readonly Dictionary<string, DecoratedCharacterControlPool> pool = new Dictionary<string, DecoratedCharacterControlPool>(StringComparer.Ordinal);
 
         /// <summary>
         /// プールをクリアする
@@ -27,18 +27,21 @@ namespace MojiCollaTool
         /// </summary>
         /// <param name="character"></param>
         public DecoratedCharacterControl GetDecoratedCharacterControl(char character, MojiData mojiData)
+            => GetDecoratedCharacterControl(character.ToString(), mojiData);
+
+        public DecoratedCharacterControl GetDecoratedCharacterControl(string graphemeText, MojiData mojiData)
         {
-            if (pool.ContainsKey(character))
+            if (pool.ContainsKey(graphemeText))
             {
                 //  その文字がプールに存在する場合、プールから返す
-                return pool[character].GetDecoratedCharacterControl(mojiData);
+                return pool[graphemeText].GetDecoratedCharacterControl(mojiData);
             }
             else
             {
                 //  その文字が存在しない場合、プールを新規作成して、そこから返す
-                var pool = new DecoratedCharacterControlPool(character);
+                var pool = new DecoratedCharacterControlPool(graphemeText);
 
-                this.pool[character] = pool;
+                this.pool[graphemeText] = pool;
 
                 return pool.GetDecoratedCharacterControl(mojiData);
             }

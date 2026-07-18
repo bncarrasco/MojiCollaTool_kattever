@@ -67,7 +67,8 @@
             <TextBox x:Name="TextTextBox" Text="サンプル" AcceptsReturn="True" FontSize="20" TextWrapping="Wrap" FontFamily="{Binding ElementName=FontFamilyComboBox, Path=SelectedValue}" VerticalScrollBarVisibility="Visible" Margin="5" TextChanged="TextBox_TextChanged"/>
         </GroupBox>
         <Expander Header="文字設定" Grid.Row="2" IsExpanded="True">
-            <StackPanel Orientation="Vertical" CanVerticallyScroll="True">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Orientation="Vertical">
                 <GroupBox Header="座標">
                     <StackPanel Orientation="Horizontal" Margin="5">
                         <Label Content="X:"/>
@@ -172,6 +173,8 @@
                                 <ComboBoxItem Content="!?"/>
                                 <ComboBoxItem Content="!!"/>
                                 <ComboBoxItem Content="?!"/>
+                                <ComboBoxItem Content="濁点" Tag="゙"/>
+                                <ComboBoxItem Content="半濁点" Tag="゚"/>
                             </ComboBox>
                             <TextBox x:Name="AttachedSymbolTextBox" Width="100" Margin="5,0,0,0" Text="!"/>
                             <Button Content="追加" Margin="5,0,0,0" Click="AttachedSymbolAddButton_Click"/>
@@ -193,6 +196,8 @@
                             <CheckBox x:Name="AttachedSymbolInheritFontCheckBox" Content="フォント継承" Checked="AttachedSymbolInheritanceChanged" Unchecked="AttachedSymbolInheritanceChanged" Margin="0,0,8,0"/>
                             <CheckBox x:Name="AttachedSymbolInheritColorCheckBox" Content="色継承" Checked="AttachedSymbolInheritanceChanged" Unchecked="AttachedSymbolInheritanceChanged" Margin="0,0,8,0"/>
                             <CheckBox x:Name="AttachedSymbolInheritBorderCheckBox" Content="縁取り継承" Checked="AttachedSymbolInheritanceChanged" Unchecked="AttachedSymbolInheritanceChanged"/>
+                            <CheckBox x:Name="AttachedSymbolInheritDecorationCheckBox" Content="装飾継承" Checked="AttachedSymbolInheritanceChanged" Unchecked="AttachedSymbolInheritanceChanged" Margin="8,0,8,0"/>
+                            <CheckBox x:Name="AttachedSymbolIncludeSpacingCheckBox" Content="文字間隔に含める" Checked="AttachedSymbolInheritanceChanged" Unchecked="AttachedSymbolInheritanceChanged"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Label Content="個別フォント"/>
@@ -212,6 +217,7 @@
                     </StackPanel>
                 </GroupBox>
             </StackPanel>
+            </ScrollViewer>
         </Expander>
     </Grid>
 </Window>

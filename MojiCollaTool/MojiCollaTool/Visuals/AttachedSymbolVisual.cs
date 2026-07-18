@@ -84,6 +84,9 @@ namespace MojiCollaTool
             _geometry = formattedText.BuildGeometry(new Point(0, 0));
             RebuildChildren(_geometry);
             IsHitTestVisible = SymbolData.IsVisible && !SymbolData.IsDetached;
+            Visibility = SymbolData.IsVisible && !SymbolData.IsDetached
+                ? Visibility.Visible
+                : Visibility.Hidden;
             InvalidateVisual();
         }
 
@@ -107,6 +110,7 @@ namespace MojiCollaTool
         private void RebuildChildren(Geometry geometry)
         {
             _children.Clear();
+            if (!SymbolData.IsVisible || SymbolData.IsDetached) return;
             var color = ResolveColor();
             if (_parentText.IsSecondBorderExists && SymbolData.Inherit.HasFlag(AttachedSymbolInheritance.Border))
                 _children.Add(CreateBorderVisual(geometry, _parentText.SecondBorderThickness, _parentText.SecondBorderColor, _parentText.SecondBorderBlurrRadius));

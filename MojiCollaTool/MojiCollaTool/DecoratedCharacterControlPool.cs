@@ -12,7 +12,9 @@ namespace MojiCollaTool
         /// <summary>
         /// 文字
         /// </summary>
-        public char Character { get; set; }
+        public string GraphemeText { get; set; }
+
+        public char Character => GraphemeText[0];
 
         /// <summary>
         /// 要不要フラグ
@@ -31,13 +33,25 @@ namespace MojiCollaTool
 
         public DecoratedCharacterControlPool(char character)
         {
-            Character = character;
+            GraphemeText = character.ToString();
+        }
+
+        public DecoratedCharacterControlPool(string graphemeText)
+        {
+            if (string.IsNullOrEmpty(graphemeText)) throw new ArgumentException("Grapheme text is required.", nameof(graphemeText));
+            GraphemeText = graphemeText;
         }
 
         public DecoratedCharacterControlPool(char character, int requiredCount, MojiData moijData) 
         {
-            Character = character;
+            GraphemeText = character.ToString();
             UpdatePool(requiredCount, moijData);
+        }
+
+        public DecoratedCharacterControlPool(string graphemeText, int requiredCount, MojiData mojiData)
+            : this(graphemeText)
+        {
+            UpdatePool(requiredCount, mojiData);
         }
 
         /// <summary>
@@ -67,7 +81,7 @@ namespace MojiCollaTool
                 //  足りない場合は追加する
                 while(requiredCount != Pool.Count)
                 {
-                    Pool.Add(new DecoratedCharacterControl(Character, moijData));
+                    Pool.Add(new DecoratedCharacterControl(GraphemeText, moijData));
                 }
             }
             else if(lackCount < 0)
@@ -89,7 +103,7 @@ namespace MojiCollaTool
             if (UsedCounter >= Pool.Count)
             {
                 //  プール内に存在しない場合、新規生成する
-                Pool.Add(new DecoratedCharacterControl(Character, mojiData));
+                Pool.Add(new DecoratedCharacterControl(GraphemeText, mojiData));
             }
 
             var decoratedCharacterControl = Pool[UsedCounter];

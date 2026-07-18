@@ -1,40 +1,51 @@
-# TASK-100 付加記号UIと書記素描画 実装報告
+# TASK-100 Attached Symbol UI / Grapheme Rendering Report
 
 ## Result
 
 - Task: `TASK-100`
 - Branch: `feature/TASK-100-attached-symbol-ui`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-100`
-- Functional base / kickoff HEAD: `4402a6101c457a615bb86412981954d1ea1e0171`
-- Result implementation commit: `4727e170d62d0fd71f0991187c3108dd5b68b4f5`
-- SDK: `6.0.428`（`C:\Users\user\.dotnet\dotnet.exe`）
+- Functional base: `4402a6101c457a615bb86412981954d1ea1e0171`
+- SDK: `6.0.428` (`C:\Users\user\.dotnet\dotnet.exe`)
 
 ## Implementation
 
-- `DecoratedCharacterControl`と`MojiPanel`を`GraphemeService`の書記素単位へ接続し、サロゲート、結合文字、ZWJ sequenceを1 visualとして描画するようにした。
-- `AttachedSymbolVisual`とem基準の`AttachedSymbolPlacement`を追加し、親textの書記素anchor、位置、倍率、回転、縦書き／横書き、親回転へ追従させた。
-- `MojiWindow`へ対象書記素、候補記号（`!`、`?`、`!?`、`!!`、`?!`）、任意入力、X/Y、倍率、回転、継承、個別font、fallback状態、削除の日本語UIを追加した。
-- PageEditorへ付加記号の追加・選択・削除・property update・dragを接続した。dragはpointer-upで1履歴、capture lossでbeforeへ復元し、親文字削除時はdetached状態を保持する。
-- PageEditor capture時にvisual編集をモデルへ反映してからtext anchor reconciliationを行い、本文編集、page/project切替、Undo/Redo、保存復元でvisualとselectionを再構成するようにした。
-- UI更新値はcandidate validationを経由し、不正なID、scale、anchorが文書へ流れないようにした。
+- PageEditor now keeps all attached-symbol models separately from parent-bound visuals. Detached models are retained through parent deletion, page/project switching, Capture, and versioned save/load.
+- Capture validates the complete candidate state on a cloned PageDocument before mutating the bound page. Add validates text, ID, parent, grapheme anchor, scale, and finite numeric values before changing the parent visual, model, or history.
+- Attached-symbol drags use a unique gesture coalesce key. Pointer-up creates one history entry per drag; capture loss restores the pre-gesture state.
+- `IsVisible=false` and detached visuals now have no rendered child geometry and are hidden/non-hit-testable.
+- Candidate UI includes `濁点`, `半濁点`, arbitrary text, `装飾継承`, and `文字間隔に含める`. The settings area is hosted by a real `ScrollViewer`; font choices continue to use `FontUtil` system-font enumeration.
+- Grapheme visual pooling now keys by the complete grapheme string, including variation selectors, modifiers, ZWJ sequences, and regional-indicator pairs.
+
+## Automated verification scope
+
+`TASK100AttachedSymbolUiTests` contains 10 tests covering:
+
+- variation selector, skin tone, ZWJ, two flags, CRLF, and empty-line grapheme layout;
+- horizontal/vertical placement and parent movement, size, and rotation follow-up;
+- all built-in candidates plus arbitrary text;
+- inheritance, decoration, spacing, font fallback, saved font name, and hidden rendering;
+- one drag per history entry, two drags producing two Undo entries, and capture-loss rollback;
+- page switching, selection restoration, Dispose, detached preservation after parent deletion, save/reload, and mixed canonical Z-order;
+- atomic rejection of empty text, overlong text, out-of-range anchor, and duplicate ID;
+- full-grapheme refresh performance baseline.
+
+Existing TASK-090 model tests additionally cover cross-object ID validation, orphan policies, persistence compatibility, and model-level atomicity.
 
 ## Verification
 
-- Kickoff Git: top-level、branch、HEAD、clean status、worktree登録を確認。
-- SDK: pass（`6.0.428`）。
-- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Debug`: pass、0 warnings / 0 errors。
-- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\test.ps1`: pass、157 passed / 0 failed。
-- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Release`: pass、0 warnings / 0 errors。
-- `C:\Users\user\.dotnet\dotnet.exe test .\tests\MojiCollaTool.Tests\MojiCollaTool.Tests.csproj -c Release --no-build`: pass、157 passed / 0 failed。
-- `git diff --check`: pass。
-- TASK-100 tests: 書記素visual数、付加記号UI capture、本文編集時の再anchor、Undo/Redoを自動検証。
+- `C:\Users\user\.dotnet\dotnet.exe --version`: pass (`6.0.428`).
+- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Debug`: pass, 0 warnings / 0 errors.
+- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\test.ps1`: pass, 165 passed / 0 failed.
+- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\eng\build.ps1 -Configuration Release`: pass, 0 warnings / 0 errors.
+- `C:\Users\user\.dotnet\dotnet.exe test .\tests\MojiCollaTool.Tests\MojiCollaTool.Tests.csproj -c Release --no-build`: pass, 165 passed / 0 failed.
+- `git diff --check`: pass.
+- Final `git status --short --branch`: clean after the result commits.
 
-## Known issues / manual verification
+## Manual verification boundary
 
-- 実WPF画面でのマウス操作、DPI別の見た目、フォントごとの縦書きgolden image確認はこの環境では未実施（Not verified）。
-- フォントfallbackはシステムfont一覧照合とfallback状態表示を自動検証対象とし、端末ごとの実フォント外観確認は未実施。
+Automated tests do not replace interactive WPF pointer, DPI, IME, or final-pixel inspection on every installed font. Those remain manual verification items; the report does not claim them as automated coverage.
 
-## Handoff / rollback
+## Handoff
 
-- TASK-130はPageEditorのballoon tail/text-link操作を本taskの後に接続する。
-- rollbackは本taskのResult implementation commitをrevertすれば、書記素visual、付加記号visual/UI、PageEditor接続、tests/docsの変更をまとめて戻せる。
+TASK-130 remains ordered after TASK-100 because both work in PageEditor. No push, merge, or rebase was performed.

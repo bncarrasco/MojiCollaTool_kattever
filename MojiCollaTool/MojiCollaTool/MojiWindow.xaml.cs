@@ -150,6 +150,8 @@ namespace MojiCollaTool
                 AttachedSymbolInheritFontCheckBox.IsChecked = selected.SymbolData.Inherit.HasFlag(AttachedSymbolInheritance.Font);
                 AttachedSymbolInheritColorCheckBox.IsChecked = selected.SymbolData.Inherit.HasFlag(AttachedSymbolInheritance.ForeColor);
                 AttachedSymbolInheritBorderCheckBox.IsChecked = selected.SymbolData.Inherit.HasFlag(AttachedSymbolInheritance.Border);
+                AttachedSymbolInheritDecorationCheckBox.IsChecked = selected.SymbolData.Inherit.HasFlag(AttachedSymbolInheritance.Decoration);
+                AttachedSymbolIncludeSpacingCheckBox.IsChecked = selected.SymbolData.IncludeInCharacterSpacing;
                 AttachedSymbolFontFamilyComboBox.SelectedValue = selected.SymbolData.FontFamilyName;
                 AttachedSymbolFontStatusTextBlock.Text = selected.FontStatus;
             }
@@ -317,7 +319,7 @@ namespace MojiCollaTool
         {
             if (_updatingAttachedSymbolUi || AttachedSymbolCandidateComboBox == null || AttachedSymbolTextBox == null ||
                 AttachedSymbolCandidateComboBox.SelectedItem is not ComboBoxItem item) return;
-            AttachedSymbolTextBox.Text = item.Content?.ToString() ?? string.Empty;
+            AttachedSymbolTextBox.Text = item.Tag?.ToString() ?? item.Content?.ToString() ?? string.Empty;
         }
 
         private void AttachedSymbolAddButton_Click(object sender, RoutedEventArgs e)
@@ -368,6 +370,8 @@ namespace MojiCollaTool
                 symbol.Inherit = SetFlag(symbol.Inherit, AttachedSymbolInheritance.Font, AttachedSymbolInheritFontCheckBox.IsChecked == true);
                 symbol.Inherit = SetFlag(symbol.Inherit, AttachedSymbolInheritance.ForeColor, AttachedSymbolInheritColorCheckBox.IsChecked == true);
                 symbol.Inherit = SetFlag(symbol.Inherit, AttachedSymbolInheritance.Border, AttachedSymbolInheritBorderCheckBox.IsChecked == true);
+                symbol.Inherit = SetFlag(symbol.Inherit, AttachedSymbolInheritance.Decoration, AttachedSymbolInheritDecorationCheckBox.IsChecked == true);
+                symbol.IncludeInCharacterSpacing = AttachedSymbolIncludeSpacingCheckBox.IsChecked == true;
             }, "付加記号継承設定", id.ToString("D"));
             AttachedSymbolFontStatusTextBlock.Text = SelectedAttachedSymbol.FontStatus;
         }
