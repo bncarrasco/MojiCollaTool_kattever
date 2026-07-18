@@ -94,3 +94,15 @@ TASK-070は`develop`へ統合済みであり、TASK-080、TASK-090、TASK-110、
 | TASK-120 | balloon Geometry factory/cache、balloon visual、PageEditorの追加・選択・move/resize、必要最小限のMainWindow command、render/performance tests | MojiData、AttachedSymbol、VersionedProjectFormat、project schema | balloon render/UI laneとして実施 |
 
 共有の`PageDocument`とhistory基盤は既存APIを利用し、一般refactorを行わない。範囲外変更が必要な場合は実装前に司令役へ報告する。TASK-090はTASK-100/TASK-230と、TASK-120はTASK-080/TASK-170/TASK-200/TASK-210と同時開始しない。
+
+本waveは完了し、TASK-090を`6d8354b`、TASK-120を`7fa5668`で`develop`へ統合した。統合状態のDebug/Release buildは警告0・エラー0、全testは各155/155成功。
+
+## 10. TASK-090／TASK-120統合後wave
+
+TASK-100とTASK-130はいずれも依存解消済みだが、両taskとも`PageEditorControl.xaml`／`.cs`の選択、drag、history境界を変更するため同時開始しない。付加記号modelをユーザー操作可能な縦の機能単位へ完成させるため、次waveはTASK-100を単独で実施する。
+
+| Task | 所有領域 | 変更禁止領域 | 並行判断 |
+| --- | --- | --- | --- |
+| TASK-100 | AttachedSymbol visual/renderer、PageEditorと文字編集UIの追加・選択・drag・property操作、symbol UI/history/render tests | BalloonVisual/Geometry/tail/text-link、一般Z/lock UI、clipboard、全UI日本語化 | 単独lane。TASK-130を含むPageEditor変更taskと並行しない |
+
+TASK-100統合後にTASK-130を次候補とする。TASK-080、TASK-170、TASK-200、TASK-210、TASK-230も依存上は開始可能だが、同じUI hotspotへ変更が集中するため本waveでは開始しない。
