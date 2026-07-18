@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Input;
 using Microsoft.Win32;
+using MojiCollaTool.Export;
 
 namespace MojiCollaTool
 {
@@ -446,25 +447,76 @@ namespace MojiCollaTool
 
         private void OutputImageButton_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new SaveFileDialog
+            var session = ActiveSession;
+            var activePage = ActivePage;
+            if (session == null || activePage == null) return;
+
+            var dialog = new PageExportDialog(_lastUsedDirectory ?? DataIO.GetExeDirPath(), PageExportScope.CurrentPage)
             {
-                InitialDirectory = _lastUsedDirectory,
-                Filter = "PNG画像|*.png|JPEG画像|*.jpg",
-                FileName = $"MojiColla{DateTime.Now:yyyyMMdd-HHmmss}.png",
+                Owner = this,
             };
             if (dialog.ShowDialog() != true) return;
+
+            CaptureEditorState();
+            var originalPageId = session.ActivePageId;
+            var originalScale = PageEditor.ScalePercent;
+            var originalSelectedObjectId = PageEditor.SelectedObjectId;
+            var service = new PageExportService();
             try
             {
-                PageEditor.ExportImage(dialog.FileName, dialog.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
-                    ? new JpegBitmapEncoder()
-                    : new PngBitmapEncoder());
-                _lastUsedDirectory = Path.GetDirectoryName(dialog.FileName);
-                ShowInfoDialog($"{dialog.FileName} 画像出力完了", "画像出力");
+                var request = new PageExportRequest(
+                    session.Document,
+                    dialog.Scope,
+                    activePage,
+                    dialog.OutputDirectory,
+                    dialog.FilePrefix,
+                    dialog.Format);
+                var plan = service.CreatePlan(request);
+                var result = service.Execute(plan, (item, temporaryPath, format) =>
+                {
+                    if (session.ActivePageId != item.Page.PageId)
+                    {
+                        session.ActivatePage(item.Page.PageId);
+                        BindActivePage();
+                    }
+
+                    PageEditor.ExportImage(temporaryPath, format == PageExportFormat.Jpeg
+                        ? new JpegBitmapEncoder()
+                        : new PngBitmapEncoder());
+                });
+                _lastUsedDirectory = plan.OutputDirectory;
+                ShowInfoDialog(BuildExportSummary(result), "画像一括出力");
+            }
+            catch (PageExportCollisionException ex)
+            {
+                ShowInfoDialog("既存ファイルがあるため出力を開始できません。\n" + string.Join("\n", ex.Paths), "画像一括出力");
+            }
+            catch (PageExportStartException ex)
+            {
+                ShowError(ex.Message, ex);
             }
             catch (Exception ex)
             {
-                ShowError("画像出力処理に失敗しました。", ex);
+                ShowError("画像一括出力処理に失敗しました。", ex);
             }
+            finally
+            {
+                if (session.ActivePageId != originalPageId && originalPageId.HasValue)
+                {
+                    session.ActivatePage(originalPageId.Value);
+                    BindActivePage();
+                }
+                PageEditor.RestoreViewState(originalScale, originalSelectedObjectId);
+                RefreshTabs();
+            }
+        }
+
+        private static string BuildExportSummary(PageExportResult result)
+        {
+            var summary = $"出力完了: 成功 {result.SuccessCount} ページ、失敗 {result.FailureCount} ページ。";
+            if (result.Failed.Count == 0) return summary;
+            var failedPages = string.Join("、", result.Failed.Select(failure => failure.Item.Page.Name));
+            return summary + $"\n失敗ページ: {failedPages}";
         }
 
         public void UpdateCanvas() => PageEditor.UpdateCanvas();

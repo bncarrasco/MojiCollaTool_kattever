@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### TASK-050
+
+- 現在のページまたはactive projectの全ページを、ページ順・安全な連番ファイル名でPNG/JPEGへ一括出力できるようにしました。
+- 既存ファイルの上書きを防ぎ、ページ単位の失敗を継続して成功数・失敗ページを日本語で表示します。JPEGはCanvasColorを維持したまま透明部分だけ白背景へ合成し、PNGは透明背景を保持します。
+
 ### TASK-070
 
 - Undo/Redo、保存revisionによるdirty表示、ページ・画像assetのatomic復元、連続入力のcoalesceを追加しました。

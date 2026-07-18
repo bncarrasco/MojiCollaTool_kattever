@@ -55,6 +55,26 @@ namespace MojiCollaTool
 
         public PageDocument? BoundPage => _boundPage;
 
+        public int ScalePercent => ScalingTextBox.Value;
+
+        public Guid? SelectedObjectId => (MojiListView.SelectedItem as MojiPanel)?.MojiData.ObjectId;
+
+        public void RestoreViewState(int scalePercent, Guid? selectedObjectId)
+        {
+            _runEvent = false;
+            try
+            {
+                UpdateScale(Math.Max(ScalingTextBox.ValueMinLimit, scalePercent));
+                MojiListView.SelectedItem = selectedObjectId.HasValue
+                    ? _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == selectedObjectId.Value)
+                    : null;
+            }
+            finally
+            {
+                _runEvent = true;
+            }
+        }
+
         public void RefreshMojiList()
         {
             _viewMojiPanels.Clear();
@@ -256,13 +276,28 @@ namespace MojiCollaTool
         public void ExportImage(string filePath, BitmapEncoder encoder)
         {
             var previousScale = ScalingTextBox.Value;
+            var previousBackground = CanvasBackgroundRect.Fill;
+            var previousCanvasBackground = MainCanvas.Background;
             try
             {
                 UpdateScale(100);
+                if (encoder is JpegBitmapEncoder)
+                {
+                    // JPEG has no alpha channel. Keep CanvasColor as the foreground and
+                    // use a white backplate only where the canvas is transparent.
+                    MainCanvas.Background = Brushes.White;
+                }
+                else
+                {
+                    // The gray workspace background must not be baked into transparent PNGs.
+                    MainCanvas.Background = Brushes.Transparent;
+                }
                 MainCanvas.ToImage(filePath, encoder);
             }
             finally
             {
+                CanvasBackgroundRect.Fill = previousBackground;
+                MainCanvas.Background = previousCanvasBackground;
                 UpdateScale(previousScale);
             }
         }
