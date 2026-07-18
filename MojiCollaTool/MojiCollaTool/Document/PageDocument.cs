@@ -88,6 +88,13 @@ namespace MojiCollaTool
             _mojiDatas.Add(CloneMojiData(mojiData));
         }
 
+        public void SetMojiDatas(IEnumerable<MojiData> mojiDatas)
+        {
+            if (mojiDatas == null) throw new ArgumentNullException(nameof(mojiDatas));
+            _mojiDatas.Clear();
+            _mojiDatas.AddRange(mojiDatas.Select(CloneMojiData));
+        }
+
         public bool RemoveMojiData(MojiData mojiData)
         {
             if (mojiData == null) throw new ArgumentNullException(nameof(mojiData));

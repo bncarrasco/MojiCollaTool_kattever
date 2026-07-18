@@ -7,56 +7,35 @@
         mc:Ignorable="d"
         Activated="Window_Activated"
         Closing="Window_Closing"
-        Title="MojiCollaTool ver1.0.0.0" Height="675" Width="1200">
+        Title="MojiCollaTool" Height="720" Width="1200">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <StackPanel Orientation="Horizontal" Grid.Row="0">
-            <Button x:Name="InitButton" Margin="5" Click="InitButton_Click">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <Image Source="/Images/new.png" Margin="5"/>
-                    <TextBlock Text="新規作成する" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Button>
-            <Button x:Name="SwapImageButton" Margin="5" Click="SwapImageButton_Click">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <Image Source="/Images/image.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">画像のみ<LineBreak/>入れ替える</TextBlock>
-                </StackPanel>
-            </Button>
-            <Button x:Name="MultiImageButton" Margin="5" Click="MultiImageButton_Click" MinWidth="100">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <Image Source="/Images/multi.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">画像を<LineBreak/>並べる</TextBlock>
-                </StackPanel>
-            </Button>
-            <Button x:Name="LoadProjectButton" Margin="5" Click="LoadProjectButton_Click">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <Image Source="/Images/folder.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">プロジェクトを<LineBreak/>読み出す</TextBlock>
-                </StackPanel>
-            </Button>
-            <Button x:Name="SaveProjectButton" Margin="5" Click="SaveProjectButton_Click">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <Image Source="/Images/save.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">プロジェクトを<LineBreak/>保存する</TextBlock>
-                </StackPanel>
-            </Button>
-            <Button x:Name="OutputImageButton" Margin="5" Click="OutputImageButton_Click">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <Image Source="/Images/mojiimage.png" Margin="5"/>
-                    <TextBlock VerticalAlignment="Center">文字コラ画像を<LineBreak/>出力する</TextBlock>
-                </StackPanel>
-            </Button>
-            <Button x:Name="AddTextButton" Margin="5" Click="AddTextButton_Click">
-                <StackPanel Orientation="Horizontal" Margin="5">
-                    <Image Source="/Images/moji.png" Margin="5"/>
-                    <TextBlock Text="文字を追加する" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Button>
+            <Button x:Name="InitButton" Margin="5" Click="InitButton_Click" Content="新規作成"/>
+            <Button x:Name="SwapImageButton" Margin="5" Click="SwapImageButton_Click" Content="画像を入れ替える"/>
+            <Button x:Name="MultiImageButton" Margin="5" Click="MultiImageButton_Click" Content="2枚目の画像を追加"/>
+            <Button x:Name="LoadProjectButton" Margin="5" Click="LoadProjectButton_Click" Content="プロジェクトを開く"/>
+            <Button x:Name="SaveProjectButton" Margin="5" Click="SaveProjectButton_Click" Content="プロジェクトを保存"/>
+            <Button x:Name="OutputImageButton" Margin="5" Click="OutputImageButton_Click" Content="画像を書き出す"/>
+            <Button x:Name="AddTextButton" Margin="5" Click="AddTextButton_Click" Content="文字を追加"/>
         </StackPanel>
-        <local:PageEditorControl x:Name="PageEditor" Grid.Row="1"/>
+        <TabControl x:Name="ProjectTabs" Grid.Row="1" Margin="5" SelectionChanged="ProjectTabs_SelectionChanged"/>
+        <DockPanel Grid.Row="2" Margin="5">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Margin="2" Click="AddPageButton_Click" Content="ページ追加"/>
+                <Button Margin="2" Click="DuplicatePageButton_Click" Content="複製"/>
+                <Button Margin="2" Click="RenamePageButton_Click" Content="名前変更"/>
+                <Button Margin="2" Click="MovePageLeftButton_Click" Content="左へ"/>
+                <Button Margin="2" Click="MovePageRightButton_Click" Content="右へ"/>
+                <Button Margin="2" Click="RemovePageButton_Click" Content="削除"/>
+            </StackPanel>
+            <TabControl x:Name="PageTabs" SelectionChanged="PageTabs_SelectionChanged"/>
+        </DockPanel>
+        <local:PageEditorControl x:Name="PageEditor" Grid.Row="3"/>
     </Grid>
 </Window>

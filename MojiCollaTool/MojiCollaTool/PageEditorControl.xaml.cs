@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +22,10 @@ namespace MojiCollaTool
         private CanvasEditWindow? _canvasEditWindow;
         private bool _runEvent;
         private bool _isDisposed;
+        private PageDocument? _boundPage;
+        private IProjectAssetSource? _assetSource;
+        private IProjectAssetSink? _assetSink;
+        private bool _suppressChanges;
 
         public PageEditorControl()
         {
@@ -42,6 +47,10 @@ namespace MojiCollaTool
 
         public event EventHandler<PageFileDropEventArgs>? FileDropped;
 
+        public event EventHandler? ContentChanged;
+
+        public PageDocument? BoundPage => _boundPage;
+
         public void RefreshMojiList()
         {
             _viewMojiPanels.Clear();
@@ -56,6 +65,67 @@ namespace MojiCollaTool
             ThrowIfDisposed();
             CanvasData = canvasData ?? throw new ArgumentNullException(nameof(canvasData));
             UpdateCanvas();
+            RaiseContentChanged();
+        }
+
+        public void BindPage(PageDocument page, IProjectAssetSource? assetSource, IProjectAssetSink? assetSink = null)
+        {
+            ThrowIfDisposed();
+            ArgumentNullException.ThrowIfNull(page);
+            if (ReferenceEquals(_boundPage, page)) return;
+
+            if (_boundPage != null) CapturePage(_boundPage);
+            _suppressChanges = true;
+            try
+            {
+                CloseCanvasEditor();
+                RemoveAllMojiPanel();
+                UnloadImage(1);
+                UnloadImage(2);
+                _boundPage = page;
+                _assetSource = assetSource;
+                _assetSink = assetSink;
+                CanvasData = page.Canvas.ToLegacyData();
+                UpdateCanvas();
+                LoadStoredImage(page, 1);
+                LoadStoredImage(page, 2);
+                foreach (var mojiData in page.MojiDatas)
+                {
+                    AddMojiPanel(new MojiPanel(PageDocument.CloneMojiData(mojiData), this));
+                }
+            }
+            finally
+            {
+                _suppressChanges = false;
+            }
+        }
+
+        public void CapturePage()
+        {
+            if (_boundPage != null) CapturePage(_boundPage);
+        }
+
+        public void UnbindPage()
+        {
+            if (_boundPage == null) return;
+            CapturePage(_boundPage);
+            _suppressChanges = true;
+            try
+            {
+                CloseCanvasEditor();
+                RemoveAllMojiPanel();
+                UnloadImage(1);
+                UnloadImage(2);
+                _boundPage = null;
+                _assetSource = null;
+                _assetSink = null;
+                CanvasData = new CanvasData();
+                UpdateCanvas();
+            }
+            finally
+            {
+                _suppressChanges = false;
+            }
         }
 
         public void AddNewMojiPanel() => AddMojiPanel(new MojiPanel(GetNextMojiId(), this));
@@ -69,6 +139,7 @@ namespace MojiCollaTool
             _mojiPanels.Add(mojiPanel);
             _viewMojiPanels.Add(mojiPanel);
             MainCanvas.Children.Add(mojiPanel);
+            RaiseContentChanged();
         }
 
         public void ReproductionMoji(MojiPanel mojiPanel)
@@ -84,6 +155,7 @@ namespace MojiCollaTool
             _viewMojiPanels.Remove(mojiPanel);
             mojiPanel.Dispose();
             MainCanvas.Children.Remove(mojiPanel);
+            RaiseContentChanged();
         }
 
         public void RemoveAllMojiPanel()
@@ -102,6 +174,12 @@ namespace MojiCollaTool
 
             if (imageNumber == 1) CanvasData.ImageData1 = imageData;
             else CanvasData.ImageData2 = imageData;
+            if (_boundPage != null && _assetSink != null)
+            {
+                using var content = File.OpenRead(filePath);
+                _assetSink.SaveImage(_boundPage.PageId, imageNumber, Path.GetExtension(filePath), content);
+            }
+            RaiseContentChanged();
         }
 
         public void UnloadImage(int imageNumber)
@@ -131,6 +209,7 @@ namespace MojiCollaTool
             _viewMojiPanels.Clear();
             MainCanvas.Children.Clear();
             FileDropped = null;
+            ContentChanged = null;
         }
 
         internal void OnCanvasEditWindowClosed(CanvasEditWindow window)
@@ -248,6 +327,42 @@ namespace MojiCollaTool
         private void ThrowIfDisposed()
         {
             if (_isDisposed) throw new ObjectDisposedException(nameof(PageEditorControl));
+        }
+
+        private void CapturePage(PageDocument page)
+        {
+            page.Canvas.CanvasWidth = CanvasData.CanvasWidth;
+            page.Canvas.CanvasHeight = CanvasData.CanvasHeight;
+            page.Canvas.ImageData1 = CanvasData.ImageData1.Clone();
+            page.Canvas.ImageData2 = CanvasData.ImageData2.Clone();
+            page.Canvas.Image2LocatePosition = CanvasData.Image2LocatePosition;
+            page.Canvas.ImageMarginTop = CanvasData.ImageMarginTop;
+            page.Canvas.ImageMarginLeft = CanvasData.ImageMarginLeft;
+            page.Canvas.ImageMarginBottom = CanvasData.ImageMarginBottom;
+            page.Canvas.ImageMarginRight = CanvasData.ImageMarginRight;
+            page.Canvas.CanvasColor = CanvasData.CanvasColor;
+            page.SetMojiDatas(_mojiPanels.Select(panel => panel.MojiData));
+        }
+
+        private void LoadStoredImage(PageDocument page, int imageNumber)
+        {
+            if (_assetSource == null) return;
+            using var asset = _assetSource.OpenImage(page, imageNumber);
+            if (asset == null) return;
+            if (asset.Content.CanSeek) asset.Content.Position = 0;
+            var imageSource = new BitmapImage();
+            imageSource.BeginInit();
+            imageSource.CacheOption = BitmapCacheOption.OnLoad;
+            imageSource.StreamSource = asset.Content;
+            imageSource.EndInit();
+            imageSource.Freeze();
+            var image = imageNumber == 1 ? ImageControl1 : ImageControl2;
+            image.Source = imageSource;
+        }
+
+        private void RaiseContentChanged()
+        {
+            if (!_suppressChanges) ContentChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 

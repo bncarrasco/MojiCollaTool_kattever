@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.IO;
+using System.Collections.Generic;
 
 namespace MojiCollaTool
 {
@@ -16,13 +17,15 @@ namespace MojiCollaTool
         private Guid? _activePageId;
         private string? _filePath;
         private bool _isClosed;
+        private readonly HashSet<Guid> _dirtyPageIds = new HashSet<Guid>();
 
-        public ProjectSession(ProjectDocument document, string? filePath = null)
+        public ProjectSession(ProjectDocument document, string? filePath = null, ProjectSessionAssetStore? assetStore = null)
         {
             Document = document ?? throw new ArgumentNullException(nameof(document));
             SessionId = Guid.NewGuid();
             _filePath = NormalizeFilePath(filePath);
             _activePageId = document.Pages[0].PageId;
+            AssetStore = assetStore ?? new ProjectSessionAssetStore();
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -32,6 +35,8 @@ namespace MojiCollaTool
         public Guid SessionId { get; }
 
         public ProjectDocument Document { get; }
+
+        public ProjectSessionAssetStore AssetStore { get; }
 
         public Guid ProjectId => Document.ProjectId;
 
@@ -44,6 +49,8 @@ namespace MojiCollaTool
         public long SavedRevision => _savedRevision;
 
         public bool IsDirty => CurrentRevision != SavedRevision;
+
+        public bool IsPageDirty(Guid pageId) => _dirtyPageIds.Contains(pageId);
 
         public Guid? ActivePageId => _activePageId;
 
@@ -59,6 +66,19 @@ namespace MojiCollaTool
         public void MarkChanged()
         {
             EnsureOpen();
+            if (_activePageId.HasValue) _dirtyPageIds.Add(_activePageId.Value);
+            _currentRevision = _nextRevision;
+            _nextRevision = checked(_nextRevision + 1);
+            OnPropertyChanged(nameof(CurrentRevision));
+            OnPropertyChanged(nameof(Revision));
+            OnPropertyChanged(nameof(IsDirty));
+        }
+
+        public void MarkChanged(Guid pageId)
+        {
+            EnsureOpen();
+            Document.GetPage(pageId);
+            _dirtyPageIds.Add(pageId);
             _currentRevision = _nextRevision;
             _nextRevision = checked(_nextRevision + 1);
             OnPropertyChanged(nameof(CurrentRevision));
@@ -81,7 +101,7 @@ namespace MojiCollaTool
             EnsureOpen();
             mutation(Document.GetPage(pageId));
             EnsureActivePage();
-            MarkChanged();
+            MarkChanged(pageId);
         }
 
         public void MarkSaved()
@@ -90,6 +110,7 @@ namespace MojiCollaTool
             if (_savedRevision == _currentRevision) return;
 
             _savedRevision = _currentRevision;
+            _dirtyPageIds.Clear();
             OnPropertyChanged(nameof(SavedRevision));
             OnPropertyChanged(nameof(IsDirty));
         }
@@ -103,6 +124,7 @@ namespace MojiCollaTool
             if (revision < 0) throw new ArgumentOutOfRangeException(nameof(revision));
 
             _currentRevision = revision;
+            if (revision == _savedRevision) _dirtyPageIds.Clear();
             if (revision >= _nextRevision)
             {
                 _nextRevision = checked(revision + 1);
@@ -131,6 +153,7 @@ namespace MojiCollaTool
 
             _isClosed = true;
             _activePageId = null;
+            AssetStore.Dispose();
             OnPropertyChanged(nameof(IsClosed));
             OnPropertyChanged(nameof(ActivePageId));
             OnPropertyChanged(nameof(ActivePage));

@@ -43,15 +43,21 @@ namespace MojiCollaTool
         public PageDocument? ActivePage => ActiveSession?.ActivePage;
 
         public ProjectSession Open(ProjectDocument document, string? filePath = null)
+            => Open(document, filePath, assetStore: null);
+
+        public ProjectSession Open(ProjectDocument document, string? filePath, ProjectSessionAssetStore? assetStore)
         {
             if (document == null) throw new ArgumentNullException(nameof(document));
-            var session = new ProjectSession(document, filePath);
+            var session = new ProjectSession(document, filePath, assetStore);
             AddSession(session);
             return session;
         }
 
         public ProjectSession OpenSession(ProjectDocument document, string? filePath = null)
             => Open(document, filePath);
+
+        public ProjectSession OpenSession(ProjectDocument document, string? filePath, ProjectSessionAssetStore? assetStore)
+            => Open(document, filePath, assetStore);
 
         public void AddSession(ProjectSession session)
         {
