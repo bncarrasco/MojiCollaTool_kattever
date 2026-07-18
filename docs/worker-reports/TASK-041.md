@@ -7,7 +7,7 @@
 ## Git
 
 - Base commit: `6cc9b431e738dea7b6dfd7e56b008edaca8cc88e`
-- Result commit: `60d72a5685c2a365dc50994a85ea0f6a25af3a12`
+- Result commit: `27cea4deac8447ecb771f111bdbe52319dba3880`
 - Branch: `feature/TASK-041-legacy-project-import`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-041`
 
@@ -46,6 +46,43 @@
 
 - MainWindowへのwarning表示・新形式保存への自動移行は、仕様のScope外（MainWindow直接変更を避ける）として未実施。
 - 実アプリの手動UI確認は未実施。
+
+## レビュー追補
+
+### 開始時Git確認
+
+- 開始時の親リポジトリは `F:/github/MojiCollaTool_kattever`、`develop` は `6cc9b431e738dea7b6dfd7e56b008edaca8cc88e`。
+- 開始時点で `feature/TASK-041-legacy-project-import` は未作成、`TASK-041` は `.git` のないコピーだった。
+- 旧コピーは `TASK-041-legacy-copy` へ退避し、正式worktree作成後にT041固有差分だけを移した。
+
+### 正式worktree登録確認と逸脱事項
+
+- `git worktree add -b feature/TASK-041-legacy-project-import F:/github/MojiCollaTool-worktrees/TASK-041 6cc9b43` を実行し、`git worktree list` で正式登録を確認した。
+- 指示された開始点 `1c4420a` ではなく、T020/T025/T040統合済みのfunctional base `6cc9b43` から開始した。これは統合済み機能を欠落させないための逸脱事項である。
+
+### 変更ファイル
+
+- `MojiCollaTool/MojiCollaTool/Document/ProjectReader.cs`
+- `MojiCollaTool/MojiCollaTool/DataIO.cs`
+- `tests/MojiCollaTool.Tests/LegacyProjectReaderTests.cs`
+- `CHANGELOG.md`
+- `docs/planning/implementation-ledger.md`
+- `docs/worker-reports/TASK-041.md`
+
+### 既知riskと後続影響
+
+- MainWindowへのwarning表示・新形式保存への自動移行は未実施で、呼び出し側が `ProjectReadResult` とasset sinkを接続する必要がある。
+- 画像復元の原子性はbatch sink実装側の契約に依存する。reader入口では全entry/XML/imageを先に検証する。
+- TASK-030は本readerの結果をworkspace/page sessionへ接続する後続であり、legacyのwarning、page identity、asset sinkの接続を統合時に確認する。
+- マージ時は `develop` の統合済みT020/T025/T040を基点として、`60d72a5685c2a365dc50994a85ea0f6a25af3a12` とレビュー修正commitのみを取り込む。rebase/mergeは行っていない。
+
+### 手動・互換性確認状況
+
+- 自動互換性確認: legacy root、新manifest形式、壊れたmanifest非fallback、日本語path、未知XML field、entry上限を確認済み。
+- 縦書き・横書き: 3件のMojiDataで `Tategaki` / `Yokogaki` の値保持を自動確認済み。
+- 日本語・Unicode: 日本語path、Unicode文字列、絵文字を自動確認済み。
+- 手動確認: 実アプリUIの手動確認は未実施。
+- 日本語UI: warningの文言は実装済みだが、画面表示の手動確認は未実施。
 
 ## Rollback
 
