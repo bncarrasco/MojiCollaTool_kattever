@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 
 namespace MojiCollaTool
@@ -13,6 +14,7 @@ namespace MojiCollaTool
     {
         private readonly List<MojiData> _mojiDatas;
         private readonly List<BalloonData> _balloons;
+        private readonly List<AttachedSymbolData> _attachedSymbols;
         private readonly List<Guid> _objectOrder = new List<Guid>();
 
         public PageDocument(string name)
@@ -50,6 +52,17 @@ namespace MojiCollaTool
             CanvasData canvas,
             IEnumerable<MojiData> mojiDatas,
             IEnumerable<BalloonData> balloons)
+            : this(pageId, name, canvas, mojiDatas, balloons, Enumerable.Empty<AttachedSymbolData>())
+        {
+        }
+
+        public PageDocument(
+            Guid pageId,
+            string name,
+            CanvasData canvas,
+            IEnumerable<MojiData> mojiDatas,
+            IEnumerable<BalloonData> balloons,
+            IEnumerable<AttachedSymbolData> attachedSymbols)
         {
             if (pageId == Guid.Empty) throw new ArgumentException("Page ID must not be empty.", nameof(pageId));
             PageId = pageId;
@@ -61,7 +74,10 @@ namespace MojiCollaTool
             _balloons = (balloons ?? throw new ArgumentNullException(nameof(balloons)))
                 .Select(CloneBalloonData)
                 .ToList();
-            var allObjects = _mojiDatas.Cast<IPageObjectData>().Concat(_balloons).ToArray();
+            _attachedSymbols = (attachedSymbols ?? throw new ArgumentNullException(nameof(attachedSymbols)))
+                .Select(CloneAttachedSymbolData)
+                .ToList();
+            var allObjects = _mojiDatas.Cast<IPageObjectData>().Concat(_balloons).Concat(_attachedSymbols).ToArray();
             if (allObjects.Length > 0 &&
                 allObjects.Select(item => item.ZIndex).Distinct().Count() == allObjects.Length &&
                 allObjects.All(item => item.ZIndex >= 0 && item.ZIndex < allObjects.Length))
@@ -139,6 +155,10 @@ namespace MojiCollaTool
 
         public IReadOnlyList<BalloonData> BalloonDatas => Balloons;
 
+        public IReadOnlyList<AttachedSymbolData> AttachedSymbols => new ReadOnlyCollection<AttachedSymbolData>(_attachedSymbols);
+
+        public IReadOnlyList<AttachedSymbolData> AttachedSymbolDatas => AttachedSymbols;
+
         /// <summary>
         /// All page objects in canonical page-level drawing order.
         /// </summary>
@@ -158,20 +178,83 @@ namespace MojiCollaTool
         {
             if (mojiData == null) throw new ArgumentNullException(nameof(mojiData));
             var clone = CloneMojiData(mojiData);
-            EnsureNewObjectId(clone.ObjectId);
+            ValidateObjectIds(_mojiDatas.Concat(new[] { clone }), _balloons, _attachedSymbols);
             _mojiDatas.Add(clone);
             _objectOrder.Add(clone.ObjectId);
             NormalizeObjectOrder();
         }
 
         public void SetMojiDatas(IEnumerable<MojiData> mojiDatas)
+            => SetMojiDatas(mojiDatas, AttachedSymbolOrphanPolicy.ReanchorToNearest);
+
+        /// <summary>
+        /// Replaces the text collection through the same boundary used by the
+        /// editor. Attached-symbol anchors are reconciled against the old and
+        /// new grapheme sequences before any page collection is changed.
+        /// </summary>
+        public void SetMojiDatas(IEnumerable<MojiData> mojiDatas, AttachedSymbolOrphanPolicy orphanPolicy)
         {
             if (mojiDatas == null) throw new ArgumentNullException(nameof(mojiDatas));
             var replacement = mojiDatas.Select(CloneMojiData).ToList();
-            EnsureReplacementObjectIds(replacement, _balloons);
+            var replacementSymbols = _attachedSymbols.Select(CloneAttachedSymbolData).ToList();
+            ValidateObjectIds(replacement, _balloons, replacementSymbols);
+
+            foreach (var previous in _mojiDatas)
+            {
+                var current = replacement.SingleOrDefault(item => item.ObjectId == previous.ObjectId);
+                if (current != null)
+                {
+                    var changes = PrepareAnchorChanges(previous.ObjectId, previous.FullText, current.FullText,
+                        orphanPolicy, replacementSymbols);
+                    ApplyAnchorChanges(replacementSymbols, changes, current.FullText, previous.ObjectId);
+                }
+                else
+                {
+                    var orphaned = replacementSymbols.Where(symbol => symbol.ParentId == previous.ObjectId).ToArray();
+                    if (orphaned.Length > 0 && orphanPolicy == AttachedSymbolOrphanPolicy.Reject)
+                    {
+                        throw new InvalidDataException("Removing a text object would orphan an attached symbol.");
+                    }
+                    if (orphanPolicy == AttachedSymbolOrphanPolicy.Remove)
+                    {
+                        replacementSymbols.RemoveAll(symbol => symbol.ParentId == previous.ObjectId);
+                    }
+                    else
+                    {
+                        foreach (var symbol in orphaned) DetachSymbol(symbol);
+                    }
+                }
+            }
+
+            ValidateObjectIds(replacement, _balloons, replacementSymbols);
+            ValidateAttachedSymbolState(replacement, replacementSymbols);
             _mojiDatas.Clear();
             _mojiDatas.AddRange(replacement);
+            _attachedSymbols.Clear();
+            _attachedSymbols.AddRange(replacementSymbols);
             RebuildObjectOrderPreservingExisting();
+            NormalizeObjectOrder();
+        }
+
+        public void UpdateMojiData(Guid objectId, Action<MojiData> update,
+            AttachedSymbolOrphanPolicy orphanPolicy = AttachedSymbolOrphanPolicy.ReanchorToNearest)
+        {
+            if (update == null) throw new ArgumentNullException(nameof(update));
+            var index = _mojiDatas.FindIndex(item => item.ObjectId == objectId);
+            if (index < 0) throw new KeyNotFoundException($"Text object was not found: {objectId}");
+            var candidate = CloneMojiData(_mojiDatas[index]);
+            var oldText = candidate.FullText;
+            update(candidate);
+            if (candidate.ObjectId != objectId) throw new InvalidOperationException("A text object ID cannot be changed.");
+            var candidateSymbols = _attachedSymbols.Select(CloneAttachedSymbolData).ToList();
+            var symbolChanges = PrepareAnchorChanges(objectId, oldText, candidate.FullText, orphanPolicy, candidateSymbols);
+            ApplyAnchorChanges(candidateSymbols, symbolChanges, candidate.FullText, objectId);
+            var candidateTexts = _mojiDatas.Select(item => item.ObjectId == objectId ? candidate : item).ToList();
+            ValidateObjectIds(candidateTexts, _balloons, candidateSymbols);
+            ValidateAttachedSymbolState(candidateTexts, candidateSymbols);
+            _mojiDatas[index] = candidate;
+            _attachedSymbols.Clear();
+            _attachedSymbols.AddRange(candidateSymbols);
             NormalizeObjectOrder();
         }
 
@@ -179,7 +262,8 @@ namespace MojiCollaTool
         {
             if (balloon == null) throw new ArgumentNullException(nameof(balloon));
             var clone = CloneBalloonData(balloon);
-            EnsureNewObjectId(clone.ObjectId);
+            clone.Validate();
+            ValidateObjectIds(_mojiDatas, _balloons.Concat(new[] { clone }), _attachedSymbols);
             _balloons.Add(clone);
             _objectOrder.Add(clone.ObjectId);
             NormalizeObjectOrder();
@@ -192,11 +276,78 @@ namespace MojiCollaTool
             if (balloons == null) throw new ArgumentNullException(nameof(balloons));
             var replacement = balloons.Select(CloneBalloonData).ToList();
             foreach (var balloon in replacement) balloon.Validate();
-            EnsureReplacementObjectIds(_mojiDatas, replacement);
+            ValidateObjectIds(_mojiDatas, replacement, _attachedSymbols);
             _balloons.Clear();
             _balloons.AddRange(replacement);
             RebuildObjectOrderPreservingExisting();
             NormalizeObjectOrder();
+        }
+
+        public void AddAttachedSymbol(AttachedSymbolData symbol)
+        {
+            if (symbol == null) throw new ArgumentNullException(nameof(symbol));
+            var clone = CloneAttachedSymbolData(symbol);
+            ValidateAttachedSymbolParent(clone);
+            clone.Validate();
+            PopulateAnchorText(clone);
+            ValidateObjectIds(_mojiDatas, _balloons, _attachedSymbols.Concat(new[] { clone }));
+            _attachedSymbols.Add(clone);
+            _objectOrder.Add(clone.ObjectId);
+            NormalizeObjectOrder();
+        }
+
+        public void SetAttachedSymbols(IEnumerable<AttachedSymbolData> symbols)
+        {
+            if (symbols == null) throw new ArgumentNullException(nameof(symbols));
+            var replacement = symbols.Select(CloneAttachedSymbolData).ToList();
+            foreach (var symbol in replacement)
+            {
+                ValidateAttachedSymbolParent(symbol);
+                symbol.Validate();
+                PopulateAnchorText(symbol);
+            }
+            ValidateObjectIds(_mojiDatas, _balloons, replacement);
+            ValidateAttachedSymbolState(_mojiDatas, replacement);
+            _attachedSymbols.Clear();
+            _attachedSymbols.AddRange(replacement);
+            RebuildObjectOrderPreservingExisting();
+            NormalizeObjectOrder();
+        }
+
+        public AttachedSymbolData GetAttachedSymbol(Guid symbolId)
+        {
+            return _attachedSymbols.SingleOrDefault(symbol => symbol.ObjectId == symbolId)
+                ?? throw new KeyNotFoundException($"Attached symbol was not found: {symbolId}");
+        }
+
+        public bool ContainsAttachedSymbol(Guid symbolId) => _attachedSymbols.Any(symbol => symbol.ObjectId == symbolId);
+
+        public void UpdateAttachedSymbol(Guid symbolId, Action<AttachedSymbolData> update)
+        {
+            if (update == null) throw new ArgumentNullException(nameof(update));
+            var index = _attachedSymbols.FindIndex(symbol => symbol.ObjectId == symbolId);
+            if (index < 0) throw new KeyNotFoundException($"Attached symbol was not found: {symbolId}");
+            var candidate = _attachedSymbols[index].Clone();
+            update(candidate);
+            if (candidate.ObjectId != symbolId) throw new InvalidOperationException("An attached symbol ID cannot be changed.");
+            ValidateAttachedSymbolParent(candidate);
+            candidate.Validate();
+            PopulateAnchorText(candidate);
+            var candidateSymbols = _attachedSymbols.Select(item => item.ObjectId == symbolId ? candidate : item).ToList();
+            ValidateObjectIds(_mojiDatas, _balloons, candidateSymbols);
+            ValidateAttachedSymbolState(_mojiDatas, candidateSymbols);
+            _attachedSymbols[index] = candidate;
+            NormalizeObjectOrder();
+        }
+
+        public bool RemoveAttachedSymbol(Guid symbolId)
+        {
+            var symbol = _attachedSymbols.FirstOrDefault(item => item.ObjectId == symbolId);
+            if (symbol == null) return false;
+            _attachedSymbols.Remove(symbol);
+            _objectOrder.Remove(symbolId);
+            NormalizeObjectOrder();
+            return true;
         }
 
         public bool RemoveMojiData(MojiData mojiData)
@@ -216,6 +367,12 @@ namespace MojiCollaTool
                 {
                     // Deleting text detaches the composition link but keeps the balloon.
                     balloon.TextLink = null;
+                }
+                foreach (var symbol in _attachedSymbols.Where(symbol => symbol.ParentId == mojiData.ObjectId))
+                {
+                    symbol.ParentId = null;
+                    symbol.IsDetached = true;
+                    symbol.AnchorText = null;
                 }
                 NormalizeObjectOrder();
             }
@@ -328,10 +485,26 @@ namespace MojiCollaTool
                 balloon.Validate();
             }
 
+            foreach (var symbol in _attachedSymbols)
+            {
+                if (symbol.ObjectId == Guid.Empty) symbol.ObjectId = Guid.NewGuid();
+                if (!objectIds.Add(symbol.ObjectId))
+                {
+                    throw new InvalidOperationException($"Duplicate object ID: {symbol.ObjectId}");
+                }
+                if (string.IsNullOrWhiteSpace(symbol.Type)) symbol.Type = DocumentObjectTypes.AttachedSymbol;
+                if (!symbol.IsDetached) ValidateAttachedSymbolParent(symbol);
+                symbol.Validate();
+            }
+
             ReconcileRelationships(objectIds);
-            var knownIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)));
+            var knownIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId)
+                .Concat(_balloons.Select(item => item.ObjectId))
+                .Concat(_attachedSymbols.Select(item => item.ObjectId)));
             _objectOrder.RemoveAll(id => !knownIds.Contains(id));
-            foreach (var id in _mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)))
+            foreach (var id in _mojiDatas.Select(item => item.ObjectId)
+                .Concat(_balloons.Select(item => item.ObjectId))
+                .Concat(_attachedSymbols.Select(item => item.ObjectId)))
             {
                 if (!_objectOrder.Contains(id)) _objectOrder.Add(id);
             }
@@ -344,7 +517,8 @@ namespace MojiCollaTool
         public bool ContainsObject(Guid objectId)
         {
             return _mojiDatas.Any(mojiData => mojiData.ObjectId == objectId) ||
-                _balloons.Any(balloon => balloon.ObjectId == objectId);
+                _balloons.Any(balloon => balloon.ObjectId == objectId) ||
+                _attachedSymbols.Any(symbol => symbol.ObjectId == objectId);
         }
 
         public MojiData GetObject(Guid objectId)
@@ -357,6 +531,7 @@ namespace MojiCollaTool
         {
             return _mojiDatas.FirstOrDefault(mojiData => mojiData.ObjectId == objectId)
                 ?? (IPageObjectData?)_balloons.FirstOrDefault(balloon => balloon.ObjectId == objectId)
+                ?? _attachedSymbols.FirstOrDefault(symbol => symbol.ObjectId == objectId)
                 ?? throw new KeyNotFoundException($"Object was not found: {objectId}");
         }
 
@@ -377,21 +552,24 @@ namespace MojiCollaTool
         {
             IEnumerable<MojiData> objects;
             IEnumerable<BalloonData> balloons;
+            IEnumerable<AttachedSymbolData> attachedSymbols;
             if (preserveObjectIds)
             {
                 objects = _mojiDatas;
                 balloons = _balloons;
+                attachedSymbols = _attachedSymbols;
             }
             else
             {
-                (objects, balloons) = CloneObjectsWithRemappedRelationships();
+                (objects, balloons, attachedSymbols) = CloneObjectsWithRemappedRelationships();
             }
             return new PageDocument(
                 pageId ?? Guid.NewGuid(),
                 name ?? Name,
                 Canvas.LegacyData,
                 objects,
-                balloons);
+                balloons,
+                attachedSymbols);
         }
 
         internal static CanvasData CloneCanvas(CanvasData source)
@@ -422,25 +600,33 @@ namespace MojiCollaTool
             return source.Clone();
         }
 
+        internal static AttachedSymbolData CloneAttachedSymbolData(AttachedSymbolData source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            return source.Clone();
+        }
+
         internal static IPageObjectData ClonePageObject(IPageObjectData source)
         {
             return source switch
             {
                 MojiData mojiData => CloneMojiData(mojiData),
                 BalloonData balloon => CloneBalloonData(balloon),
+                AttachedSymbolData symbol => CloneAttachedSymbolData(symbol),
                 _ => throw new InvalidOperationException($"Unsupported page object type: {source.GetType().Name}"),
             };
         }
 
-        private (IEnumerable<MojiData> MojiDatas, IEnumerable<BalloonData> Balloons) CloneObjectsWithRemappedRelationships()
+        private (IEnumerable<MojiData> MojiDatas, IEnumerable<BalloonData> Balloons, IEnumerable<AttachedSymbolData> AttachedSymbols) CloneObjectsWithRemappedRelationships()
         {
             var clones = _mojiDatas.Select(mojiData => mojiData.CloneAsNewObject()).ToArray();
             var balloonClones = _balloons.Select(balloon => balloon.CloneAsNewObject()).ToArray();
-            var objectIds = _mojiDatas.Cast<IPageObjectData>().Concat(_balloons)
-                .Select((item, index) => new { item.ObjectId, CloneId = index < clones.Length ? clones[index].ObjectId : balloonClones[index - clones.Length].ObjectId })
+            var symbolClones = _attachedSymbols.Select(symbol => symbol.CloneAsNewObject()).ToArray();
+            var objectIds = _mojiDatas.Cast<IPageObjectData>().Concat(_balloons).Concat(_attachedSymbols)
+                .Select((item, index) => new { item.ObjectId, CloneId = index < clones.Length ? clones[index].ObjectId : index < clones.Length + balloonClones.Length ? balloonClones[index - clones.Length].ObjectId : symbolClones[index - clones.Length - balloonClones.Length].ObjectId })
                 .ToDictionary(item => item.ObjectId, item => item.CloneId);
 
-            foreach (var clone in clones.Cast<IPageObjectData>().Concat(balloonClones))
+            foreach (var clone in clones.Cast<IPageObjectData>().Concat(balloonClones).Concat(symbolClones))
             {
                 if (clone.ParentId.HasValue && objectIds.TryGetValue(clone.ParentId.Value, out var parentId)) clone.ParentId = parentId;
                 if (clone.GroupId.HasValue && objectIds.TryGetValue(clone.GroupId.Value, out var groupId)) clone.GroupId = groupId;
@@ -454,14 +640,18 @@ namespace MojiCollaTool
                 }
             }
 
-            return (clones, balloonClones);
+            return (clones, balloonClones, symbolClones);
         }
 
         private void RebuildObjectOrderPreservingExisting()
         {
-            var currentIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)));
+            var currentIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId)
+                .Concat(_balloons.Select(item => item.ObjectId))
+                .Concat(_attachedSymbols.Select(item => item.ObjectId)));
             var preserved = _objectOrder.Where(currentIds.Contains).Distinct().ToList();
-            foreach (var id in _mojiDatas.Select(item => item.ObjectId).Concat(_balloons.Select(item => item.ObjectId)))
+            foreach (var id in _mojiDatas.Select(item => item.ObjectId)
+                .Concat(_balloons.Select(item => item.ObjectId))
+                .Concat(_attachedSymbols.Select(item => item.ObjectId)))
             {
                 if (!preserved.Contains(id)) preserved.Add(id);
             }
@@ -470,13 +660,21 @@ namespace MojiCollaTool
             _objectOrder.AddRange(preserved);
         }
 
-        private static void EnsureReplacementObjectIds<T>(IEnumerable<T> replacement, IEnumerable<BalloonData> other)
-            where T : IPageObjectData
+        private static void ValidateObjectIds(
+            IEnumerable<MojiData> mojiDatas,
+            IEnumerable<BalloonData> balloons,
+            IEnumerable<AttachedSymbolData> attachedSymbols)
         {
             var ids = new HashSet<Guid>();
-            foreach (var item in replacement.Cast<IPageObjectData>().Concat(other))
+            foreach (var item in mojiDatas.Cast<IPageObjectData>()
+                .Concat(balloons)
+                .Concat(attachedSymbols))
             {
-                if (item.ObjectId != Guid.Empty && !ids.Add(item.ObjectId))
+                if (item.ObjectId == Guid.Empty)
+                {
+                    throw new InvalidOperationException("Object ID must not be empty.");
+                }
+                if (!ids.Add(item.ObjectId))
                 {
                     throw new InvalidOperationException($"Duplicate object ID: {item.ObjectId}");
                 }
@@ -485,7 +683,7 @@ namespace MojiCollaTool
 
         private void ReconcileRelationships(HashSet<Guid> objectIds)
         {
-            foreach (var item in _mojiDatas.Cast<IPageObjectData>().Concat(_balloons))
+            foreach (var item in _mojiDatas.Cast<IPageObjectData>().Concat(_balloons).Concat(_attachedSymbols))
             {
                 if (item.ParentId == item.ObjectId || (item.ParentId.HasValue && !objectIds.Contains(item.ParentId.Value))) item.ParentId = null;
                 if (item.GroupId == item.ObjectId || (item.GroupId.HasValue && !objectIds.Contains(item.GroupId.Value))) item.GroupId = null;
@@ -499,13 +697,147 @@ namespace MojiCollaTool
                     balloon.TextLink = null;
                 }
             }
+
+            foreach (var symbol in _attachedSymbols)
+            {
+                if (symbol.IsDetached) continue;
+                if (!symbol.ParentId.HasValue || !_mojiDatas.Any(text => text.ObjectId == symbol.ParentId.Value))
+                {
+                    symbol.ParentId = null;
+                    symbol.IsDetached = true;
+                    symbol.AnchorText = null;
+                }
+            }
         }
 
         private void EnsureNewObjectId(Guid objectId)
         {
-            if (objectId == Guid.Empty || _mojiDatas.Any(item => item.ObjectId == objectId) || _balloons.Any(item => item.ObjectId == objectId))
+            if (objectId == Guid.Empty || _mojiDatas.Any(item => item.ObjectId == objectId) ||
+                _balloons.Any(item => item.ObjectId == objectId) || _attachedSymbols.Any(item => item.ObjectId == objectId))
             {
                 throw new InvalidOperationException($"Duplicate or empty object ID: {objectId}");
+            }
+        }
+
+        private void ValidateAttachedSymbolParent(AttachedSymbolData symbol)
+        {
+            if (symbol.IsDetached) return;
+            if (!symbol.ParentId.HasValue || !_mojiDatas.Any(item => item.ObjectId == symbol.ParentId.Value))
+            {
+                throw new InvalidDataException("Attached symbol parent text object was not found.");
+            }
+            var parent = _mojiDatas.Single(item => item.ObjectId == symbol.ParentId.Value);
+            if (symbol.GraphemeAnchor >= GraphemeService.Count(parent.FullText))
+            {
+                throw new InvalidDataException("Attached symbol grapheme anchor is outside the parent text.");
+            }
+        }
+
+        private void PopulateAnchorText(AttachedSymbolData symbol)
+        {
+            if (symbol.IsDetached || !symbol.ParentId.HasValue) return;
+            var parent = _mojiDatas.Single(item => item.ObjectId == symbol.ParentId.Value);
+            symbol.AnchorText = GraphemeService.GetAt(parent.FullText, symbol.GraphemeAnchor).Text;
+        }
+
+        private IReadOnlyList<(Guid SymbolId, int NewAnchor, bool Detach, bool Remove)> PrepareAnchorChanges(
+            Guid parentId,
+            string oldText,
+            string newText,
+            AttachedSymbolOrphanPolicy policy,
+            IEnumerable<AttachedSymbolData> symbols)
+        {
+            var oldClusters = GraphemeService.Segment(oldText);
+            var newClusters = GraphemeService.Segment(newText);
+            var changes = new List<(Guid, int, bool, bool)>();
+            foreach (var symbol in symbols.Where(item => item.ParentId == parentId && !item.IsDetached))
+            {
+                var anchorText = symbol.AnchorText;
+                if (string.IsNullOrEmpty(anchorText) && symbol.GraphemeAnchor < oldClusters.Count)
+                {
+                    anchorText = oldClusters[symbol.GraphemeAnchor].Text;
+                }
+                var newAnchor = symbol.GraphemeAnchor;
+                var valid = newAnchor >= 0 && newAnchor < newClusters.Count;
+                if (valid && anchorText == newClusters[newAnchor].Text) continue;
+                if (policy == AttachedSymbolOrphanPolicy.Detach)
+                {
+                    changes.Add((symbol.ObjectId, 0, true, false));
+                    continue;
+                }
+                if (policy == AttachedSymbolOrphanPolicy.Remove)
+                {
+                    changes.Add((symbol.ObjectId, -1, false, true));
+                    continue;
+                }
+                if (policy == AttachedSymbolOrphanPolicy.Reject)
+                {
+                    throw new InvalidDataException("Editing text would invalidate an attached symbol anchor.");
+                }
+
+                // ReanchorToNearest is the only policy allowed to search. The
+                // service returns -1 for zero or multiple candidates.
+                newAnchor = string.IsNullOrEmpty(anchorText)
+                    ? -1
+                    : GraphemeService.FindNearest(newText, anchorText, newAnchor);
+                changes.Add(newAnchor >= 0
+                    ? (symbol.ObjectId, newAnchor, false, false)
+                    : (symbol.ObjectId, 0, true, false));
+            }
+            return changes;
+        }
+
+        private static void ApplyAnchorChanges(
+            List<AttachedSymbolData> symbols,
+            IReadOnlyList<(Guid SymbolId, int NewAnchor, bool Detach, bool Remove)> changes,
+            string newText,
+            Guid parentId)
+        {
+            foreach (var change in changes)
+            {
+                var symbol = symbols.Single(item => item.ObjectId == change.SymbolId);
+                if (change.Remove)
+                {
+                    symbols.Remove(symbol);
+                    continue;
+                }
+                symbol.GraphemeAnchor = change.NewAnchor;
+                if (change.Detach)
+                {
+                    DetachSymbol(symbol);
+                }
+                else
+                {
+                    symbol.ParentId = parentId;
+                    symbol.AnchorText = GraphemeService.GetAt(newText, change.NewAnchor).Text;
+                }
+            }
+        }
+
+        private static void DetachSymbol(AttachedSymbolData symbol)
+        {
+            symbol.ParentId = null;
+            symbol.IsDetached = true;
+            symbol.AnchorText = null;
+        }
+
+        private static void ValidateAttachedSymbolState(
+            IEnumerable<MojiData> mojiDatas,
+            IEnumerable<AttachedSymbolData> symbols)
+        {
+            var textById = mojiDatas.ToDictionary(item => item.ObjectId);
+            foreach (var symbol in symbols)
+            {
+                symbol.Validate();
+                if (symbol.IsDetached) continue;
+                if (!symbol.ParentId.HasValue || !textById.TryGetValue(symbol.ParentId.Value, out var parent))
+                {
+                    throw new InvalidDataException("Attached symbol parent text object was not found.");
+                }
+                if (symbol.GraphemeAnchor >= GraphemeService.Count(parent.FullText))
+                {
+                    throw new InvalidDataException("Attached symbol grapheme anchor is outside the parent text.");
+                }
             }
         }
     }

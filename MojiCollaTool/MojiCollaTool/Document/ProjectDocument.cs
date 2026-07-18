@@ -264,6 +264,14 @@ namespace MojiCollaTool
                         throw new InvalidOperationException($"Duplicate object ID in project: {balloon.ObjectId}");
                     }
                 }
+
+                foreach (var symbol in page.AttachedSymbols)
+                {
+                    if (!objectIds.Add(symbol.ObjectId))
+                    {
+                        throw new InvalidOperationException($"Duplicate object ID in project: {symbol.ObjectId}");
+                    }
+                }
             }
         }
 
