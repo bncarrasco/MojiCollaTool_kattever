@@ -10,7 +10,7 @@
 - Branch: `feature/TASK-060-object-id-zindex`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-060`
 - Functional base / kickoff HEAD: `1e64a715adeb2102f15b6a932075f5afdb65ff44`
-- Result commits: `96b89e6` (`feat: add common object identity and z-order`), `6ff780d` (`fix: preserve legacy ids when cloning objects`)
+- Result commits: `96b89e6`, `6ff780d`, `8a0e83b`（テスト比較修正）
 - Dedicated `TASK-060.md`: 未配置。task-breakdown、requirements、ADR-0003を根拠に実装。
 
 ## 対応要件
@@ -30,10 +30,13 @@
 ## 検証
 
 - `git diff --check`: pass。
-- `dotnet test tests/MojiCollaTool.Tests/MojiCollaTool.Tests.csproj --no-restore`: 実行試行。環境に.NET SDK 6.0.428がなく、`global.json`のSDK解決で停止（exit code 1）。
-- コンパイル修正: `TemporaryDirectory`のprivate型参照を解消。SDK不足のためコンパイラによる再確認は未検証。
+- SDK: `C:\Users\user\.dotnet\dotnet.exe --version` → `6.0.428`。
+- Debug test: pass。79 passed, 0 failed。
+- Release build: pass。0 warnings, 0 errors。
+- Release test: pass。79 passed, 0 failed。
+- コンパイル修正: `TemporaryDirectory`のprivate型参照を解消し、SDK指定でコンパイル成功。
+- 初回Debug testは79件中1件が配列の参照比較で失敗したが、`CollectionAssert.AreEqual`へ修正後にDebug/Releaseとも79/79で再確認。
 - 追加確認: 複数オブジェクトの旧int ID保持・UUID再発行、ParentId/GroupId再マッピング、legacy XMLからのUUID生成・`IsVisible=true`をテストへ追加。
-- Debug/Release build: 未実行。上記SDK不足のためNot verified。
 - UI/manual verification: Scope外（UI変更なし）。
 
 ## 既知の制約
