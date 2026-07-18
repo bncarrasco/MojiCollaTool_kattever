@@ -6,9 +6,9 @@
 
 - Implementation commit: `4c71e43e5aa70881f5fae38272ba9e9ed4cbda01`
 - Current handoff commit before this follow-up: `9360249bb74b6be1876686b4b7ed1ace93930f02`
-- Final implementation commit: `5997b11b59c25d0befe8abcba8073b1a9f6bb722`
+- Final implementation commit: `0056d65757cfa7969258cf18c4e9076c6967a5e4`
 - This follow-up adds active-page restoration, saved-path-safe trim, and the final regression cases.
-- Validation: Debug 100/100 passed; Release 100/100 passed; 0 failed.
+- Validation: Debug 101/101 passed; Release 101/101 passed; 0 failed.
 
 ## Summary
 
