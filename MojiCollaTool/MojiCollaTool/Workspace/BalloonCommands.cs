@@ -22,6 +22,8 @@ namespace MojiCollaTool
             if (session == null) throw new ArgumentNullException(nameof(session));
             var page = session.Document.GetPage(pageId);
             if (!page.ContainsBalloon(balloonId)) return false;
+            var balloon = page.GetBalloon(balloonId);
+            if (balloon.IsLocked || IsLinkedTextMutationBlocked(page, balloon)) return false;
             session.ExecutePage(pageId, target => target.RemoveBalloon(target.GetBalloon(balloonId)), "フキダシ削除");
             return true;
         }
@@ -31,24 +33,40 @@ namespace MojiCollaTool
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
             if (update == null) throw new ArgumentNullException(nameof(update));
-            session.ExecutePage(pageId, page => page.UpdateBalloon(balloonId, update), description, coalesceKey);
+            var sourcePage = session.Document.GetPage(pageId);
+            var before = sourcePage.GetBalloon(balloonId);
+            if (before.IsLocked) return;
+            var candidate = before.Clone();
+            update(candidate);
+            // TextLink is a relationship and has dedicated lock-aware link
+            // commands. Do not let generic Update bypass them or create history.
+            if (candidate.TextLink?.TextObjectId != before.TextLink?.TextObjectId) return;
+            session.ExecutePage(pageId, page => page.ReplaceBalloon(balloonId, candidate), description, coalesceKey);
         }
 
         public static void SetTail(ProjectSession session, Guid pageId, Guid balloonId, BalloonTailData? tail)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+            if (session.Document.GetPage(pageId).GetBalloon(balloonId).IsLocked) return;
             session.ExecutePage(pageId, page => page.SetBalloonTail(balloonId, tail), "フキダシしっぽ変更");
         }
 
         public static void LinkText(ProjectSession session, Guid pageId, Guid balloonId, Guid textObjectId, TextLinkData? link = null)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+            var page = session.Document.GetPage(pageId);
+            var balloon = page.GetBalloon(balloonId);
+            if (!page.ContainsObject(textObjectId) || balloon.IsLocked || page.GetObject(textObjectId).IsLocked ||
+                IsLinkedTextMutationBlocked(page, balloon)) return;
             session.ExecutePage(pageId, page => page.LinkBalloonText(balloonId, textObjectId, link), "フキダシ文字リンク");
         }
 
         public static void UnlinkText(ProjectSession session, Guid pageId, Guid balloonId)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+            var page = session.Document.GetPage(pageId);
+            var balloon = page.GetBalloon(balloonId);
+            if (balloon.IsLocked || IsLinkedTextMutationBlocked(page, balloon)) return;
             session.ExecutePage(pageId, page => page.UnlinkBalloonText(balloonId), "フキダシ文字リンク解除");
         }
 
@@ -60,5 +78,9 @@ namespace MojiCollaTool
             session.ExecutePage(pageId, page => page.MoveBalloonComposition(balloonId, operation), "フキダシ重なり順変更");
             return true;
         }
+
+        private static bool IsLinkedTextMutationBlocked(PageDocument page, BalloonData balloon)
+            => balloon.TextLink?.TextObjectId is Guid textObjectId &&
+               (!page.ContainsObject(textObjectId) || page.GetDocumentObject(textObjectId).IsLocked);
     }
 }

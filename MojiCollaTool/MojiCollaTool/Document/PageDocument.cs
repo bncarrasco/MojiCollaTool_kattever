@@ -342,6 +342,15 @@ namespace MojiCollaTool
             if (index < 0) throw new KeyNotFoundException($"Attached symbol was not found: {symbolId}");
             var candidate = _attachedSymbols[index].Clone();
             update(candidate);
+            ReplaceAttachedSymbol(symbolId, candidate);
+        }
+
+        internal void ReplaceAttachedSymbol(Guid symbolId, AttachedSymbolData replacement)
+        {
+            if (replacement == null) throw new ArgumentNullException(nameof(replacement));
+            var index = _attachedSymbols.FindIndex(symbol => symbol.ObjectId == symbolId);
+            if (index < 0) throw new KeyNotFoundException($"Attached symbol was not found: {symbolId}");
+            var candidate = replacement.Clone();
             if (candidate.ObjectId != symbolId) throw new InvalidOperationException("An attached symbol ID cannot be changed.");
             ValidateAttachedSymbolParent(candidate);
             candidate.Validate();
@@ -366,30 +375,27 @@ namespace MojiCollaTool
         public bool RemoveMojiData(MojiData mojiData)
         {
             if (mojiData == null) throw new ArgumentNullException(nameof(mojiData));
-            var removed = _mojiDatas.Remove(mojiData);
-            if (!removed && mojiData.ObjectId != Guid.Empty)
-            {
-                var matching = _mojiDatas.FirstOrDefault(candidate => candidate.ObjectId == mojiData.ObjectId);
-                if (matching != null) removed = _mojiDatas.Remove(matching);
-            }
+            var matching = _mojiDatas.FirstOrDefault(candidate => ReferenceEquals(candidate, mojiData) ||
+                (mojiData.ObjectId != Guid.Empty && candidate.ObjectId == mojiData.ObjectId));
+            if (matching == null || matching.IsLocked) return false;
+            if (_balloons.Any(balloon => balloon.TextLink?.TextObjectId == matching.ObjectId && balloon.IsLocked) ||
+                _attachedSymbols.Any(symbol => symbol.ParentId == matching.ObjectId && !symbol.IsDetached && symbol.IsLocked))
+                return false;
 
-            if (removed)
+            _mojiDatas.Remove(matching);
+            _objectOrder.Remove(matching.ObjectId);
+            foreach (var balloon in _balloons.Where(balloon => balloon.TextLink?.TextObjectId == matching.ObjectId))
             {
-                _objectOrder.Remove(mojiData.ObjectId);
-                foreach (var balloon in _balloons.Where(balloon => balloon.TextLink?.TextObjectId == mojiData.ObjectId))
-                {
-                    // Deleting text detaches the composition link but keeps the balloon.
-                    balloon.TextLink = null;
-                }
-                foreach (var symbol in _attachedSymbols.Where(symbol => symbol.ParentId == mojiData.ObjectId))
-                {
-                    symbol.ParentId = null;
-                    symbol.IsDetached = true;
-                    symbol.AnchorText = null;
-                }
-                NormalizeObjectOrder();
+                balloon.TextLink = null;
             }
-            return removed;
+            foreach (var symbol in _attachedSymbols.Where(symbol => symbol.ParentId == matching.ObjectId))
+            {
+                symbol.ParentId = null;
+                symbol.IsDetached = true;
+                symbol.AnchorText = null;
+            }
+            NormalizeObjectOrder();
+            return true;
         }
 
         public bool RemoveBalloon(BalloonData balloon)
@@ -428,6 +434,15 @@ namespace MojiCollaTool
             if (index < 0) throw new KeyNotFoundException($"Balloon was not found: {objectId}");
             var candidate = _balloons[index].Clone();
             update(candidate);
+            ReplaceBalloon(objectId, candidate);
+        }
+
+        internal void ReplaceBalloon(Guid objectId, BalloonData replacement)
+        {
+            if (replacement == null) throw new ArgumentNullException(nameof(replacement));
+            var index = _balloons.FindIndex(balloon => balloon.ObjectId == objectId);
+            if (index < 0) throw new KeyNotFoundException($"Balloon was not found: {objectId}");
+            var candidate = replacement.Clone();
             if (candidate.ObjectId != objectId)
             {
                 throw new InvalidOperationException("A balloon object ID cannot be changed.");
@@ -468,42 +483,26 @@ namespace MojiCollaTool
             UpdateBalloon(balloonId, balloon => balloon.TextLink = null);
         }
 
-        public bool MoveBalloonComposition(Guid balloonId, BalloonCompositionOrder operation)
+        /// <summary>
+        /// Moves the block containing any page object.  The block is resolved
+        /// from typed composition relationships, so the caller does not need
+        /// to know whether the selection is text, a balloon, or a symbol.
+        /// </summary>
+        public bool MoveObjectOrder(Guid objectId, ObjectOrderOperation operation)
         {
-            GetBalloon(balloonId);
-            var compositionByObject = new Dictionary<Guid, IReadOnlyList<Guid>>();
-            foreach (var balloon in _balloons)
-            {
-                var composition = GetBalloonCompositionObjectIds(balloon.ObjectId);
-                foreach (var objectId in composition) compositionByObject[objectId] = composition;
-            }
+            GetDocumentObject(objectId);
+            var blocks = BuildObjectOrderBlocks();
+            var currentIndex = blocks.FindIndex(block => block.Contains(objectId));
+            if (currentIndex < 0) throw new InvalidOperationException("The selected object was not found in object order.");
 
-            var blocks = new List<List<Guid>>();
-            var emitted = new HashSet<Guid>();
-            foreach (var objectId in _objectOrder)
-            {
-                if (!emitted.Add(objectId)) continue;
-                if (!compositionByObject.TryGetValue(objectId, out var composition))
-                {
-                    blocks.Add(new List<Guid> { objectId });
-                    continue;
-                }
-                var block = composition.Where(emitted.Add).ToList();
-                block.Insert(0, objectId);
-                blocks.Add(CanonicalizeComposition(block, composition));
-            }
+            // A composition must never bypass a locked member.  Validate the
+            // complete block before changing _objectOrder so the operation is
+            // atomic on rejection.
+            if (blocks[currentIndex].Any(id => GetDocumentObject(id).IsLocked)) return false;
 
-            var currentIndex = blocks.FindIndex(block => block.Contains(balloonId));
-            if (currentIndex < 0) throw new InvalidOperationException("Balloon composition was not found in object order.");
-            var targetIndex = operation switch
-            {
-                BalloonCompositionOrder.BringToFront => blocks.Count - 1,
-                BalloonCompositionOrder.BringForward => Math.Min(blocks.Count - 1, currentIndex + 1),
-                BalloonCompositionOrder.SendBackward => Math.Max(0, currentIndex - 1),
-                BalloonCompositionOrder.SendToBack => 0,
-                _ => throw new ArgumentOutOfRangeException(nameof(operation)),
-            };
+            var targetIndex = GetObjectOrderTargetIndex(currentIndex, blocks.Count, operation);
             if (targetIndex == currentIndex) return false;
+
             var selected = blocks[currentIndex];
             blocks.RemoveAt(currentIndex);
             blocks.Insert(targetIndex, selected);
@@ -511,6 +510,54 @@ namespace MojiCollaTool
             _objectOrder.AddRange(blocks.SelectMany(block => block));
             NormalizeObjectOrder();
             return true;
+        }
+
+        /// <summary>
+        /// Reports whether a visible, editable caller can perform the supplied
+        /// operation without mutating the page.  UI availability uses this
+        /// same canonical block and edge calculation as MoveObjectOrder.
+        /// </summary>
+        public bool CanMoveObjectOrder(Guid objectId, ObjectOrderOperation operation)
+        {
+            GetDocumentObject(objectId);
+            var blocks = BuildObjectOrderBlocks();
+            var currentIndex = blocks.FindIndex(block => block.Contains(objectId));
+            if (currentIndex < 0 || blocks[currentIndex].Any(id => GetDocumentObject(id).IsLocked)) return false;
+            return GetObjectOrderTargetIndex(currentIndex, blocks.Count, operation) != currentIndex;
+        }
+
+        /// <summary>
+        /// Changes only the selected object's lock flag.  This intentionally
+        /// does not propagate through a typed composition.
+        /// </summary>
+        public bool SetObjectLocked(Guid objectId, bool isLocked)
+        {
+            var target = GetDocumentObject(objectId);
+            if (target.IsLocked == isLocked) return false;
+            target.IsLocked = isLocked;
+            return true;
+        }
+
+        public bool LockObject(Guid objectId) => SetObjectLocked(objectId, true);
+
+        public bool UnlockObject(Guid objectId) => SetObjectLocked(objectId, false);
+
+        /// <summary>
+        /// Returns the canonical block containing the supplied object.
+        /// </summary>
+        public IReadOnlyList<Guid> GetObjectOrderBlock(Guid objectId)
+        {
+            GetDocumentObject(objectId);
+            return BuildObjectOrderBlocks().Single(block => block.Contains(objectId));
+        }
+
+        /// <summary>
+        /// Compatibility entry point retained for TASK-130 callers.
+        /// </summary>
+        public bool MoveBalloonComposition(Guid balloonId, BalloonCompositionOrder operation)
+        {
+            GetBalloon(balloonId);
+            return MoveObjectOrder(balloonId, (ObjectOrderOperation)operation);
         }
 
         public IReadOnlyList<Guid> GetBalloonCompositionObjectIds(Guid balloonId)
@@ -525,6 +572,62 @@ namespace MojiCollaTool
                     symbol.ObjectId == objectId && symbol.ParentId == textId && !symbol.IsDetached)));
             }
             return ids;
+        }
+
+        private IReadOnlyList<Guid> GetTextCompositionObjectIds(Guid textObjectId)
+        {
+            GetObject(textObjectId);
+            return new[] { textObjectId }
+                .Concat(_objectOrder.Where(objectId => _attachedSymbols.Any(symbol =>
+                    symbol.ObjectId == objectId && symbol.ParentId == textObjectId && !symbol.IsDetached)))
+                .ToArray();
+        }
+
+        private List<List<Guid>> BuildObjectOrderBlocks()
+        {
+            var blockByObject = new Dictionary<Guid, IReadOnlyList<Guid>>();
+            foreach (var balloon in _balloons)
+            {
+                var composition = GetBalloonCompositionObjectIds(balloon.ObjectId);
+                foreach (var id in composition) blockByObject[id] = composition;
+            }
+
+            foreach (var text in _mojiDatas.Where(text => !_balloons.Any(balloon =>
+                balloon.TextLink?.TextObjectId == text.ObjectId)))
+            {
+                var composition = GetTextCompositionObjectIds(text.ObjectId);
+                foreach (var id in composition) blockByObject[id] = composition;
+            }
+
+            var blocks = new List<List<Guid>>();
+            var emitted = new HashSet<Guid>();
+            foreach (var objectId in _objectOrder)
+            {
+                if (!emitted.Add(objectId)) continue;
+                if (!blockByObject.TryGetValue(objectId, out var composition))
+                {
+                    blocks.Add(new List<Guid> { objectId });
+                    continue;
+                }
+
+                var block = composition.Where(emitted.Add).ToList();
+                block.Insert(0, objectId);
+                blocks.Add(CanonicalizeComposition(block, composition));
+            }
+            return blocks;
+        }
+
+        private static int GetObjectOrderTargetIndex(int currentIndex, int blockCount, ObjectOrderOperation operation)
+        {
+            if (blockCount <= 0) return currentIndex;
+            return operation switch
+            {
+                ObjectOrderOperation.BringToFront => blockCount - 1,
+                ObjectOrderOperation.BringForward => Math.Min(blockCount - 1, currentIndex + 1),
+                ObjectOrderOperation.SendBackward => Math.Max(0, currentIndex - 1),
+                ObjectOrderOperation.SendToBack => 0,
+                _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+            };
         }
 
         /// <summary>
@@ -1010,6 +1113,14 @@ namespace MojiCollaTool
                 }
             }
         }
+    }
+
+    public enum ObjectOrderOperation
+    {
+        BringToFront,
+        BringForward,
+        SendBackward,
+        SendToBack,
     }
 
     public enum BalloonCompositionOrder

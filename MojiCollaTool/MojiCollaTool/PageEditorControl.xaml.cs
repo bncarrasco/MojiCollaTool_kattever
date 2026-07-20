@@ -27,6 +27,7 @@ namespace MojiCollaTool
         private readonly BalloonGeometryFactory _balloonGeometryFactory = new();
         private readonly Dictionary<Rectangle, ResizeHandle> _resizeHandles = new();
         private readonly Dictionary<Ellipse, ResizeHandle> _tailHandles = new();
+        private readonly Dictionary<FrameworkElement, ObjectContextMenuBinding> _objectContextMenus = new();
         private readonly TextLayoutService _textLayoutService = new();
         private readonly ObservableCollection<TextLinkCandidate> _textLinkCandidates = new();
         private readonly Dictionary<Guid, Guid?> _selectedObjectIdsByPage = new();
@@ -56,6 +57,7 @@ namespace MojiCollaTool
             MojiListView.ItemsSource = _viewMojiPanels;
             TextLinkComboBox.ItemsSource = _textLinkCandidates;
             MainCanvas.PreviewMouseLeftButtonDown += MainCanvas_PreviewMouseLeftButtonDown;
+            MainCanvas.PreviewMouseRightButtonDown += MainCanvas_PreviewMouseRightButtonDown;
             ResetScale();
             _runEvent = true;
         }
@@ -98,20 +100,48 @@ namespace MojiCollaTool
 
         public Guid? SelectedAttachedSymbolId => _selectedAttachedSymbol?.ObjectId;
 
+        public bool? SelectedObjectIsLocked
+        {
+            get
+            {
+                var id = SelectedObjectId;
+                if (!id.HasValue || _boundPage == null) return null;
+                return _boundPage.AllObjects.FirstOrDefault(item => item.ObjectId == id.Value)?.IsLocked;
+            }
+        }
+
         internal void SelectAttachedSymbolFromUi(AttachedSymbolVisual visual)
         {
             if (visual == null || !_attachedSymbolVisuals.Contains(visual)) return;
             SelectAttachedSymbol(visual);
         }
 
+        internal void SelectBalloonFromUi(BalloonVisual visual)
+        {
+            if (visual == null || !_balloonVisuals.Contains(visual)) return;
+            SelectBalloon(visual);
+        }
+
+        internal void SelectObjectForContextFromUi(Guid objectId)
+            => SelectObjectForContext(objectId);
+
         internal void HandleMojiListItemClickFromUi(MojiPanel panel)
         {
             if (panel == null || !_mojiPanels.Contains(panel)) return;
+            if (panel.MojiData.IsLocked)
+            {
+                _suppressSelectionSync = true;
+                try { MojiListView.SelectedItem = null; }
+                finally { _suppressSelectionSync = false; }
+                SetBalloonStatus("ロック中の文字は左クリックで選択できません。右クリックからロックを解除してください。", false);
+                return;
+            }
             SelectAttachedSymbol(null);
             SelectBalloon(null);
             _suppressSelectionSync = true;
             try { MojiListView.SelectedItem = panel; }
             finally { _suppressSelectionSync = false; }
+            RefreshBalloonTools();
         }
 
         public void RestoreViewState(int scalePercent, Guid? selectedObjectId)
@@ -256,6 +286,7 @@ namespace MojiCollaTool
             _mojiPanels.Add(mojiPanel);
             _viewMojiPanels.Add(mojiPanel);
             MainCanvas.Children.Add(mojiPanel);
+            ConfigureObjectContextMenu(mojiPanel, mojiPanel.MojiData.ObjectId);
             RefreshBalloonTools();
             RaiseContentChanged("文字追加");
         }
@@ -269,6 +300,7 @@ namespace MojiCollaTool
             if (candidate.IsDetached) throw new InvalidOperationException("A newly added attached symbol must have a parent.");
             var parent = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == candidate.ParentId);
             if (parent == null) throw new InvalidOperationException("付加記号の親文字が見つかりません。");
+            if (parent.MojiData.IsLocked) throw new InvalidOperationException("親文字がロック中のため、付加記号を変更できません。");
             if (candidate.GraphemeAnchor >= parent.MojiData.GraphemeCount)
                 throw new InvalidOperationException("Attached symbol grapheme anchor is outside the parent text.");
             if (HasObjectId(candidate.ObjectId))
@@ -318,6 +350,7 @@ namespace MojiCollaTool
             if (update == null) throw new ArgumentNullException(nameof(update));
             var visual = _attachedSymbolVisuals.FirstOrDefault(item => item.ObjectId == symbolId)
                 ?? throw new KeyNotFoundException($"Attached symbol was not found: {symbolId}");
+            if (!CanEditAttachedSymbol(visual)) return;
             var candidate = visual.SymbolData.Clone();
             update(candidate);
             if (candidate.ObjectId != symbolId) throw new InvalidOperationException("An attached symbol ID cannot be changed.");
@@ -336,6 +369,7 @@ namespace MojiCollaTool
         {
             var visual = _attachedSymbolVisuals.FirstOrDefault(item => item.ObjectId == symbolId);
             if (visual == null) return false;
+            if (!CanEditAttachedSymbol(visual)) return false;
             RemoveAttachedSymbolVisual(visual);
             _attachedSymbolModels.RemoveAll(item => item.ObjectId == symbolId);
             RaiseContentChanged("付加記号削除");
@@ -371,6 +405,7 @@ namespace MojiCollaTool
         {
             var visual = _balloonVisuals.FirstOrDefault(candidate => candidate.ObjectId == balloonId);
             if (visual == null) return false;
+            if (visual.BalloonData.IsLocked || IsLinkedTextLocked(visual.BalloonData)) return false;
             RemoveBalloonVisual(visual);
             RaiseContentChanged("フキダシ削除");
             return true;
@@ -408,9 +443,18 @@ namespace MojiCollaTool
         {
             if (_selectedBalloon == null)
                 return SetBalloonStatus("フキダシを選択してください。", false);
+            if (_selectedBalloon.BalloonData.IsLocked)
+                return SetBalloonStatus("ロック中のフキダシはリンクを変更できません。", false);
             var panel = _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == textObjectId);
             if (panel == null)
                 return SetBalloonStatus("同じページにリンク対象の文字が見つかりません。", false);
+            if (panel.MojiData.IsLocked)
+                return SetBalloonStatus("ロック中の文字はリンク対象にできません。", false);
+            var oldLinkedPanel = _selectedBalloon.BalloonData.TextLink == null ? null :
+                _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == _selectedBalloon.BalloonData.TextLink.TextObjectId);
+            if (_selectedBalloon.BalloonData.TextLink != null &&
+                (oldLinkedPanel == null || oldLinkedPanel.MojiData.IsLocked))
+                return SetBalloonStatus("ロック中のリンク文字との関係は変更できません。", false);
             var owner = _balloonVisuals.FirstOrDefault(item => item.ObjectId != _selectedBalloon.ObjectId &&
                 item.BalloonData.TextLink?.TextObjectId == textObjectId);
             if (owner != null)
@@ -443,8 +487,13 @@ namespace MojiCollaTool
         {
             if (_selectedBalloon == null)
                 return SetBalloonStatus("フキダシを選択してください。", false);
+            if (_selectedBalloon.BalloonData.IsLocked)
+                return SetBalloonStatus("ロック中のフキダシはリンクを変更できません。", false);
             if (_selectedBalloon.BalloonData.TextLink == null)
                 return SetBalloonStatus("選択中のフキダシに文字リンクはありません。", false);
+            var linkedPanel = _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == _selectedBalloon.BalloonData.TextLink.TextObjectId);
+            if (linkedPanel == null || linkedPanel.MojiData.IsLocked)
+                return SetBalloonStatus("ロック中の文字はリンクを変更できません。", false);
             var snapshot = CaptureLinkMutationSnapshot();
             try
             {
@@ -635,13 +684,67 @@ namespace MojiCollaTool
             }
         }
 
+        internal bool MoveSelectedObject(ObjectOrderOperation operation)
+        {
+            var objectId = SelectedObjectId;
+            if (!objectId.HasValue || _boundPage == null)
+                return SetBalloonStatus("オブジェクトを選択してください。", false);
+
+            CapturePage(_boundPage);
+            var trial = _boundPage.Clone(preserveObjectIds: true);
+            if (!trial.MoveObjectOrder(objectId.Value, operation))
+            {
+                var block = trial.GetObjectOrderBlock(objectId.Value);
+                return SetBalloonStatus(block.Any(id => trial.GetDocumentObject(id).IsLocked)
+                    ? "ロック中のオブジェクトを含むため、重なり順を変更できません。"
+                    : "これ以上は重なり順を変更できません。", false);
+            }
+
+            if (!_boundPage.MoveObjectOrder(objectId.Value, operation))
+                return SetBalloonStatus("重なり順の変更に失敗しました。", false);
+            ApplyPageOrderToLiveObjects();
+            RebuildCanvasObjectOrder();
+            RefreshBalloonTools("重なり順を変更しました。");
+            RaiseContentChanged("オブジェクト重なり順変更");
+            return true;
+        }
+
+        internal bool SetSelectedObjectLocked(bool isLocked)
+        {
+            var objectId = SelectedObjectId;
+            if (!objectId.HasValue || _boundPage == null)
+                return SetBalloonStatus("ロック対象を選択してください。", false);
+            var current = _boundPage.GetDocumentObject(objectId.Value);
+            if (current.IsLocked == isLocked)
+            {
+                RefreshBalloonTools(isLocked ? "既にロックされています。" : "既にロック解除されています。");
+                return false;
+            }
+
+            CancelActiveGesturesBeforeLockMutation();
+            CapturePage(_boundPage);
+            if (!_boundPage.SetObjectLocked(objectId.Value, isLocked)) return false;
+            ApplyObjectLockStateToLiveObjects();
+            RefreshBalloonTools(isLocked ? "ロックしました。" : "ロックを解除しました。");
+            RaiseContentChanged(isLocked ? "オブジェクトをロック" : "オブジェクトのロック解除");
+            return true;
+        }
+
         internal bool MoveSelectedBalloonComposition(BalloonCompositionOrder operation)
         {
             if (_selectedBalloon == null || _boundPage == null)
                 return SetBalloonStatus("フキダシを選択してください。", false);
             CapturePage(_boundPage);
+            var trial = _boundPage.Clone(preserveObjectIds: true);
+            if (!trial.MoveBalloonComposition(_selectedBalloon.ObjectId, operation))
+            {
+                var block = trial.GetObjectOrderBlock(_selectedBalloon.ObjectId);
+                return SetBalloonStatus(block.Any(id => trial.GetDocumentObject(id).IsLocked)
+                    ? "ロック中のオブジェクトを含むため、重なり順を変更できません。"
+                    : "これ以上は重なり順を変更できません。", false);
+            }
             if (!_boundPage.MoveBalloonComposition(_selectedBalloon.ObjectId, operation))
-                return SetBalloonStatus("これ以上は重なり順を変更できません。", false);
+                return SetBalloonStatus("重なり順の変更に失敗しました。", false);
             ApplyPageOrderToLiveObjects();
             RebuildCanvasObjectOrder();
             RefreshBalloonTools("重なり順を変更しました。");
@@ -655,8 +758,9 @@ namespace MojiCollaTool
             AddMojiPanel(new MojiPanel(mojiPanel.MojiData.Reproduct(GetNextMojiId()), this));
         }
 
-        public void RemoveMojiPanel(MojiPanel mojiPanel)
+        public void RemoveMojiPanel(MojiPanel mojiPanel, bool force = false)
         {
+            if (mojiPanel == null || !CanRemoveMojiPanel(mojiPanel, force)) return;
             if (!_mojiPanels.Remove(mojiPanel)) return;
 
             // Keep a removed parent's symbols as explicit detached objects so
@@ -676,15 +780,47 @@ namespace MojiCollaTool
             _viewMojiPanels.Remove(mojiPanel);
             foreach (var balloon in _balloonVisuals.Where(item => item.BalloonData.TextLink?.TextObjectId == mojiPanel.MojiData.ObjectId))
                 balloon.BalloonData.TextLink = null;
+            DetachObjectContextMenu(mojiPanel);
             mojiPanel.Dispose();
             MainCanvas.Children.Remove(mojiPanel);
             RefreshBalloonTools();
             RaiseContentChanged("文字削除");
         }
 
+        private bool CanRemoveMojiPanel(MojiPanel mojiPanel, bool force)
+        {
+            if (force) return true;
+            var objectId = mojiPanel.MojiData.ObjectId;
+            if (mojiPanel.MojiData.IsLocked)
+            {
+                ReportInteractionStatus("ロック中の文字は削除できません。右クリックからロックを解除してください。");
+                return false;
+            }
+
+            var lockedSymbol = _attachedSymbolVisuals.Any(symbol => symbol.SymbolData.ParentId == objectId &&
+                !symbol.SymbolData.IsDetached && symbol.SymbolData.IsLocked) ||
+                _attachedSymbolModels.Any(symbol => symbol.ParentId == objectId && !symbol.IsDetached && symbol.IsLocked) ||
+                (_boundPage?.AttachedSymbols.Any(symbol => symbol.ParentId == objectId && !symbol.IsDetached && symbol.IsLocked) == true);
+            if (lockedSymbol)
+            {
+                ReportInteractionStatus("関連する付加記号がロック中のため、文字を削除できません。");
+                return false;
+            }
+
+            var lockedBalloon = _balloonVisuals.Any(balloon => balloon.BalloonData.TextLink?.TextObjectId == objectId &&
+                balloon.BalloonData.IsLocked) ||
+                (_boundPage?.Balloons.Any(balloon => balloon.TextLink?.TextObjectId == objectId && balloon.IsLocked) == true);
+            if (lockedBalloon)
+            {
+                ReportInteractionStatus("リンク中のフキダシがロック中のため、文字を削除できません。");
+                return false;
+            }
+            return true;
+        }
+
         public void RemoveAllMojiPanel()
         {
-            foreach (var panel in _mojiPanels.ToArray()) RemoveMojiPanel(panel);
+            foreach (var panel in _mojiPanels.ToArray()) RemoveMojiPanel(panel, force: true);
         }
 
         public void LoadImage(string filePath, int imageNumber)
@@ -750,13 +886,19 @@ namespace MojiCollaTool
             _isDisposed = true;
 
             CloseCanvasEditor();
-            foreach (var panel in _mojiPanels.ToArray()) panel.Dispose();
+            foreach (var panel in _mojiPanels.ToArray())
+            {
+                DetachObjectContextMenu(panel);
+                panel.Dispose();
+            }
             _mojiPanels.Clear();
             _viewMojiPanels.Clear();
             RemoveAllAttachedSymbolVisuals();
             _attachedSymbolModels.Clear();
             RemoveAllBalloonVisuals();
+            foreach (var element in _objectContextMenus.Keys.ToArray()) DetachObjectContextMenu(element);
             MainCanvas.Children.Clear();
+            MainCanvas.PreviewMouseRightButtonDown -= MainCanvas_PreviewMouseRightButtonDown;
             FileDropped = null;
             ContentChanged = null;
         }
@@ -855,6 +997,12 @@ namespace MojiCollaTool
         {
             if (MojiListView.SelectedItem is MojiPanel mojiPanel)
             {
+                if (mojiPanel.MojiData.IsLocked)
+                {
+                    HandleMojiListItemClickFromUi(mojiPanel);
+                    e.Handled = true;
+                    return;
+                }
                 HandleMojiListItemClickFromUi(mojiPanel);
                 mojiPanel.ShowMojiWindow();
             }
@@ -908,15 +1056,26 @@ namespace MojiCollaTool
         internal bool BeginBalloonGesture(Guid balloonId, Point start, BalloonResizeHandle handle = BalloonResizeHandle.Move)
         {
             var visual = _balloonVisuals.FirstOrDefault(candidate => candidate.ObjectId == balloonId);
-            if (visual == null || visual.BalloonData.IsLocked || !visual.BalloonData.IsVisible || _balloonDrag != null) return false;
+            if (visual == null || !visual.BalloonData.IsVisible || _balloonDrag != null) return false;
+            if (visual.BalloonData.IsLocked)
+            {
+                SetBalloonStatus("ロック中のフキダシは操作できません。", false);
+                return false;
+            }
             var linkedPanel = visual.BalloonData.TextLink == null ? null :
                 _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == visual.BalloonData.TextLink.TextObjectId);
+            var resizeHandle = ToResizeHandle(handle);
+            if (resizeHandle == ResizeHandle.Move && HasLockedLinkedCompositionMember(visual, linkedPanel))
+            {
+                SetBalloonStatus("ロック中のリンク文字を含むため、フキダシを移動できません。", false);
+                return false;
+            }
             SelectBalloon(visual);
             _balloonDrag = new BalloonDragState(
                 visual,
                 start,
                 visual.BalloonData.Clone(),
-                ToResizeHandle(handle),
+                resizeHandle,
                 Guid.NewGuid().ToString("D"),
                 linkedPanel,
                 linkedPanel == null ? null : PageDocument.CloneMojiData(linkedPanel.MojiData));
@@ -926,6 +1085,12 @@ namespace MojiCollaTool
         internal bool UpdateBalloonGesture(Point current)
         {
             if (_balloonDrag == null) return false;
+            if (!CanContinueBalloonGesture())
+            {
+                CancelBalloonGesture();
+                SetBalloonStatus("ロック状態が変わったため、フキダシ操作を取り消しました。", false);
+                return false;
+            }
             ApplyBalloonDrag(current);
             return true;
         }
@@ -934,6 +1099,12 @@ namespace MojiCollaTool
         {
             if (_balloonDrag == null) return false;
             var state = _balloonDrag;
+            if (!CanContinueBalloonGesture())
+            {
+                CancelBalloonGesture();
+                SetBalloonStatus("ロック状態が変わったため、フキダシ操作を取り消しました。", false);
+                return false;
+            }
             ApplyBalloonDrag(current);
             var changed = !BalloonEquivalent(state.Before, state.Visual.BalloonData) ||
                 !MojiPositionEquivalent(state.BeforeLinkedText, state.LinkedPanel?.MojiData);
@@ -957,11 +1128,14 @@ namespace MojiCollaTool
             _restoringBalloon = true;
             try
             {
-                visual.ApplyData(_balloonDrag.Before.Clone());
+                var restoredBalloon = _balloonDrag.Before.Clone();
+                restoredBalloon.IsLocked = visual.BalloonData.IsLocked;
+                visual.ApplyData(restoredBalloon);
                 if (linkedPanel != null && linkedBefore != null)
                 {
-                    linkedPanel.MojiData.X = linkedBefore.X;
-                    linkedPanel.MojiData.Y = linkedBefore.Y;
+                    var locked = linkedPanel.MojiData.IsLocked;
+                    linkedPanel.MojiData.Copy(linkedBefore);
+                    linkedPanel.MojiData.IsLocked = locked;
                     linkedPanel.UpdateXYView();
                 }
             }
@@ -978,7 +1152,12 @@ namespace MojiCollaTool
         internal bool BeginAttachedSymbolGesture(Guid symbolId, Point start)
         {
             var visual = _attachedSymbolVisuals.FirstOrDefault(candidate => candidate.ObjectId == symbolId);
-            if (visual == null || visual.SymbolData.IsLocked || _attachedSymbolDrag != null) return false;
+            if (visual == null || _attachedSymbolDrag != null) return false;
+            if (!CanEditAttachedSymbol(visual))
+            {
+                SetBalloonStatus("ロック中の文字または付加記号は操作できません。", false);
+                return false;
+            }
             SelectAttachedSymbol(visual);
             _attachedSymbolDrag = new AttachedSymbolDragState(
                 visual, start, visual.SymbolData.Clone(), Guid.NewGuid().ToString("D"));
@@ -988,6 +1167,12 @@ namespace MojiCollaTool
         internal bool UpdateAttachedSymbolGesture(Point current)
         {
             if (_attachedSymbolDrag == null) return false;
+            if (!CanContinueAttachedSymbolGesture())
+            {
+                CancelAttachedSymbolGesture();
+                SetBalloonStatus("ロック状態が変わったため、付加記号操作を取り消しました。", false);
+                return false;
+            }
             var visual = _attachedSymbolDrag.Visual;
             var dx = current.X - _attachedSymbolDrag.Start.X;
             var dy = current.Y - _attachedSymbolDrag.Start.Y;
@@ -1006,6 +1191,12 @@ namespace MojiCollaTool
         {
             if (_attachedSymbolDrag == null) return false;
             var state = _attachedSymbolDrag;
+            if (!CanContinueAttachedSymbolGesture())
+            {
+                CancelAttachedSymbolGesture();
+                SetBalloonStatus("ロック状態が変わったため、付加記号操作を取り消しました。", false);
+                return false;
+            }
             UpdateAttachedSymbolGesture(current);
             var changed = !AttachedSymbolEquivalent(state.Before, state.Visual.SymbolData);
             _attachedSymbolDrag = null;
@@ -1023,8 +1214,13 @@ namespace MojiCollaTool
             if (_attachedSymbolDrag == null) return;
             var state = _attachedSymbolDrag;
             _attachedSymbolDrag = null;
-            state.Visual.ApplyData(state.Before, state.Visual.ParentTextData, state.Visual.AnchorBounds);
+            var restored = state.Before.Clone();
+            restored.IsLocked = state.Visual.SymbolData.IsLocked;
+            state.Visual.ApplyData(restored, state.Visual.ParentTextData, state.Visual.AnchorBounds);
         }
+
+        private bool CanContinueAttachedSymbolGesture()
+            => _attachedSymbolDrag != null && CanEditAttachedSymbol(_attachedSymbolDrag.Visual);
 
         internal void HandleCanvasClickSource(object? source)
         {
@@ -1103,15 +1299,152 @@ namespace MojiCollaTool
         }
 
         private void UnlinkTextButton_Click(object sender, RoutedEventArgs e) => UnlinkSelectedBalloon();
-        private void BringToFrontButton_Click(object sender, RoutedEventArgs e) => MoveSelectedBalloonComposition(BalloonCompositionOrder.BringToFront);
-        private void BringForwardButton_Click(object sender, RoutedEventArgs e) => MoveSelectedBalloonComposition(BalloonCompositionOrder.BringForward);
-        private void SendBackwardButton_Click(object sender, RoutedEventArgs e) => MoveSelectedBalloonComposition(BalloonCompositionOrder.SendBackward);
-        private void SendToBackButton_Click(object sender, RoutedEventArgs e) => MoveSelectedBalloonComposition(BalloonCompositionOrder.SendToBack);
+        private void BringToFrontButton_Click(object sender, RoutedEventArgs e) => MoveSelectedObject(ObjectOrderOperation.BringToFront);
+        private void BringForwardButton_Click(object sender, RoutedEventArgs e) => MoveSelectedObject(ObjectOrderOperation.BringForward);
+        private void SendBackwardButton_Click(object sender, RoutedEventArgs e) => MoveSelectedObject(ObjectOrderOperation.SendBackward);
+        private void SendToBackButton_Click(object sender, RoutedEventArgs e) => MoveSelectedObject(ObjectOrderOperation.SendToBack);
+        private void LockButton_Click(object sender, RoutedEventArgs e) => SetSelectedObjectLocked(true);
+        private void UnlockButton_Click(object sender, RoutedEventArgs e) => SetSelectedObjectLocked(false);
 
         private void MainCanvas_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             HandleCanvasClickSource(e.OriginalSource);
         }
+
+        private void MainCanvas_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            var objectId = FindObjectId(e.OriginalSource as DependencyObject);
+            if (objectId.HasValue) SelectObjectForContext(objectId.Value);
+        }
+
+        private Guid? FindObjectId(DependencyObject? source)
+        {
+            var current = source;
+            while (current != null && !ReferenceEquals(current, MainCanvas))
+            {
+                if (current is MojiPanel panel) return panel.MojiData.ObjectId;
+                if (current is BalloonVisual balloon) return balloon.ObjectId;
+                if (current is AttachedSymbolVisual symbol) return symbol.ObjectId;
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
+        private void SelectObjectForContext(Guid objectId)
+        {
+            var text = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == objectId);
+            if (text != null)
+            {
+                SelectAttachedSymbol(null);
+                SelectBalloon(null);
+                _suppressSelectionSync = true;
+                try { MojiListView.SelectedItem = text; }
+                finally { _suppressSelectionSync = false; }
+                RefreshBalloonTools();
+                return;
+            }
+
+            var symbol = _attachedSymbolVisuals.FirstOrDefault(candidate => candidate.ObjectId == objectId);
+            if (symbol != null)
+            {
+                SelectBalloon(null);
+                SelectAttachedSymbol(symbol);
+                RefreshBalloonTools();
+                return;
+            }
+
+            var balloon = _balloonVisuals.FirstOrDefault(candidate => candidate.ObjectId == objectId);
+            if (balloon != null)
+            {
+                SelectAttachedSymbol(null);
+                _suppressSelectionSync = true;
+                try { MojiListView.SelectedItem = null; }
+                finally { _suppressSelectionSync = false; }
+                SelectBalloon(balloon);
+            }
+        }
+
+        private void ConfigureObjectContextMenu(FrameworkElement element, Guid objectId)
+        {
+            DetachObjectContextMenu(element);
+            var menu = new ContextMenu();
+            var itemHandlers = new Dictionary<MenuItem, RoutedEventHandler>();
+            foreach (var action in Enum.GetValues<ObjectContextAction>())
+            {
+                var item = new MenuItem { Header = GetContextMenuHeader(action), Tag = action };
+                RoutedEventHandler clickHandler = (_, _) => ExecuteContextAction(objectId, action);
+                item.Click += clickHandler;
+                itemHandlers.Add(item, clickHandler);
+                menu.Items.Add(item);
+            }
+            RoutedEventHandler openedHandler = (_, _) => RefreshContextMenu(menu, objectId);
+            menu.Opened += openedHandler;
+            _objectContextMenus.Add(element, new ObjectContextMenuBinding(menu, openedHandler, itemHandlers));
+            element.ContextMenu = menu;
+        }
+
+        private void DetachObjectContextMenu(FrameworkElement element)
+        {
+            if (_objectContextMenus.Remove(element, out var binding))
+            {
+                binding.Menu.Opened -= binding.OpenedHandler;
+                foreach (var pair in binding.ItemHandlers) pair.Key.Click -= pair.Value;
+                if (binding.Menu.IsOpen) binding.Menu.IsOpen = false;
+            }
+            element.ContextMenu = null;
+        }
+
+        private void RefreshContextMenu(ContextMenu menu, Guid objectId)
+        {
+            var pageObject = _boundPage?.AllObjects.FirstOrDefault(item => item.ObjectId == objectId)
+                ?? (IPageObjectData?)_mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == objectId)?.MojiData
+                ?? (IPageObjectData?)_balloonVisuals.FirstOrDefault(item => item.ObjectId == objectId)?.BalloonData
+                ?? (IPageObjectData?)_attachedSymbolVisuals.FirstOrDefault(item => item.ObjectId == objectId)?.SymbolData;
+            if (pageObject == null) return;
+            var locked = pageObject.IsLocked;
+            var visible = pageObject.IsVisible;
+            var canMove = visible && !locked && _boundPage != null && _boundPage.ContainsObject(objectId);
+            foreach (var item in menu.Items.OfType<MenuItem>())
+            {
+                var action = (ObjectContextAction)item.Tag;
+                item.IsEnabled = action switch
+                {
+                    ObjectContextAction.BringToFront => canMove && _boundPage!.CanMoveObjectOrder(objectId, ObjectOrderOperation.BringToFront),
+                    ObjectContextAction.BringForward => canMove && _boundPage!.CanMoveObjectOrder(objectId, ObjectOrderOperation.BringForward),
+                    ObjectContextAction.SendBackward => canMove && _boundPage!.CanMoveObjectOrder(objectId, ObjectOrderOperation.SendBackward),
+                    ObjectContextAction.SendToBack => canMove && _boundPage!.CanMoveObjectOrder(objectId, ObjectOrderOperation.SendToBack),
+                    ObjectContextAction.Lock => visible && !locked,
+                    ObjectContextAction.Unlock => visible && locked,
+                    _ => false,
+                };
+            }
+        }
+
+        private void ExecuteContextAction(Guid objectId, ObjectContextAction action)
+        {
+            SelectObjectForContext(objectId);
+            switch (action)
+            {
+                case ObjectContextAction.BringToFront: MoveSelectedObject(ObjectOrderOperation.BringToFront); break;
+                case ObjectContextAction.BringForward: MoveSelectedObject(ObjectOrderOperation.BringForward); break;
+                case ObjectContextAction.SendBackward: MoveSelectedObject(ObjectOrderOperation.SendBackward); break;
+                case ObjectContextAction.SendToBack: MoveSelectedObject(ObjectOrderOperation.SendToBack); break;
+                case ObjectContextAction.Lock: SetSelectedObjectLocked(true); break;
+                case ObjectContextAction.Unlock: SetSelectedObjectLocked(false); break;
+            }
+        }
+
+        private static string GetContextMenuHeader(ObjectContextAction action)
+            => action switch
+            {
+                ObjectContextAction.BringToFront => "最前面へ",
+                ObjectContextAction.BringForward => "前面へ",
+                ObjectContextAction.SendBackward => "背面へ",
+                ObjectContextAction.SendToBack => "最背面へ",
+                ObjectContextAction.Lock => "ロック",
+                ObjectContextAction.Unlock => "ロック解除",
+                _ => string.Empty,
+            };
 
         private void MojiListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -1172,6 +1505,7 @@ namespace MojiCollaTool
             visual.SymbolLostMouseCapture += AttachedSymbolVisual_LostMouseCapture;
             _attachedSymbolVisuals.Add(visual);
             MainCanvas.Children.Add(visual);
+            ConfigureObjectContextMenu(visual, visual.ObjectId);
             Canvas.SetZIndex(visual, visual.SymbolData.ZIndex);
             if (raiseContentChanged) RaiseContentChanged("付加記号追加");
         }
@@ -1179,6 +1513,7 @@ namespace MojiCollaTool
         private void RemoveAttachedSymbolVisual(AttachedSymbolVisual visual)
         {
             if (!_attachedSymbolVisuals.Remove(visual)) return;
+            DetachObjectContextMenu(visual);
             visual.SymbolMouseLeftButtonDown -= AttachedSymbolVisual_MouseLeftButtonDown;
             visual.SymbolMouseLeftButtonUp -= AttachedSymbolVisual_MouseLeftButtonUp;
             visual.SymbolMouseMove -= AttachedSymbolVisual_MouseMove;
@@ -1199,6 +1534,7 @@ namespace MojiCollaTool
             if (ReferenceEquals(_selectedAttachedSymbol, visual))
             {
                 if (visual != null) visual.Refresh(visual.AnchorBounds);
+                RefreshBalloonTools();
                 return;
             }
             if (_selectedAttachedSymbol != null)
@@ -1220,6 +1556,7 @@ namespace MojiCollaTool
                 SelectBalloon(null);
                 visual.Refresh(visual.AnchorBounds);
             }
+            RefreshBalloonTools();
         }
 
         private void AttachedSymbolVisual_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1274,6 +1611,7 @@ namespace MojiCollaTool
             visual.BalloonLostMouseCapture += BalloonVisual_LostMouseCaptureBoundary;
             _balloonVisuals.Add(visual);
             MainCanvas.Children.Add(visual);
+            ConfigureObjectContextMenu(visual, visual.ObjectId);
             RefreshBalloonTools();
             if (raiseContentChanged) RaiseContentChanged("フキダシ追加");
         }
@@ -1281,6 +1619,7 @@ namespace MojiCollaTool
         private void RemoveBalloonVisual(BalloonVisual visual)
         {
             if (!_balloonVisuals.Remove(visual)) return;
+            DetachObjectContextMenu(visual);
             visual.BalloonMouseLeftButtonDown -= BalloonVisual_MouseLeftButtonDown;
             visual.BalloonMouseLeftButtonUp -= BalloonVisual_MouseLeftButtonUpBoundary;
             visual.BalloonMouseMove -= BalloonVisual_MouseMove;
@@ -1336,16 +1675,27 @@ namespace MojiCollaTool
             TextLayoutMinimumFontSizeTextBox.Text = selectedLink?.MinimumFontSize.ToString("0.###", CultureInfo.InvariantCulture) ?? string.Empty;
 
             var editable = _selectedBalloon != null && _selectedBalloon.BalloonData.IsVisible && !_selectedBalloon.BalloonData.IsLocked;
+            var selectedObject = SelectedObjectId.HasValue
+                ? _boundPage?.AllObjects.FirstOrDefault(item => item.ObjectId == SelectedObjectId.Value)
+                    ?? (IPageObjectData?)_mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == SelectedObjectId.Value)?.MojiData
+                    ?? (IPageObjectData?)_balloonVisuals.FirstOrDefault(item => item.ObjectId == SelectedObjectId.Value)?.BalloonData
+                    ?? (IPageObjectData?)_attachedSymbolVisuals.FirstOrDefault(item => item.ObjectId == SelectedObjectId.Value)?.SymbolData
+                : null;
+            var objectEditable = selectedObject != null && selectedObject.IsVisible && !selectedObject.IsLocked;
+            var selectedId = SelectedObjectId;
+            var canMove = selectedId.HasValue && objectEditable && _boundPage != null && _boundPage.ContainsObject(selectedId.Value);
             AddTailButton.IsEnabled = editable && _selectedBalloon!.BalloonData.Tail == null;
             RemoveTailButton.IsEnabled = editable && _selectedBalloon!.BalloonData.Tail != null;
             TextLinkComboBox.IsEnabled = editable && _textLinkCandidates.Count > 0;
             LinkTextButton.IsEnabled = editable && _textLinkCandidates.Count > 0;
             UnlinkTextButton.IsEnabled = editable && _selectedBalloon!.BalloonData.TextLink != null;
             UpdateTextLayoutApplyAvailability();
-            BringToFrontButton.IsEnabled = editable;
-            BringForwardButton.IsEnabled = editable;
-            SendBackwardButton.IsEnabled = editable;
-            SendToBackButton.IsEnabled = editable;
+            BringToFrontButton.IsEnabled = canMove && _boundPage!.CanMoveObjectOrder(selectedId!.Value, ObjectOrderOperation.BringToFront);
+            BringForwardButton.IsEnabled = canMove && _boundPage!.CanMoveObjectOrder(selectedId!.Value, ObjectOrderOperation.BringForward);
+            SendBackwardButton.IsEnabled = canMove && _boundPage!.CanMoveObjectOrder(selectedId!.Value, ObjectOrderOperation.SendBackward);
+            SendToBackButton.IsEnabled = canMove && _boundPage!.CanMoveObjectOrder(selectedId!.Value, ObjectOrderOperation.SendToBack);
+            LockButton.IsEnabled = objectEditable;
+            UnlockButton.IsEnabled = selectedObject?.IsLocked == true;
 
             if (message != null)
             {
@@ -1487,6 +1837,9 @@ namespace MojiCollaTool
             BalloonStatusTextBlock.Text = message;
             return result;
         }
+
+        internal void ReportInteractionStatus(string message)
+            => SetBalloonStatus(message, false);
 
         private void BalloonVisual_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
@@ -1638,6 +1991,76 @@ namespace MojiCollaTool
                 var symbolVisual = _attachedSymbolVisuals.FirstOrDefault(candidate => candidate.ObjectId == item.ObjectId);
                 if (symbolVisual != null) symbolVisual.SymbolData.ZIndex = item.ZIndex;
             }
+        }
+
+        private void ApplyObjectLockStateToLiveObjects()
+        {
+            if (_boundPage == null) return;
+            foreach (var item in _boundPage.AllObjects)
+            {
+                var panel = _mojiPanels.FirstOrDefault(candidate => candidate.MojiData.ObjectId == item.ObjectId);
+                if (panel != null)
+                {
+                    panel.MojiData.IsLocked = item.IsLocked;
+                    panel.MojiWindow?.LoadMojiDataToWindow(panel.MojiData);
+                }
+
+                var balloon = _balloonVisuals.FirstOrDefault(candidate => candidate.ObjectId == item.ObjectId);
+                if (balloon != null)
+                {
+                    var data = balloon.BalloonData.Clone();
+                    data.IsLocked = item.IsLocked;
+                    balloon.ApplyData(data);
+                }
+
+                var symbolIndex = _attachedSymbolModels.FindIndex(candidate => candidate.ObjectId == item.ObjectId);
+                if (symbolIndex >= 0) _attachedSymbolModels[symbolIndex].IsLocked = item.IsLocked;
+                var symbolVisual = _attachedSymbolVisuals.FirstOrDefault(candidate => candidate.ObjectId == item.ObjectId);
+                if (symbolVisual != null)
+                {
+                    var data = symbolVisual.SymbolData.Clone();
+                    data.IsLocked = item.IsLocked;
+                    symbolVisual.ApplyData(data, symbolVisual.ParentTextData, symbolVisual.AnchorBounds);
+                }
+            }
+            foreach (var panel in _mojiPanels) panel.MojiWindow?.RefreshEditabilityFromModel();
+            UpdateResizeHandles();
+        }
+
+        private void CancelActiveGesturesBeforeLockMutation()
+        {
+            CancelBalloonGesture();
+            CancelAttachedSymbolGesture();
+            foreach (var panel in _mojiPanels) panel.CancelActiveDragForLock();
+        }
+
+        internal bool CanMoveTextWithAttachedSymbols(Guid textObjectId)
+        {
+            var modelLocked = _attachedSymbolModels.Any(symbol => symbol.ParentId == textObjectId &&
+                !symbol.IsDetached && symbol.IsLocked);
+            var liveLocked = _attachedSymbolVisuals.Any(symbol => symbol.SymbolData.ParentId == textObjectId &&
+                !symbol.SymbolData.IsDetached && symbol.SymbolData.IsLocked);
+            return !modelLocked && !liveLocked;
+        }
+
+        private bool IsLinkedTextLocked(BalloonData balloon)
+            => balloon.TextLink?.TextObjectId is Guid textObjectId &&
+               (_mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == textObjectId) is not MojiPanel panel ||
+                panel.MojiData.IsLocked);
+
+        private bool CanContinueBalloonGesture()
+        {
+            if (_balloonDrag == null || _balloonDrag.Visual.BalloonData.IsLocked) return false;
+            return _balloonDrag.Handle != ResizeHandle.Move ||
+                !HasLockedLinkedCompositionMember(_balloonDrag.Visual, _balloonDrag.LinkedPanel);
+        }
+
+        private bool HasLockedLinkedCompositionMember(BalloonVisual visual, MojiPanel? linkedPanel)
+        {
+            if (linkedPanel?.MojiData.IsLocked == true) return true;
+            if (linkedPanel == null) return false;
+            return _attachedSymbolVisuals.Any(symbol => symbol.SymbolData.ParentId == linkedPanel.MojiData.ObjectId &&
+                !symbol.SymbolData.IsDetached && symbol.SymbolData.IsLocked);
         }
 
         private void UpdateResizeHandles()
@@ -1829,6 +2252,13 @@ namespace MojiCollaTool
                 || _attachedSymbolModels.Any(symbol => symbol.ObjectId == objectId)
                 || _attachedSymbolVisuals.Any(visual => visual.ObjectId == objectId);
 
+        private bool CanEditAttachedSymbol(AttachedSymbolVisual visual)
+        {
+            if (visual.SymbolData.IsLocked) return false;
+            if (visual.SymbolData.ParentId is not Guid parentId) return true;
+            return _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == parentId)?.MojiData.IsLocked != true;
+        }
+
         private int GetNextZIndex()
         {
             var pageMaximum = _boundPage?.AllObjects.Select(item => item.ZIndex).DefaultIfEmpty(-1).Max() ?? -1;
@@ -1950,6 +2380,31 @@ namespace MojiCollaTool
             ContentChangeDescription = description;
             ContentChangeCoalesceKey = coalesceKey;
             ContentChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        private enum ObjectContextAction
+        {
+            BringToFront,
+            BringForward,
+            SendBackward,
+            SendToBack,
+            Lock,
+            Unlock,
+        }
+
+        private sealed class ObjectContextMenuBinding
+        {
+            public ObjectContextMenuBinding(ContextMenu menu, RoutedEventHandler openedHandler,
+                IReadOnlyDictionary<MenuItem, RoutedEventHandler> itemHandlers)
+            {
+                Menu = menu;
+                OpenedHandler = openedHandler;
+                ItemHandlers = itemHandlers;
+            }
+
+            public ContextMenu Menu { get; }
+            public RoutedEventHandler OpenedHandler { get; }
+            public IReadOnlyDictionary<MenuItem, RoutedEventHandler> ItemHandlers { get; }
         }
     }
 

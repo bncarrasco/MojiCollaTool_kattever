@@ -113,6 +113,7 @@ namespace MojiCollaTool
             BackgroundBoxBorderThicknessTextBox.SetValue((int)mojiData.BackgroundBoxBorderThickness);
 
             LoadAttachedSymbolsToWindow();
+            RefreshEditability();
 
             _runEvent = true;
         }
@@ -165,6 +166,7 @@ namespace MojiCollaTool
             finally
             {
                 _updatingAttachedSymbolUi = false;
+                RefreshEditability();
             }
         }
 
@@ -178,13 +180,52 @@ namespace MojiCollaTool
             _runEvent = true;
         }
 
+        private bool CanEditTextMutation() => !_mojiPanel.MojiData.IsLocked;
+
+        private bool CanEditSelectedAttachedSymbolMutation()
+            => CanEditTextMutation() && (SelectedAttachedSymbol?.SymbolData.IsLocked != true);
+
+        private void RefreshEditability()
+        {
+            var textEditable = CanEditTextMutation();
+            foreach (var control in new UIElement[]
+            {
+                ReproductionButton, DeleteButton, LoadFormatButton, TextTextBox,
+                LocationXTextBox, LocationYTextBox, DirectionComboBox, RotateTextBox,
+                FontFamilyComboBox, BoldCheckBox, ItalicCheckBox, FontSizeTextBox,
+                ForeColorButton, CharacterMarginTextBox, LineMarginTextBox,
+                BorderThicknessTextBox, BorderColorButton, BorderBlurrRadiusTextBox,
+                SecondBorderThicknessTextBox, SecondBorderColorButton, SecondBorderBlurrRadiusTextBox,
+                BackgroundBoxCheckBox, BackgroundBoxPaddingTextBox, BackgroundBoxColorButton,
+                BackgroundBoxPaddingCornerRadiusTextBox, BackgroundBoxBorderThicknessTextBox,
+                BackgroundBoxBorderColorButton, AttachedSymbolGraphemeComboBox,
+                AttachedSymbolCandidateComboBox, AttachedSymbolTextBox, AttachedSymbolAddButton,
+            }) control.IsEnabled = textEditable;
+
+            var symbolEditable = CanEditSelectedAttachedSymbolMutation();
+            foreach (var control in new UIElement[]
+            {
+                AttachedSymbolOffsetXTextBox, AttachedSymbolOffsetYTextBox,
+                AttachedSymbolScaleTextBox, AttachedSymbolRotationTextBox,
+                AttachedSymbolInheritFontCheckBox, AttachedSymbolInheritColorCheckBox,
+                AttachedSymbolInheritBorderCheckBox, AttachedSymbolInheritDecorationCheckBox,
+                AttachedSymbolIncludeSpacingCheckBox, AttachedSymbolFontFamilyComboBox,
+                AttachedSymbolFontSizeTextBox, AttachedSymbolForeColorTextBox,
+                AttachedSymbolRemoveButton,
+            }) control.IsEnabled = symbolEditable;
+        }
+
+        internal void RefreshEditabilityFromModel() => RefreshEditability();
+
         private void ReproductionButton_Click(object sender, RoutedEventArgs e)
         {
+            if (!CanEditTextMutation()) return;
             _mojiPanel.Reproduction();
         }
 
         private void DeleteButton_Click(object sender, RoutedEventArgs e)
         {
+            if (!CanEditTextMutation()) return;
             if (MainWindow.ShowOKCancelDialog("文字を削除してよろしいですか？") == false) return;
 
             _mojiPanel.Remove();
@@ -192,6 +233,11 @@ namespace MojiCollaTool
 
         public void UpdateMojiView(bool isTextDecoraitonUpdated, string changeDescription = "スタイル変更", string? coalesceKey = null)
         {
+            if (!CanEditTextMutation() && _runEvent)
+            {
+                LoadMojiDataToWindow(_mojiPanel.MojiData);
+                return;
+            }
             var data = _mojiPanel.MojiData;
             var layoutInputsChanged = data.FullText != TextTextBox.Text ||
                 data.FontSize != FontSizeTextBox.Value ||
@@ -260,7 +306,7 @@ namespace MojiCollaTool
 
         private void ColorButton_Click(Color currentColor, Action<Color> action)
         {
-            if (_runEvent == false) return;
+            if (_runEvent == false || !CanEditTextMutation()) return;
 
             ColorSelector.ColorSelectorWindow colorSelectorWindow = new ColorSelector.ColorSelectorWindow(currentColor, action);
             colorSelectorWindow.Top = Top;
@@ -271,7 +317,7 @@ namespace MojiCollaTool
             if (dialogResult.HasValue == false || dialogResult.Value == false)
             {
                 //  色を元に戻す
-                action(currentColor);
+                if (CanEditTextMutation()) action(currentColor);
             }
         }
 
@@ -279,6 +325,7 @@ namespace MojiCollaTool
         {
             ColorButton_Click(_mojiPanel.MojiData.ForeColor, (color) =>
             {
+                if (!CanEditTextMutation()) return;
                 _mojiPanel.MojiData.ForeColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
@@ -290,6 +337,7 @@ namespace MojiCollaTool
         {
             ColorButton_Click(_mojiPanel.MojiData.BorderColor, (color) =>
             {
+                if (!CanEditTextMutation()) return;
                 _mojiPanel.MojiData.BorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
@@ -301,6 +349,7 @@ namespace MojiCollaTool
         {
             ColorButton_Click(_mojiPanel.MojiData.SecondBorderColor, (color) =>
             {
+                if (!CanEditTextMutation()) return;
                 _mojiPanel.MojiData.SecondBorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
@@ -312,6 +361,7 @@ namespace MojiCollaTool
         {
             ColorButton_Click(_mojiPanel.MojiData.BackgroundBoxColor, (color) =>
             {
+                if (!CanEditTextMutation()) return;
                 _mojiPanel.MojiData.BackgroundBoxColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
@@ -323,6 +373,7 @@ namespace MojiCollaTool
         {
             ColorButton_Click(_mojiPanel.MojiData.BackgroundBoxBorderColor, (color) =>
             {
+                if (!CanEditTextMutation()) return;
                 _mojiPanel.MojiData.BackgroundBoxBorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
@@ -361,6 +412,11 @@ namespace MojiCollaTool
         internal bool TryAddAttachedSymbolFromUi(int graphemeIndex, string text, out string error)
         {
             error = string.Empty;
+            if (!CanEditTextMutation())
+            {
+                error = "ロック中の文字は付加記号を変更できません。";
+                return false;
+            }
             if (string.IsNullOrEmpty(text))
             {
                 error = "付加記号を入力してください。";
@@ -420,7 +476,8 @@ namespace MojiCollaTool
 
         private void AttachedSymbolPropertyTextChanged(object sender, TextChangedEventArgs e)
         {
-            if (_updatingAttachedSymbolUi || AttachedSymbolListBox == null || SelectedAttachedSymbol == null) return;
+            if (_updatingAttachedSymbolUi || AttachedSymbolListBox == null || SelectedAttachedSymbol == null ||
+                !CanEditSelectedAttachedSymbolMutation()) return;
             if (!TryReadDouble(AttachedSymbolOffsetXTextBox.Text, out var offsetX) ||
                 !TryReadDouble(AttachedSymbolOffsetYTextBox.Text, out var offsetY) ||
                 !TryReadDouble(AttachedSymbolScaleTextBox.Text, out var scale) ||
@@ -442,7 +499,8 @@ namespace MojiCollaTool
 
         private void AttachedSymbolInheritanceChanged(object sender, RoutedEventArgs e)
         {
-            if (_updatingAttachedSymbolUi || AttachedSymbolListBox == null || SelectedAttachedSymbol == null) return;
+            if (_updatingAttachedSymbolUi || AttachedSymbolListBox == null || SelectedAttachedSymbol == null ||
+                !CanEditSelectedAttachedSymbolMutation()) return;
             var id = SelectedAttachedSymbol.ObjectId;
             _mojiPanel.PageEditor.UpdateAttachedSymbol(id, symbol =>
             {
@@ -457,7 +515,8 @@ namespace MojiCollaTool
 
         private void AttachedSymbolFontFamilyComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_updatingAttachedSymbolUi || AttachedSymbolFontFamilyComboBox == null || AttachedSymbolListBox == null || SelectedAttachedSymbol == null) return;
+            if (_updatingAttachedSymbolUi || AttachedSymbolFontFamilyComboBox == null || AttachedSymbolListBox == null ||
+                SelectedAttachedSymbol == null || !CanEditSelectedAttachedSymbolMutation()) return;
             if (AttachedSymbolFontFamilyComboBox.SelectedValue is not string fontName) return;
             var id = SelectedAttachedSymbol.ObjectId;
             _mojiPanel.PageEditor.UpdateAttachedSymbol(id, symbol => symbol.FontFamilyName = fontName,
@@ -467,7 +526,7 @@ namespace MojiCollaTool
 
         private void AttachedSymbolRemoveButton_Click(object sender, RoutedEventArgs e)
         {
-            if (SelectedAttachedSymbol == null) return;
+            if (SelectedAttachedSymbol == null || !CanEditSelectedAttachedSymbolMutation()) return;
             _mojiPanel.PageEditor.RemoveAttachedSymbol(SelectedAttachedSymbol.ObjectId);
             LoadAttachedSymbolsToWindow();
         }
@@ -530,24 +589,30 @@ namespace MojiCollaTool
                 if (dialogResult.HasValue == false || dialogResult.Value == false) return;
 
                 var formatMojiData = DataIO.ReadMojiData(openFileDialog.FileName);
-
-                //  IDと座標、テキストはそのままにしておく、他はコピーする
-                formatMojiData.Id = _mojiPanel.MojiData.Id;
-                formatMojiData.X = _mojiPanel.MojiData.X;
-                formatMojiData.Y = _mojiPanel.MojiData.Y;
-                formatMojiData.FullText = _mojiPanel.MojiData.FullText;   
-                _mojiPanel.MojiData.Copy(formatMojiData);
-
-                LoadMojiDataToWindow(_mojiPanel.MojiData);
-
-                _mojiPanel.UpdateMojiView(true);
-                _mojiPanel.InvalidateLinkedTextLayout();
-                _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
+                TryApplyLoadedFormat(formatMojiData);
             }
             catch (Exception ex)
             {
                 MainWindow.ShowError("文字フォーマット読み出しエラー", ex);
             }
+        }
+
+        internal bool TryApplyLoadedFormat(MojiData formatMojiData)
+        {
+            if (formatMojiData == null) throw new ArgumentNullException(nameof(formatMojiData));
+            if (!CanEditTextMutation()) return false;
+
+            // ID、座標、テキストはそのままにして、その他の書式だけをコピーする。
+            formatMojiData.Id = _mojiPanel.MojiData.Id;
+            formatMojiData.X = _mojiPanel.MojiData.X;
+            formatMojiData.Y = _mojiPanel.MojiData.Y;
+            formatMojiData.FullText = _mojiPanel.MojiData.FullText;
+            _mojiPanel.MojiData.Copy(formatMojiData);
+            LoadMojiDataToWindow(_mojiPanel.MojiData);
+            _mojiPanel.UpdateMojiView(true);
+            _mojiPanel.InvalidateLinkedTextLayout();
+            _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
+            return true;
         }
     }
 
