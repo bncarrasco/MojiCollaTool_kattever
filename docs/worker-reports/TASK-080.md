@@ -7,8 +7,8 @@ TASK-080を実装完了。文字、フキダシ、付加記号で共通利用で
 - 対象ブランチ: `feature/TASK-080-zorder-lock`
 - 対象worktree: `F:/github/MojiCollaTool-worktrees/TASK-080`
 - 開始HEAD: `33c3f1d3c1575763484a379cb4fb3dde0fa4dcda`
-- 実装コミット: `TBD`
-- 最終報告コミット: `TBD`
+- 実装コミット: `c0a6f00`
+- 検証報告・台帳更新: 実装コミット後の文書コミット
 - push / merge / rebase: 実施していない
 
 ## 要求・設計対応
