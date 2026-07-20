@@ -21,7 +21,7 @@ namespace MojiCollaTool
             _geometryFactory = geometryFactory ?? new BalloonGeometryFactory();
             Focusable = false;
             SnapsToDevicePixels = true;
-            IsHitTestVisible = data.IsVisible;
+            IsHitTestVisible = data.IsVisible && !IsMergeRenderingSuppressed;
             MouseLeftButtonDown += OnMouseLeftButtonDown;
             MouseLeftButtonUp += OnMouseLeftButtonUp;
             MouseMove += OnMouseMove;
@@ -32,6 +32,7 @@ namespace MojiCollaTool
         public BalloonData BalloonData { get; private set; }
         public Guid ObjectId => BalloonData.ObjectId;
         public bool IsSelected { get; set; }
+        public bool IsMergeRenderingSuppressed { get; private set; }
 
         internal Geometry BodyGeometry => _geometryFactory.Create(BalloonData.ShapeKind, LocalBounds);
         internal Geometry TailGeometry => BalloonTailGeometry.Create(BalloonData, _geometryFactory);
@@ -62,10 +63,17 @@ namespace MojiCollaTool
             InvalidateVisual();
         }
 
+        public void SetMergeRenderingSuppressed(bool suppressed)
+        {
+            IsMergeRenderingSuppressed = suppressed;
+            IsHitTestVisible = BalloonData.IsVisible && !suppressed;
+            InvalidateVisual();
+        }
+
         protected override void OnRender(DrawingContext drawingContext)
         {
             base.OnRender(drawingContext);
-            if (!BalloonData.IsVisible) return;
+            if (!BalloonData.IsVisible || IsMergeRenderingSuppressed) return;
 
             var geometry = BodyGeometry;
             var fill = new SolidColorBrush(BalloonData.Fill);
@@ -87,7 +95,7 @@ namespace MojiCollaTool
 
         protected override HitTestResult? HitTestCore(PointHitTestParameters hitTestParameters)
         {
-            if (!BalloonData.IsVisible) return null;
+            if (!BalloonData.IsVisible || IsMergeRenderingSuppressed) return null;
             var point = hitTestParameters.HitPoint;
             var thickness = Math.Max(1, BalloonData.StrokeThickness);
             var pen = new Pen(Brushes.Black, thickness);

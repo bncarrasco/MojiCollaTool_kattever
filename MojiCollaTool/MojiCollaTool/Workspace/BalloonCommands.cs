@@ -23,7 +23,7 @@ namespace MojiCollaTool
             var page = session.Document.GetPage(pageId);
             if (!page.ContainsBalloon(balloonId)) return false;
             var balloon = page.GetBalloon(balloonId);
-            if (balloon.IsLocked || IsLinkedTextMutationBlocked(page, balloon)) return false;
+            if (balloon.IsLocked || IsLinkedTextMutationBlocked(page, balloon) || !page.CanMutateBalloonMerge(balloonId)) return false;
             session.ExecutePage(pageId, target => target.RemoveBalloon(target.GetBalloon(balloonId)), "フキダシ削除");
             return true;
         }
@@ -41,13 +41,15 @@ namespace MojiCollaTool
             // TextLink is a relationship and has dedicated lock-aware link
             // commands. Do not let generic Update bypass them or create history.
             if (candidate.TextLink?.TextObjectId != before.TextLink?.TextObjectId) return;
+            if (sourcePage.FindBalloonMergeByMember(balloonId) != null && !MergeEditableEquivalent(before, candidate)) return;
             session.ExecutePage(pageId, page => page.ReplaceBalloon(balloonId, candidate), description, coalesceKey);
         }
 
         public static void SetTail(ProjectSession session, Guid pageId, Guid balloonId, BalloonTailData? tail)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
-            if (session.Document.GetPage(pageId).GetBalloon(balloonId).IsLocked) return;
+            var page = session.Document.GetPage(pageId);
+            if (page.GetBalloon(balloonId).IsLocked || page.FindBalloonMergeByMember(balloonId) != null) return;
             session.ExecutePage(pageId, page => page.SetBalloonTail(balloonId, tail), "フキダシしっぽ変更");
         }
 
@@ -82,5 +84,14 @@ namespace MojiCollaTool
         private static bool IsLinkedTextMutationBlocked(PageDocument page, BalloonData balloon)
             => balloon.TextLink?.TextObjectId is Guid textObjectId &&
                (!page.ContainsObject(textObjectId) || page.GetDocumentObject(textObjectId).IsLocked);
+
+        private static bool MergeEditableEquivalent(BalloonData before, BalloonData candidate)
+            => before.X == candidate.X && before.Y == candidate.Y && before.Bounds == candidate.Bounds &&
+               before.Rotation == candidate.Rotation && TailEquivalent(before.Tail, candidate.Tail);
+
+        private static bool TailEquivalent(BalloonTailData? left, BalloonTailData? right)
+            => left == null ? right == null : right != null && left.TailId == right.TailId &&
+               left.TipX == right.TipX && left.TipY == right.TipY &&
+               left.RootParameter == right.RootParameter && left.Width == right.Width;
     }
 }

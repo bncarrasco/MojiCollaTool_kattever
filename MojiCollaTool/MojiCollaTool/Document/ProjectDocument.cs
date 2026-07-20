@@ -272,6 +272,14 @@ namespace MojiCollaTool
                         throw new InvalidOperationException($"Duplicate object ID in project: {symbol.ObjectId}");
                     }
                 }
+
+                foreach (var merge in page.BalloonMerges)
+                {
+                    if (!objectIds.Add(merge.MergeId))
+                    {
+                        throw new InvalidOperationException($"Duplicate balloon merge ID in project: {merge.MergeId}");
+                    }
+                }
             }
         }
 

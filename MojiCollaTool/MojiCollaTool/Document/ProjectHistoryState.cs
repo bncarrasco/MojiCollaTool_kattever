@@ -37,7 +37,10 @@ namespace MojiCollaTool
         public long EstimateBytes()
         {
             var objectCount = Pages.Values.Sum(page => page.AllObjects.Count);
-            return Math.Max(512L, 1024L + PageOrder.Count * 32L + Pages.Count * 2048L + objectCount * 4096L);
+            var mergeCount = Pages.Values.Sum(page => page.BalloonMerges.Count);
+            var mergeMemberCount = Pages.Values.Sum(page => page.BalloonMerges.Sum(merge => merge.MemberIds.Count));
+            return Math.Max(512L, 1024L + PageOrder.Count * 32L + Pages.Count * 2048L + objectCount * 4096L +
+                mergeCount * 128L + mergeMemberCount * 32L);
         }
     }
 }
