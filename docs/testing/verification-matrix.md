@@ -63,7 +63,7 @@ TASK-000で再配布可能性を確認し、以下を固定する。
 - Lifecycle and persistence: BindPage/rebind, page switch, Undo/Redo, saved/dirty/redo branch, and versioned save/reload rebuild `ComputedLayout` without implicit history or dirty changes.
 - Atomicity and UI: complete model/Canvas/live/selection/z-order/attached-symbol/computed-plan rollback is covered for recoverable failures; subscriber exceptions propagate after commit. Padding and minimum-font controls reject empty, bad, NaN, Infinity, negative/non-positive, over-current-font, and overlarge-padding inputs with Japanese status text.
 - Invariants: one-way FitTextToBalloon and FitBalloonToText, no-op, explicit tail, attached symbols, lock/visibility target selection, horizontal/vertical direction, Start/Center/End mapping, two fonts, and full-text preservation.
-- Performance: Release single-operation p95 `<100 ms`, 24-composition batch `<1000 ms`; Debug safety budget `<3000 ms`.
+- Performance measured: Debug p95 `0.015 ms`, batch24 `0.302 ms`; Release p95 `0.017 ms`, batch24 `0.246 ms`; Release budgets `<100 ms` / `<1000 ms`, Debug safety `<3000 ms`.
 - Manual WPF pointer/DPI/IME/final-pixel inspection: not verified.
 
 ## Manual baseline procedure

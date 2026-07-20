@@ -486,6 +486,7 @@ public class TASK140AutoTextLayoutTests
             const double singleBudget = 100;
             const double batchBudget = 1000;
 #endif
+            Console.WriteLine($"TASK-140 performance: p95={p95:0.###}ms; batch24={batchWatch.Elapsed.TotalMilliseconds:0.###}ms");
             Assert.IsTrue(p95 < singleBudget, $"p95={p95:0.###}ms budget={singleBudget}ms");
             Assert.IsTrue(batchWatch.Elapsed.TotalMilliseconds < batchBudget,
                 $"batch={batchWatch.Elapsed.TotalMilliseconds:0.###}ms budget={batchBudget}ms");

@@ -47,7 +47,7 @@ TASK-140 now provides a deterministic, visual-only, grapheme-aware layout plan. 
 - Release build: pass, 0 warnings, 0 errors
 - Release test: 202 passed, 0 failed
 - `git diff --check`: pass
-- Release layout performance: single-operation p95 below 100 ms and 24-composition batch below 1000 ms; Debug safety budgets below 3000 ms
+- Measured layout performance: Debug p95 `0.015 ms`, batch24 `0.302 ms`; Release p95 `0.017 ms`, batch24 `0.246 ms` (Release budgets: `<100 ms` / `<1000 ms`; Debug safety budget: `<3000 ms`).
 - Automated coverage: grapheme wrap, explicit CR/LF/CRLF breaks, surrogate/combining/ZWJ content, two directions, two fonts, minimum-font behavior, bounded cache, FullText immutability, service-owned alignment, FitTextToBalloon/FitBalloonToText invariants, lifecycle rebuild, persistence, UI validation, atomic rollback, subscriber propagation, no-op, tail, attached symbols, lock/visibility targeting, dirty/saved state, and Undo/Redo
 - Manual WPF pointer/DPI/IME/final-pixel inspection: not verified
 
