@@ -68,3 +68,22 @@ TASK-080を実装完了。文字、フキダシ、付加記号で共通利用で
 主な変更fileは `PageDocument.cs`、`PageEditorControl.xaml.cs`、`MojiPanel.cs`、`MojiWindow.xaml`／`.cs`、`BalloonCommands.cs`、`AttachedSymbolCommands.cs`、`TASK080ZOrderLockTests.cs`である。後続のTASK-200、TASK-210、TASK-230は共通コマンドと `ObjectOrderOperation` を利用できる。
 
 ロールバック時はTASK-080の実装コミットと報告コミットを対象に戻し、保存形式2.3の既存読み書きとTASK-130互換APIを維持すること。
+
+## Round 3 MAJOR correction (C080-13 to C080-16)
+
+- Fix start HEAD: `f86ea6e2a18e5642b18d4cdbe7300ca9e2a496a2` on `feature/TASK-080-zorder-lock`.
+- C080-13: `MojiPanel` now performs selection before attempting drag. An unlocked parent text remains selectable when a non-detached attached symbol is locked; only drag start is refused. A text locked by itself still refuses left-click selection, while the existing right-click context unlock route remains available.
+- C080-14: text deletion now performs a complete preflight in `PageEditorControl` and `PageDocument`. Locked linked balloons and locked non-detached attached symbols reject deletion before live collections, model relationships, selection, history, dirty state, or `ContentChanged` are changed. Unlocking all related objects allows the production deletion path to detach the balloon link and symbol safely.
+- C080-15: `BalloonCommands.Update` rejects `TextLink.TextObjectId` changes, and `AttachedSymbolCommands.Update` rejects `ParentId`/`IsDetached` changes after a trial callback. Relationship mutations remain in the dedicated lock-aware commands; ordinary property updates remain available after unlock. Rejected generic updates create no history or dirty state.
+- C080-16: routed mouse selection/drag refusal, toolbar/context-menu order actions for all three object types and four operations, operation-specific expected order, mid-gesture lock cancellation, saved/dirty/Undo/Redo, right-click unlock, validation refusal, page lifecycle, and refresh performance are automated or covered by existing production tests. Physical pointer/DPI/IME/final-pixel/OS context-menu behavior remains `Not verified`.
+
+## Verification update
+
+- Implementation commit: `0a172a01a0696d244424f214a57d1f8217a424f3` (`fix: close TASK-080 lock mutation gaps`).
+- Debug build: pass, 0 warnings, 0 errors.
+- Debug test: `235/235` passed, 0 failed, 0 skipped.
+- Release build: pass, 0 warnings, 0 errors.
+- Release no-build test: `235/235` passed, 0 failed, 0 skipped.
+- TASK-080 dedicated tests: `23/23` passed in both configurations.
+- `git diff --check`: pass before and after documentation update.
+- Push, merge, and rebase were not performed.

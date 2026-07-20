@@ -102,3 +102,7 @@
 ### Known issues
 
 - legacy形式の検出・移行は後続のTASK-041で実装します。
+- Round 3 follow-up closes the selection-versus-drag lock distinction: unlocked parent text remains selectable when a related attached symbol is locked.
+- Text deletion now rejects locked linked balloons and attached symbols atomically before live/model/history changes.
+- Generic balloon and attached-symbol Update commands cannot rewire relationships; dedicated lock-aware relationship commands remain the supported path.
+- Added routed production acceptance coverage and operation-specific toolbar/context-menu order assertions; full suite is now 235/235 and TASK-080 is 23/23.

@@ -71,3 +71,11 @@ TASK-000で再配布可能性を確認し、以下を固定する。
 4. mctzip保存、終了、再読込し目視比較。
 5. 日本語pathで繰り返す。
 6. 破損fileを開き、既存sessionとfileが保持されることを確認（TASK-005後）。
+
+### TASK-080 Round 3 verification addendum
+
+- C080-13: routed `MouseDown` verifies unlocked parent selection with locked attached-symbol drag refusal; own-text lock remains selection refusal with right-click unlock.
+- C080-14: production deletion verifies locked related balloon/symbol refusal with unchanged live/model/selection/history/dirty/notification state, then successful deletion after unlock.
+- C080-15: generic balloon `TextLink` and attached-symbol `ParentId`/`IsDetached` changes are rejected without history; dedicated relationship and ordinary property paths remain usable after unlock.
+- C080-16: all three object types × four order operations × toolbar/context-menu paths assert operation-specific order and live Canvas Z synchronization. Debug/Release suite is `235/235`; TASK-080 is `23/23`.
+- Not verified: physical pointer/DPI/IME/final-pixel/OS-native context-menu behavior.

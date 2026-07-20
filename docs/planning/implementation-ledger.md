@@ -42,3 +42,10 @@
 - Current handoff commit before this follow-up: `9360249bb74b6be1876686b4b7ed1ace93930f02`
 - Final implementation commit: `0056d65757cfa7969258cf18c4e9076c6967a5e4`
 - Follow-up validation: Debug 101/101 passed; Release 101/101 passed; 0 failed.
+
+### TASK-080 Round 3 addendum
+
+- Fix commit: `0a172a01a0696d244424f214a57d1f8217a424f3` (`fix: close TASK-080 lock mutation gaps`).
+- C080-13〜15: selection/drag boundary, atomic text deletion guards for locked linked balloons and attached symbols, and generic relationship Update guards are covered by production-path tests.
+- C080-16: Debug/Release build pass; full suite `235/235` pass; TASK-080 dedicated `23/23` pass. Production toolbar/context-menu coverage is `3 types × 4 operations × 2 UI paths` with operation-specific expected-order assertions.
+- Physical pointer/DPI/IME/final-pixel/OS context-menu inspection remains `Not verified`; it is not claimed as automated coverage.
