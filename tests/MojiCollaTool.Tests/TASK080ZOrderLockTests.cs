@@ -836,6 +836,65 @@ public sealed class TASK080ZOrderLockTests
         Assert.AreEqual(0.25, sourcePage.GetAttachedSymbol(symbol.ObjectId).OffsetX);
     }
 
+    [TestMethod]
+    public void GenericUpdatesInvokeCallbacksOnceAndCommitOnlyValidatedCandidates()
+    {
+        var text = new MojiData { FullText = "parent" };
+        var balloon = new BalloonData();
+        var symbol = new AttachedSymbolData { ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "!" };
+        var page = new PageDocument("single callback", new[] { text }, new[] { balloon });
+        page.AddAttachedSymbol(symbol);
+        page.LinkBalloonText(balloon.ObjectId, text.ObjectId);
+        using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "project", new[] { page }));
+        var sourcePage = session.Document.GetPage(page.PageId);
+        var beforeUndo = session.UndoCount;
+
+        var balloonCalls = 0;
+        BalloonCommands.Update(session, page.PageId, balloon.ObjectId, candidate =>
+        {
+            balloonCalls++;
+            candidate.X = 123;
+            if (balloonCalls > 1) candidate.TextLink = null;
+        });
+        var symbolCalls = 0;
+        AttachedSymbolCommands.Update(session, page.PageId, symbol.ObjectId, candidate =>
+        {
+            symbolCalls++;
+            candidate.OffsetX = 0.5;
+            if (symbolCalls > 1) candidate.ParentId = null;
+        });
+
+        Assert.AreEqual(1, balloonCalls);
+        Assert.AreEqual(1, symbolCalls);
+        Assert.AreEqual(123d, sourcePage.GetBalloon(balloon.ObjectId).X);
+        Assert.AreEqual(text.ObjectId, sourcePage.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
+        Assert.AreEqual(0.5, sourcePage.GetAttachedSymbol(symbol.ObjectId).OffsetX);
+        Assert.AreEqual(text.ObjectId, sourcePage.GetAttachedSymbol(symbol.ObjectId).ParentId);
+        Assert.AreEqual(beforeUndo + 2, session.UndoCount);
+
+        var beforeRejectedUndo = session.UndoCount;
+        var rejectedCalls = 0;
+        BalloonCommands.Update(session, page.PageId, balloon.ObjectId, candidate =>
+        {
+            rejectedCalls++;
+            candidate.TextLink = null;
+        });
+        Assert.AreEqual(1, rejectedCalls);
+        Assert.AreEqual(beforeRejectedUndo, session.UndoCount);
+        Assert.AreEqual(text.ObjectId, sourcePage.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
+
+        var exceptionCalls = 0;
+        Assert.ThrowsException<InvalidOperationException>(() =>
+            AttachedSymbolCommands.Update(session, page.PageId, symbol.ObjectId, _ =>
+            {
+                exceptionCalls++;
+                throw new InvalidOperationException("callback failure");
+            }));
+        Assert.AreEqual(1, exceptionCalls);
+        Assert.AreEqual(beforeRejectedUndo, session.UndoCount);
+        Assert.AreEqual(text.ObjectId, sourcePage.GetAttachedSymbol(symbol.ObjectId).ParentId);
+    }
+
     private static void AssertProductionOrderAction(TestObjectKind kind, ObjectOrderOperation operation, bool useContextMenu)
     {
         var first = new MojiData { FullText = "first" };

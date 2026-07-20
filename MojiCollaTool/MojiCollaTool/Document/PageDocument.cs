@@ -342,6 +342,15 @@ namespace MojiCollaTool
             if (index < 0) throw new KeyNotFoundException($"Attached symbol was not found: {symbolId}");
             var candidate = _attachedSymbols[index].Clone();
             update(candidate);
+            ReplaceAttachedSymbol(symbolId, candidate);
+        }
+
+        internal void ReplaceAttachedSymbol(Guid symbolId, AttachedSymbolData replacement)
+        {
+            if (replacement == null) throw new ArgumentNullException(nameof(replacement));
+            var index = _attachedSymbols.FindIndex(symbol => symbol.ObjectId == symbolId);
+            if (index < 0) throw new KeyNotFoundException($"Attached symbol was not found: {symbolId}");
+            var candidate = replacement.Clone();
             if (candidate.ObjectId != symbolId) throw new InvalidOperationException("An attached symbol ID cannot be changed.");
             ValidateAttachedSymbolParent(candidate);
             candidate.Validate();
@@ -425,6 +434,15 @@ namespace MojiCollaTool
             if (index < 0) throw new KeyNotFoundException($"Balloon was not found: {objectId}");
             var candidate = _balloons[index].Clone();
             update(candidate);
+            ReplaceBalloon(objectId, candidate);
+        }
+
+        internal void ReplaceBalloon(Guid objectId, BalloonData replacement)
+        {
+            if (replacement == null) throw new ArgumentNullException(nameof(replacement));
+            var index = _balloons.FindIndex(balloon => balloon.ObjectId == objectId);
+            if (index < 0) throw new KeyNotFoundException($"Balloon was not found: {objectId}");
+            var candidate = replacement.Clone();
             if (candidate.ObjectId != objectId)
             {
                 throw new InvalidOperationException("A balloon object ID cannot be changed.");

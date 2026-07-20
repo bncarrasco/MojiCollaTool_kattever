@@ -41,7 +41,7 @@ namespace MojiCollaTool
             // TextLink is a relationship and has dedicated lock-aware link
             // commands. Do not let generic Update bypass them or create history.
             if (candidate.TextLink?.TextObjectId != before.TextLink?.TextObjectId) return;
-            session.ExecutePage(pageId, page => page.UpdateBalloon(balloonId, update), description, coalesceKey);
+            session.ExecutePage(pageId, page => page.ReplaceBalloon(balloonId, candidate), description, coalesceKey);
         }
 
         public static void SetTail(ProjectSession session, Guid pageId, Guid balloonId, BalloonTailData? tail)

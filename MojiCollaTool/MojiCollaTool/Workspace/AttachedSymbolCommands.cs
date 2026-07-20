@@ -54,7 +54,7 @@ namespace MojiCollaTool
             // ParentId and IsDetached define ownership. Reanchor may still
             // change GraphemeAnchor, but generic Update cannot reparent/orphan.
             if (candidate.ParentId != symbol.ParentId || candidate.IsDetached != symbol.IsDetached) return;
-            session.ExecutePage(pageId, page => page.UpdateAttachedSymbol(symbolId, update), description, coalesceKey);
+            session.ExecutePage(pageId, page => page.ReplaceAttachedSymbol(symbolId, candidate), description, coalesceKey);
         }
 
         public static void Remove(ProjectSession session, Guid pageId, Guid symbolId, string description = "付加記号削除")
