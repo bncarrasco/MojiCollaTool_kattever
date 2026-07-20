@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### TASK-140
+
+- フキダシとリンク文字の「枠に文字を合わせる」「文字に枠を合わせる」を明示適用できる自動レイアウトを追加しました。
+- 基本wrapは書記素単位で行い、CRLF/LFなどの明示改行とFullTextを変更せず、縦書き・横書き・Start/Center/Endに対応します。高度な禁則・ハイフン分割は対象外です。
+- 最小文字サイズ、はみ出し警告、有限容量のフォント測定cache、1回のUndo/Redo履歴としてのatomic適用を追加しました。
+
+### TASK-140 C140レビュー追補
+
+- 未適用リンクをBindPage・再バインド・保存再読込で暗黙wrapせず、手動編集後も明示適用だけがレイアウトを生成するようにしました。
+  - versioned形式のLF・CR・CRLF・混在改行を保持し、FitBalloonのpadding検証を現在の小さい枠から分離しました。
+  - 適用途中のdeep rollback、実Apply Button／ComboBox、redo branch、visual hierarchy、24 composition×両modeのPageEditor経路を検証しました。
+  - balloon frame resize後の自動レイアウトを無効化し、balloon move・composition move・tail操作では適用済みplanを維持するようにしました。
+  - versioned形式を2.3へ更新し、2.0〜2.2のlinkをUnappliedへ安全移行、2.3の3 stateを保存・復元、2.4以降を拒否します。
+  - Debug/Releaseとも212テスト合格、ビルド警告0・エラー0です。
+
 ### TASK-130
 
 - フキダシのしっぽを追加・削除し、先端・付け根・幅の3ハンドルで編集できるようにしました。

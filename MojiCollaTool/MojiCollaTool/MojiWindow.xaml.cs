@@ -192,6 +192,15 @@ namespace MojiCollaTool
 
         public void UpdateMojiView(bool isTextDecoraitonUpdated, string changeDescription = "スタイル変更", string? coalesceKey = null)
         {
+            var data = _mojiPanel.MojiData;
+            var layoutInputsChanged = data.FullText != TextTextBox.Text ||
+                data.FontSize != FontSizeTextBox.Value ||
+                data.TextDirection != (TextDirection)DirectionComboBox.SelectedIndex ||
+                data.IsBold != (BoldCheckBox.IsChecked == true) ||
+                data.IsItalic != (ItalicCheckBox.IsChecked == true) ||
+                data.LineMargin != LineMarginTextBox.Value ||
+                data.CharacterMargin != CharacterMarginTextBox.Value ||
+                data.FontFamilyName != (string)FontFamilyComboBox.SelectedValue;
             _mojiPanel.MojiData.FullText = TextTextBox.Text;
             Title = $"[{_mojiPanel.MojiData.Id}] {_mojiPanel.MojiData.ExampleText}";
             _mojiPanel.MojiData.FontSize = FontSizeTextBox.Value;
@@ -214,7 +223,11 @@ namespace MojiCollaTool
             _mojiPanel.MojiData.RotateAngle = RotateTextBox.Value;
 
             _mojiPanel.UpdateMojiView(isTextDecoraitonUpdated);
-            if (_runEvent) _mojiPanel.NotifyContentChanged(changeDescription, coalesceKey);
+            if (_runEvent)
+            {
+                if (layoutInputsChanged) _mojiPanel.InvalidateLinkedTextLayout();
+                _mojiPanel.NotifyContentChanged(changeDescription, coalesceKey);
+            }
         }
 
         private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -528,6 +541,7 @@ namespace MojiCollaTool
                 LoadMojiDataToWindow(_mojiPanel.MojiData);
 
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.InvalidateLinkedTextLayout();
                 _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             }
             catch (Exception ex)

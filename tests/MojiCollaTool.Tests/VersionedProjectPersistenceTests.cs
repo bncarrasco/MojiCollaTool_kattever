@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -255,6 +256,187 @@ public class VersionedProjectPersistenceTests
     }
 
     [TestMethod]
+    public void Version23PersistsAllThreeLayoutStatesAndManifestVersions()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var archivePath = Path.Combine(scope.Path, "layout-2.3.mctzip");
+        var source = CreateLayoutStateProject();
+
+        DataIO.WriteVersionedProject(archivePath, source);
+
+        using (var archive = ZipFile.OpenRead(archivePath))
+        {
+            var manifest = XDocument.Load(archive.GetEntry("manifest.xml")!.Open());
+            Assert.AreEqual("2.3", manifest.Root!.Element("FormatVersion")!.Value);
+            Assert.AreEqual("2.3", manifest.Root.Element("MinimumReaderVersion")!.Value);
+        }
+
+        var restored = DataIO.ReadVersionedProject(archivePath);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                BalloonTextLayoutMode.Unapplied,
+                BalloonTextLayoutMode.FitTextToBalloon,
+                BalloonTextLayoutMode.FitBalloonToText,
+            },
+            restored.Pages.Single().Balloons.Select(balloon => balloon.TextLink!.LayoutMode).ToArray());
+    }
+
+    [TestMethod]
+    public void Version22LinksMigrateOnlyLayoutStateToUnappliedWithoutImplicitPlan()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var sourcePath = Path.Combine(scope.Path, "source-2.3.mctzip");
+        var pagePath = Path.Combine(scope.Path, "legacy-page.mctzip");
+        var legacyPath = Path.Combine(scope.Path, "legacy-2.2.mctzip");
+        var source = CreateLayoutStateProject(includeUnknownFixtureLink: true);
+        DataIO.WriteVersionedProject(sourcePath, source);
+
+        var pageEntry = $"pages/{source.Pages.Single().PageId:D}/page.xml";
+        RewriteEntry(sourcePath, pagePath, pageEntry, null, page =>
+        {
+            var links = page.Root!.Element("Balloons")!.Elements("Balloon")
+                .Select(balloon => balloon.Element("TextLink")!).ToArray();
+            links[0].Element("LayoutMode")!.Value = "FitTextToBalloon";
+            links[1].Element("LayoutMode")!.Value = "FitBalloonToText";
+            links[2].Element("LayoutMode")!.Remove();
+            links[3].Element("LayoutMode")!.Value = "FutureLayoutMode";
+            return page;
+        });
+        RewriteEntry(pagePath, legacyPath, "manifest.xml", null, manifest =>
+        {
+            manifest.Root!.Element("FormatVersion")!.Value = "2.2";
+            manifest.Root.Element("MinimumReaderVersion")!.Value = "2.2";
+            return manifest;
+        });
+
+        var restored = DataIO.ReadVersionedProject(legacyPath);
+        var restoredPage = restored.Pages.Single();
+        Assert.IsTrue(restoredPage.Balloons.All(balloon =>
+            balloon.TextLink!.LayoutMode == BalloonTextLayoutMode.Unapplied));
+        Assert.AreEqual(source.Pages.Single().MojiDatas[0].FullText, restoredPage.MojiDatas[0].FullText);
+        Assert.AreEqual(source.Pages.Single().Balloons[1].TextLink!.Padding,
+            restoredPage.Balloons[1].TextLink!.Padding);
+        Assert.AreEqual(source.Pages.Single().Balloons[1].TextLink!.Alignment,
+            restoredPage.Balloons[1].TextLink!.Alignment);
+
+        RunOnSta(() =>
+        {
+            using var session = new ProjectSession(restored);
+            using var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            Assert.IsFalse(session.IsDirty);
+            Assert.AreEqual(0, session.UndoCount);
+            Assert.IsTrue(editor.MojiPanels.All(panel => panel.ComputedLayout == null));
+        });
+    }
+
+    [TestMethod]
+    public void Version22ReadExplicitApplyThenVersion23SavePreservesLayoutAndCompositionState()
+    {
+        using var scope = TemporaryDirectory.Create();
+        var sourcePath = Path.Combine(scope.Path, "source-2.3.mctzip");
+        var legacyPath = Path.Combine(scope.Path, "source-2.2.mctzip");
+        var savedPath = Path.Combine(scope.Path, "saved-2.3.mctzip");
+        var text = new MojiData
+        {
+            FullText = "legacy\n明示Apply\r混在\r\n😀",
+            FontSize = 28,
+            X = 18,
+            Y = 26,
+            ZIndex = 2,
+        };
+        var balloon = new BalloonData
+        {
+            X = 90,
+            Y = 110,
+            Bounds = new System.Windows.Rect(0, 0, 82, 48),
+            ZIndex = 0,
+            Tail = new BalloonTailData { TipX = 130, TipY = 210, RootParameter = .7, Width = 18 },
+            TextLink = new TextLinkData
+            {
+                TextObjectId = text.ObjectId,
+                LayoutMode = BalloonTextLayoutMode.FitTextToBalloon,
+                Padding = 5,
+                MinimumFontSize = 11,
+                Alignment = BalloonTextAlignment.End,
+            },
+        };
+        var symbol = new AttachedSymbolData
+        {
+            ParentId = text.ObjectId,
+            GraphemeAnchor = 0,
+            AnchorText = "l",
+            Text = "!",
+            OffsetX = .25,
+            OffsetY = -.5,
+            ZIndex = 1,
+        };
+        var page = new PageDocument(Guid.NewGuid(), "legacy page", new CanvasData(), new[] { text },
+            new[] { balloon }, new[] { symbol });
+        var source = new ProjectDocument(Guid.NewGuid(), "legacy project", new[] { page });
+        DataIO.WriteVersionedProject(sourcePath, source);
+
+        RewriteEntry(sourcePath, legacyPath, "manifest.xml", null, manifest =>
+        {
+            manifest.Root!.Element("FormatVersion")!.Value = "2.2";
+            manifest.Root.Element("MinimumReaderVersion")!.Value = "2.2";
+            return manifest;
+        });
+
+        var migrated = DataIO.ReadVersionedProject(legacyPath);
+        Assert.AreEqual(BalloonTextLayoutMode.Unapplied, migrated.Pages.Single().Balloons.Single().TextLink!.LayoutMode);
+        Assert.AreEqual(text.FullText, migrated.Pages.Single().MojiDatas.Single().FullText);
+        var originalOrder = migrated.Pages.Single().AllObjects.Select(item => item.ObjectId).ToArray();
+
+        RunOnSta(() =>
+        {
+            using var session = new ProjectSession(migrated);
+            using var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            editor.RestoreViewState(100, migrated.Pages.Single().Balloons.Single().ObjectId);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(migrated.Pages.Single().PageId, editor.ContentChangeDescription,
+                    editor.ContentChangeCoalesceKey);
+            };
+
+            Assert.IsTrue(editor.FitTextToBalloon());
+            Assert.AreEqual(BalloonTextLayoutMode.FitTextToBalloon,
+                migrated.Pages.Single().Balloons.Single().TextLink!.LayoutMode);
+            Assert.IsNotNull(editor.MojiPanels.Single().ComputedLayout);
+            Assert.AreEqual(1, session.UndoCount);
+            DataIO.WriteVersionedProject(savedPath, session.Document);
+        });
+
+        using (var archive = ZipFile.OpenRead(savedPath))
+        {
+            var manifest = XDocument.Load(archive.GetEntry("manifest.xml")!.Open());
+            Assert.AreEqual("2.3", manifest.Root!.Element("FormatVersion")!.Value);
+        }
+
+        var restored = DataIO.ReadVersionedProject(savedPath);
+        var restoredPage = restored.Pages.Single();
+        var restoredText = restoredPage.MojiDatas.Single();
+        var restoredBalloon = restoredPage.Balloons.Single();
+        var restoredSymbol = restoredPage.AttachedSymbols.Single();
+        CollectionAssert.AreEqual(originalOrder, restoredPage.AllObjects.Select(item => item.ObjectId).ToArray());
+        Assert.AreEqual("legacy\n明示Apply\r混在\r\n😀", restoredText.FullText);
+        Assert.AreEqual(BalloonTextLayoutMode.FitTextToBalloon, restoredBalloon.TextLink!.LayoutMode);
+        Assert.AreEqual(5, restoredBalloon.TextLink.Padding);
+        Assert.AreEqual(11, restoredBalloon.TextLink.MinimumFontSize);
+        Assert.AreEqual(BalloonTextAlignment.End, restoredBalloon.TextLink.Alignment);
+        Assert.AreEqual(balloon.Tail!.Tip, restoredBalloon.Tail!.Tip);
+        Assert.AreEqual(balloon.Tail.RootParameter, restoredBalloon.Tail.RootParameter);
+        Assert.AreEqual(balloon.Tail.Width, restoredBalloon.Tail.Width);
+        Assert.AreEqual(symbol.Text, restoredSymbol.Text);
+        Assert.AreEqual(symbol.OffsetX, restoredSymbol.OffsetX);
+        Assert.AreEqual(symbol.OffsetY, restoredSymbol.OffsetY);
+        Assert.AreEqual(symbol.ParentId, restoredSymbol.ParentId);
+    }
+
+    [TestMethod]
     public void AssetSourceFailureLeavesOriginalArchiveUntouched()
     {
         using var scope = TemporaryDirectory.Create();
@@ -322,6 +504,36 @@ public class VersionedProjectPersistenceTests
         return project;
     }
 
+    private static ProjectDocument CreateLayoutStateProject(bool includeUnknownFixtureLink = false)
+    {
+        var texts = Enumerable.Range(0, includeUnknownFixtureLink ? 4 : 3)
+            .Select(index => new MojiData { FullText = $"layout state {index}\n日本語" })
+            .ToArray();
+        var modes = new[]
+        {
+            BalloonTextLayoutMode.Unapplied,
+            BalloonTextLayoutMode.FitTextToBalloon,
+            BalloonTextLayoutMode.FitBalloonToText,
+            BalloonTextLayoutMode.FitTextToBalloon,
+        };
+        var balloons = texts.Select((text, index) => new BalloonData
+        {
+            Bounds = new System.Windows.Rect(20 + index * 60, 30, 50, 40),
+            TextLink = new TextLinkData
+            {
+                TextObjectId = text.ObjectId,
+                LayoutMode = modes[index],
+                Padding = 3 + index,
+                MinimumFontSize = 8 + index,
+                Alignment = (BalloonTextAlignment)(index % 3),
+            },
+        }).ToArray();
+        return new ProjectDocument(Guid.NewGuid(), "layout states", new[]
+        {
+            new PageDocument("状態ページ", texts, balloons),
+        });
+    }
+
     private static byte[] ReadRepoFixture(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -332,6 +544,20 @@ public class VersionedProjectPersistenceTests
 
         if (directory == null) throw new InvalidOperationException("Repository root was not found.");
         return File.ReadAllBytes(Path.Combine(directory.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+    }
+
+    private static void RunOnSta(Action action)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try { action(); }
+            catch (Exception exception) { failure = exception; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        if (failure != null) throw new AssertFailedException(failure.ToString());
     }
 
     private static void RewriteEntry(string sourcePath, string destinationPath, string entryName, string? rawContent, Func<XDocument, XDocument>? transform)

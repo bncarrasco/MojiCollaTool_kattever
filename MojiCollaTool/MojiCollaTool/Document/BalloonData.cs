@@ -30,6 +30,8 @@ namespace MojiCollaTool
 
     public enum BalloonTextLayoutMode
     {
+        // A link is visual-only until the user explicitly applies a mode.
+        Unapplied = -1,
         FitTextToBalloon = 0,
         TextToBalloon = FitTextToBalloon,
         FitBalloonToText = 1,
@@ -115,7 +117,7 @@ namespace MojiCollaTool
         public Guid TextObjectId { get; set; }
 
         [XmlIgnore]
-        public BalloonTextLayoutMode LayoutMode { get; set; }
+        public BalloonTextLayoutMode LayoutMode { get; set; } = BalloonTextLayoutMode.Unapplied;
 
         [XmlElement("LayoutMode")]
         public string LayoutModeValue
@@ -123,9 +125,12 @@ namespace MojiCollaTool
             get => LayoutMode.ToString();
             set
             {
-                LayoutMode = Enum.TryParse(value, ignoreCase: true, out BalloonTextLayoutMode parsed)
+                LayoutMode = Enum.TryParse(value, ignoreCase: true, out BalloonTextLayoutMode parsed) &&
+                    (parsed == BalloonTextLayoutMode.Unapplied ||
+                     parsed == BalloonTextLayoutMode.FitTextToBalloon ||
+                     parsed == BalloonTextLayoutMode.FitBalloonToText)
                     ? parsed
-                    : BalloonTextLayoutMode.FitTextToBalloon;
+                    : BalloonTextLayoutMode.Unapplied;
             }
         }
 
@@ -166,7 +171,7 @@ namespace MojiCollaTool
             RequireFinite(Padding, nameof(Padding));
             RequireFinite(MinimumFontSize, nameof(MinimumFontSize));
             if (Padding < 0) throw new InvalidDataException("Balloon text link padding must not be negative.");
-            if (MinimumFontSize < 0) throw new InvalidDataException("Balloon minimum font size must not be negative.");
+            if (MinimumFontSize <= 0) throw new InvalidDataException("Balloon minimum font size must be positive.");
         }
 
         private static void RequireFinite(double value, string name)

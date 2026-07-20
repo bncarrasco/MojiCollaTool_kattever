@@ -99,7 +99,7 @@ namespace MojiCollaTool.Tests
         }
 
         [TestMethod]
-        public void WriterUsesVersion22AndReaderAcceptsVersion20Archive()
+        public void WriterUsesVersion23AndReaderAcceptsVersion20Archive()
         {
             using var scope = TemporaryDirectory.Create();
             var currentPath = Path.Combine(scope.Path, "current.mctzip");
@@ -113,8 +113,8 @@ namespace MojiCollaTool.Tests
             using (var archive = ZipFile.OpenRead(currentPath))
             {
                 var manifest = XDocument.Load(archive.GetEntry("manifest.xml")!.Open());
-                Assert.AreEqual("2.2", manifest.Root!.Element("FormatVersion")!.Value);
-                Assert.AreEqual("2.2", manifest.Root.Element("MinimumReaderVersion")!.Value);
+                Assert.AreEqual("2.3", manifest.Root!.Element("FormatVersion")!.Value);
+                Assert.AreEqual("2.3", manifest.Root.Element("MinimumReaderVersion")!.Value);
             }
 
             RewriteArchive(currentPath, legacyVersionPath, entry =>
@@ -142,7 +142,7 @@ namespace MojiCollaTool.Tests
             {
                 if (entry.FullName != "manifest.xml") return null;
                 var manifest = XDocument.Load(entry.Open());
-                manifest.Root!.Element("FormatVersion")!.Value = "2.3";
+                manifest.Root!.Element("FormatVersion")!.Value = "2.4";
                 return Encoding.UTF8.GetBytes(manifest.ToString(SaveOptions.DisableFormatting));
             });
 

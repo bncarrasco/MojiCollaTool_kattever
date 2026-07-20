@@ -1,6 +1,6 @@
 # プロジェクト形式と互換性仕様
 
-Status: Current format observed / New format proposed
+Status: Current versioned format 2.3 / legacy compatibility maintained
 
 ## 1. 現行公式系形式（コード観測）
 
@@ -60,8 +60,8 @@ pages/
 
 最低限、以下を英語内部keyで保持する。
 
-- `FormatVersion`: semanticなmajor/minor。初期案 `2.0`。
-- `MinimumReaderVersion`: readerが安全に開くためのminimum。
+- `FormatVersion`: semanticなmajor/minor。writerの現行値は `2.3`。readerは `2.0`〜`2.3`を受け付け、`2.4`以降と未知majorを拒否する。
+- `MinimumReaderVersion`: readerが安全に開くためのminimum。`2.4`以降は拒否する。
 - `ProjectId`: UUID。
 - `Product`: `MojiCollaTool Katteban`等の内部識別子。表示名とは分離。
 - `Pages`: `PageId`, `Name`, `Order`, `RelativePath`。
@@ -75,6 +75,12 @@ pages/
 - 型別data: text、attached symbol、balloon、tail/link等。
 - 選択、hover、zoom、open Windowは保存しない。page dirty/historyも保存しない。
 
+### Layout state compatibility
+
+`TextLinkData.LayoutMode`はversion 2.3で`Unapplied`、`FitTextToBalloon`、`FitBalloonToText`の3 stateを正式保存する。version 2.0〜2.2のlinkは保存値がFitText、FitBalloon、missing、unknownのいずれであってもreaderが`Unapplied`へ移行する。これはTASK-130以前に自動layoutが存在せず、2.2 fieldだけでは旧既定値と明示Applyを判別できないためである。
+
+このmigrationはlayout stateだけを変更し、text content、position、font/style、balloon geometry/style/rotation/tail、padding、minimum font、alignment、relationship、Z、AttachedSymbol、Canvas、assetを変更しない。旧archiveは読込だけでは書き換えず、次回の明示保存時に2.3として出力する。
+
 ## 3. Reader policy
 
 1. 原fileを変更せず、pathとextensionだけで形式を断定しない。
@@ -85,7 +91,7 @@ pages/
 6. 成功後にだけ新 `ProjectSession`としてworkspaceへ追加する。
 7. 失敗時は既存sessionとWorking/cacheを変更せず、日本語errorと診断logを残す。
 
-未知future **major** versionはread-only推測せず拒否する。未知optional **minor** fieldはserializer policyとfixtureで安全性を確認してから許容する。
+未知future **major** versionと2.4以降のfuture **minor** versionはread-only推測せず拒否する。未知optional **minor** fieldはserializer policyとfixtureで安全性を確認してから許容する。
 
 ## 4. Writer policy
 
@@ -98,12 +104,16 @@ pages/
 
 file名はUUID directoryを使用し、page名をarchive pathへ直接使用しない。日本語page名はXML値としてUTF-8で保持する。
 
+writerはmanifestの`FormatVersion`と`MinimumReaderVersion`へ`2.3`を出力し、2.3のlayout stateをそのまま保存する。
+
 ## 5. 互換性matrix
 
 | File | 公式/現行版 | 勝手版 |
 | --- | --- | --- |
 | 旧単page mctzip | 読込可（基準、未実行） | 1pageへimport必須 |
-| 勝手版new format | 読込不可と仮定 | 読書可 |
+| 勝手版new format 2.0〜2.2 | 読込不可と仮定 | 読込可。layout stateはUnappliedへ安全移行 |
+| 勝手版new format 2.3 | 読込不可と仮定 | 読込可。3 stateをround-trip |
+| 勝手版new format 2.4以降 | 読込不可と仮定 | 安全に拒否 |
 | 勝手版から旧形式export | 未提供 | OQ-FMT-002でDeferred |
 | 未知future major | 不明 | 安全に拒否 |
 
@@ -112,6 +122,7 @@ file名はUUID directoryを使用し、page名をarchive pathへ直接使用し�
 ## 6. 移行とdata保護
 
 - 旧形式を開いただけでは原fileを書換えない。
+- version 2.0〜2.2を開いただけではarchiveを書換えず、次回の明示保存で2.3へ出力する。
 - 初回保存時は新形式の別file名を既定とし、旧file上書きは明示確認を検討する。
 - 変換warningと非互換点を日本語で表示する。
 - 保存前backup、temp naming、cleanup、disk full/permission/locked fileをfault testする。

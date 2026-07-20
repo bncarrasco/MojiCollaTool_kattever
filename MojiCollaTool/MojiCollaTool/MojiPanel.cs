@@ -37,6 +37,12 @@ namespace MojiCollaTool
         public IReadOnlyDictionary<int, DecoratedCharacterControl> GraphemeVisuals => graphemeControls;
 
         /// <summary>
+        /// The current visual-only wrap plan.  FullText remains the persisted
+        /// source of truth; this property is discarded when the panel is rebuilt.
+        /// </summary>
+        public TextLayoutResult? ComputedLayout { get; private set; }
+
+        /// <summary>
         /// 常に前面に表示するかどうかのフラグ
         /// </summary>
         public bool ShowTopmost { get; set; } = false;
@@ -168,7 +174,11 @@ namespace MojiCollaTool
                 MojiData.X = VisualOffset.X;
                 MojiData.Y = VisualOffset.Y;
                 MojiWindow?.UpdateXY(MojiData.X, MojiData.Y);
-                if (dragMoved) pageEditor.NotifyContentChanged("位置変更", MojiData.ObjectId.ToString("D"));
+                if (dragMoved)
+                {
+                    pageEditor.InvalidateLinkedTextLayout(MojiData.ObjectId);
+                    pageEditor.NotifyContentChanged("位置変更", MojiData.ObjectId.ToString("D"));
+                }
             }
             dragStart = null;
             dragMoved = false;
@@ -226,6 +236,9 @@ namespace MojiCollaTool
         internal void NotifyContentChanged(string description = "ページ編集", string? coalesceKey = null)
             => pageEditor.NotifyContentChanged(description, coalesceKey);
 
+        internal void InvalidateLinkedTextLayout()
+            => pageEditor.InvalidateLinkedTextLayout(MojiData.ObjectId);
+
         private void MojiPanel_Unloaded(object sender, RoutedEventArgs e)
         {
             // 一時的なVisualTreeからの離脱では編集Windowを破棄しない。
@@ -259,11 +272,33 @@ namespace MojiCollaTool
             pageEditor.RefreshAttachedSymbolsForParent(this);
         }
 
+        public void ApplyComputedLayout(TextLayoutResult? layout)
+        {
+            ComputedLayout = layout;
+            UpdateMojiView(false);
+        }
+
         /// <summary>
         /// 文字の表示を更新する
         /// </summary>
         public void UpdateMojiView(bool isTextDecorationUpdated)
         {
+            if (ComputedLayout != null &&
+                (ComputedLayout.Request.FullText != MojiData.FullText ||
+                 ComputedLayout.Request.FontSize != MojiData.FontSize ||
+                 ComputedLayout.Request.FontFamilyName != MojiData.FontFamilyName ||
+                 ComputedLayout.Request.IsBold != MojiData.IsBold ||
+                 ComputedLayout.Request.IsItalic != MojiData.IsItalic ||
+                 ComputedLayout.Request.Direction != MojiData.TextDirection ||
+                 ComputedLayout.Request.CharacterMargin != MojiData.CharacterMargin ||
+                 ComputedLayout.Request.LineMargin != MojiData.LineMargin))
+            {
+                // Manual text/style edits are shown immediately using the
+                // explicit-text layout. Auto wrap is reapplied only by the
+                // user's explicit Apply action.
+                ComputedLayout = null;
+            }
+
             //  文字パネルの中身をクリアする
             foreach (StackPanel child in stackPanel.Children)
             {
@@ -298,19 +333,12 @@ namespace MojiCollaTool
             }
 
             // 改行と本文は書記素単位で分ける。char列にするとサロゲート
-            // pair、結合文字、ZWJ sequenceが分割されてしまう。
-            var lines = new List<List<GraphemeCluster>> { new List<GraphemeCluster>() };
-            foreach (var grapheme in GraphemeService.Segment(MojiData.FullText))
-            {
-                if (grapheme.Text == "\r\n" || grapheme.Text == "\r" || grapheme.Text == "\n")
-                {
-                    lines.Add(new List<GraphemeCluster>());
-                }
-                else
-                {
-                    lines.Last().Add(grapheme);
-                }
-            }
+            // pair、結合文字、ZWJ sequenceが分割されてしまう。自動wrap時は
+            // serviceが作ったvisual-only planを使い、FullTextは変更しない。
+            var lines = ComputedLayout?.Lines
+                .Select(line => line.Clusters.ToList())
+                .ToList()
+                ?? BuildExplicitTextLines();
 
             List<Panel> linePanels = new List<Panel>();
 
@@ -334,6 +362,14 @@ namespace MojiCollaTool
                         break;
                     default:
                         break;
+                }
+
+                if (ComputedLayout != null)
+                {
+                    if (MojiData.TextDirection == TextDirection.Yokogaki)
+                        linePanel.HorizontalAlignment = ToHorizontalAlignment(ComputedLayout.Alignment);
+                    else
+                        linePanel.VerticalAlignment = ToVerticalAlignment(ComputedLayout.Alignment);
                 }
 
                 //  空の行だった場合、配置されずにずれるため、全角スペースを入れておく
@@ -432,6 +468,33 @@ namespace MojiCollaTool
 
             pageEditor.RefreshAttachedSymbolsForParent(this);
         }
+
+        private List<List<GraphemeCluster>> BuildExplicitTextLines()
+        {
+            var lines = new List<List<GraphemeCluster>> { new List<GraphemeCluster>() };
+            foreach (var grapheme in GraphemeService.Segment(MojiData.FullText))
+            {
+                if (grapheme.Text == "\r\n" || grapheme.Text == "\r" || grapheme.Text == "\n")
+                    lines.Add(new List<GraphemeCluster>());
+                else
+                    lines.Last().Add(grapheme);
+            }
+            return lines;
+        }
+
+        private static HorizontalAlignment ToHorizontalAlignment(BalloonTextAlignment alignment) => alignment switch
+        {
+            BalloonTextAlignment.Start => HorizontalAlignment.Left,
+            BalloonTextAlignment.End => HorizontalAlignment.Right,
+            _ => HorizontalAlignment.Center,
+        };
+
+        private static VerticalAlignment ToVerticalAlignment(BalloonTextAlignment alignment) => alignment switch
+        {
+            BalloonTextAlignment.Start => VerticalAlignment.Top,
+            BalloonTextAlignment.End => VerticalAlignment.Bottom,
+            _ => VerticalAlignment.Center,
+        };
 
         public Rect GetGraphemeAnchorBounds(int graphemeIndex)
         {
