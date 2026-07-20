@@ -166,7 +166,7 @@ namespace MojiCollaTool
             RequireFinite(Padding, nameof(Padding));
             RequireFinite(MinimumFontSize, nameof(MinimumFontSize));
             if (Padding < 0) throw new InvalidDataException("Balloon text link padding must not be negative.");
-            if (MinimumFontSize < 0) throw new InvalidDataException("Balloon minimum font size must not be negative.");
+            if (MinimumFontSize <= 0) throw new InvalidDataException("Balloon minimum font size must be positive.");
         }
 
         private static void RequireFinite(double value, string name)

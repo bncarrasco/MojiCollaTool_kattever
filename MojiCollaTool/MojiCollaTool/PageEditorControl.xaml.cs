@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -191,6 +192,7 @@ namespace MojiCollaTool
                 }
                 RebuildCanvasObjectOrder();
                 MainCanvas.UpdateLayout();
+                RebuildLinkedTextLayouts();
                 foreach (var parent in _mojiPanels) RefreshAttachedSymbolsForParent(parent);
                 RestoreSelectionForPage(page.PageId);
                 foreach (var parent in _mojiPanels) parent.MojiWindow?.LoadMojiDataToWindow(parent.MojiData);
@@ -470,71 +472,84 @@ namespace MojiCollaTool
             var panel = _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == currentLink.TextObjectId);
             if (panel == null)
                 return SetBalloonStatus("リンク先の文字が見つかりません。", false);
-            if (_selectedBalloon.BalloonData.IsLocked || !_selectedBalloon.BalloonData.IsVisible ||
-                panel.MojiData.IsLocked || !panel.MojiData.IsVisible)
-                return SetBalloonStatus("ロック中または非表示の対象には適用できません。", false);
 
             var mode = ReadSelectedLayoutMode(currentLink.LayoutMode);
             var alignment = ReadSelectedAlignment(currentLink.Alignment);
-            var beforeBalloon = _selectedBalloon.BalloonData.Clone();
-            var beforeText = panel.MojiData.Clone();
+            if (mode == BalloonTextLayoutMode.FitTextToBalloon &&
+                (panel.MojiData.IsLocked || !panel.MojiData.IsVisible))
+                return SetBalloonStatus("文字側がロック中または非表示のため、レイアウトを適用できません。", false);
+            if (mode == BalloonTextLayoutMode.FitBalloonToText &&
+                (_selectedBalloon.BalloonData.IsLocked || !_selectedBalloon.BalloonData.IsVisible))
+                return SetBalloonStatus("フキダシ側がロック中または非表示のため、レイアウトを適用できません。", false);
+            if (!TryReadLayoutSettings(panel.MojiData, _selectedBalloon.BalloonData, out var padding,
+                out var minimumFontSize, out var validationMessage))
+                return SetBalloonStatus(validationMessage, false);
+
+            var snapshot = CaptureLinkMutationSnapshot();
             var request = TextLayoutRequest.From(panel.MojiData, currentLink, _selectedBalloon.BalloonData);
+            request.Padding = padding;
+            request.MinimumFontSize = minimumFontSize;
+            request.MinimumFrameWidth = MinimumBalloonSize;
+            request.MinimumFrameHeight = MinimumBalloonSize;
             request.Alignment = alignment;
             TextLayoutResult layout;
             BalloonData candidateBalloon;
             MojiData candidateText;
             try
             {
-                candidateBalloon = beforeBalloon.Clone();
-                candidateText = beforeText.Clone();
+                candidateBalloon = _selectedBalloon.BalloonData.Clone();
+                candidateText = panel.MojiData.Clone();
                 candidateBalloon.TextLink ??= currentLink.Clone();
                 candidateBalloon.TextLink.LayoutMode = mode;
                 candidateBalloon.TextLink.Alignment = alignment;
+                candidateBalloon.TextLink.Padding = padding;
+                candidateBalloon.TextLink.MinimumFontSize = minimumFontSize;
 
                 if (mode == BalloonTextLayoutMode.FitTextToBalloon)
                 {
                     layout = _textLayoutService.FitTextToBalloon(request);
-                    candidateText.FontSize = ClampFontSize(layout.EffectiveFontSize, currentLink.MinimumFontSize);
+                    candidateText.FontSize = ClampFontSize(layout.EffectiveFontSize, minimumFontSize);
                     request.FontSize = candidateText.FontSize;
                     layout = _textLayoutService.FitTextToBalloon(request);
-                    var placement = GetTextPlacement(candidateBalloon, layout, alignment, candidateText.TextDirection,
-                        currentLink.Padding);
-                    candidateText.X = placement.X;
-                    candidateText.Y = placement.Y;
+                    candidateText.X = layout.TargetTextPosition.X;
+                    candidateText.Y = layout.TargetTextPosition.Y;
                 }
                 else
                 {
                     layout = _textLayoutService.FitBalloonToText(request);
                     var bounds = candidateBalloon.Bounds;
-                    candidateBalloon.X = candidateText.X - SafePadding(currentLink.Padding);
-                    candidateBalloon.Y = candidateText.Y - SafePadding(currentLink.Padding);
-                    candidateBalloon.Bounds = new Rect(bounds.X, bounds.Y,
-                        Math.Max(MinimumBalloonSize, layout.TargetWidth),
-                        Math.Max(MinimumBalloonSize, layout.TargetHeight));
+                    candidateBalloon.Position = layout.TargetBalloonPosition;
+                    var targetBounds = layout.TargetBalloonBounds;
+                    candidateBalloon.Bounds = new Rect(bounds.X, bounds.Y, targetBounds.Width, targetBounds.Height);
                 }
 
+                var beforeBalloon = snapshot.Balloons[_selectedBalloon.ObjectId];
+                var beforeText = snapshot.MojiDatas[panel.MojiData.ObjectId];
                 var changed = !TextLayoutEquivalent(beforeBalloon.TextLink, candidateBalloon.TextLink) ||
                     beforeText.FontSize != candidateText.FontSize || beforeText.X != candidateText.X ||
                     beforeText.Y != candidateText.Y || beforeBalloon.X != candidateBalloon.X ||
                     beforeBalloon.Y != candidateBalloon.Y || beforeBalloon.Bounds != candidateBalloon.Bounds;
                 _selectedBalloon.ApplyData(candidateBalloon);
                 panel.MojiData.Copy(candidateText);
-                panel.ApplyComputedLayout(layout);
+                if (mode == BalloonTextLayoutMode.FitTextToBalloon ||
+                    !TextLayoutEquivalent(currentLink, candidateBalloon.TextLink) || panel.ComputedLayout == null)
+                    panel.ApplyComputedLayout(layout);
                 RefreshBalloonTools(layout.Warning ?? "レイアウトを適用しました。");
                 if (!changed) return true;
-
                 SynchronizeBoundPageAfterLinkMutation();
-                RaiseContentChanged("文字レイアウト適用");
-                return true;
             }
-            catch
+            catch (Exception)
             {
-                _selectedBalloon.ApplyData(beforeBalloon);
-                panel.MojiData.Copy(beforeText);
-                panel.ApplyComputedLayout(null);
+                RestoreLinkMutationSnapshot(snapshot);
                 RefreshBalloonTools("レイアウト適用に失敗しました。");
-                throw;
+                return false;
             }
+
+            // This is deliberately outside the rollback catch. Once the page
+            // and live visuals are synchronized, a subscriber exception must
+            // propagate while preserving the committed state.
+            RaiseContentChanged("文字レイアウト適用", Guid.NewGuid().ToString("N"));
+            return true;
         }
 
         public bool ApplyTextLayout(BalloonTextLayoutMode mode)
@@ -565,6 +580,7 @@ namespace MojiCollaTool
                 SelectedObjectId,
                 _selectedBalloon?.BalloonData.Clone(),
                 _mojiPanels.ToDictionary(panel => panel.MojiData.ObjectId, panel => PageDocument.CloneMojiData(panel.MojiData)),
+                _mojiPanels.ToDictionary(panel => panel.MojiData.ObjectId, panel => panel.ComputedLayout),
                 _balloonVisuals.ToDictionary(visual => visual.ObjectId, visual => PageDocument.CloneBalloonData(visual.BalloonData)),
                 _attachedSymbolModels.ToDictionary(symbol => symbol.ObjectId, symbol => PageDocument.CloneAttachedSymbolData(symbol)),
                 _attachedSymbolVisuals.ToDictionary(visual => visual.ObjectId, visual => PageDocument.CloneAttachedSymbolData(visual.SymbolData)));
@@ -585,7 +601,8 @@ namespace MojiCollaTool
                     {
                         if (!snapshot.MojiDatas.TryGetValue(panel.MojiData.ObjectId, out var data)) continue;
                         panel.MojiData = PageDocument.CloneMojiData(data);
-                        panel.UpdateMojiView(true);
+                        snapshot.ComputedLayouts.TryGetValue(panel.MojiData.ObjectId, out var layout);
+                        panel.ApplyComputedLayout(layout);
                     }
                     foreach (var visual in _balloonVisuals)
                     {
@@ -1112,6 +1129,21 @@ namespace MojiCollaTool
             }
         }
 
+        private void RebuildLinkedTextLayouts()
+        {
+            foreach (var balloon in _balloonVisuals)
+            {
+                if (balloon.BalloonData.TextLink is not TextLinkData link) continue;
+                var panel = _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == link.TextObjectId);
+                if (panel == null) continue;
+                var request = TextLayoutRequest.From(panel.MojiData, link, balloon.BalloonData);
+                var layout = link.LayoutMode == BalloonTextLayoutMode.FitTextToBalloon
+                    ? _textLayoutService.LayoutWithinFrame(request)
+                    : _textLayoutService.FitBalloonToText(request);
+                panel.ApplyComputedLayout(layout);
+            }
+        }
+
         private void AddAttachedSymbolVisual(AttachedSymbolVisual visual, bool raiseContentChanged = true)
         {
             if (_attachedSymbolVisuals.Any(candidate => candidate.ObjectId == visual.ObjectId))
@@ -1283,6 +1315,8 @@ namespace MojiCollaTool
             var selectedLink = _selectedBalloon?.BalloonData.TextLink;
             SelectLayoutMode(selectedLink?.LayoutMode ?? BalloonTextLayoutMode.FitTextToBalloon);
             SelectLayoutAlignment(selectedLink?.Alignment ?? BalloonTextAlignment.Center);
+            TextLayoutPaddingTextBox.Text = selectedLink?.Padding.ToString("0.###", CultureInfo.InvariantCulture) ?? string.Empty;
+            TextLayoutMinimumFontSizeTextBox.Text = selectedLink?.MinimumFontSize.ToString("0.###", CultureInfo.InvariantCulture) ?? string.Empty;
 
             var editable = _selectedBalloon != null && _selectedBalloon.BalloonData.IsVisible && !_selectedBalloon.BalloonData.IsLocked;
             AddTailButton.IsEnabled = editable && _selectedBalloon!.BalloonData.Tail == null;
@@ -1290,10 +1324,7 @@ namespace MojiCollaTool
             TextLinkComboBox.IsEnabled = editable && _textLinkCandidates.Count > 0;
             LinkTextButton.IsEnabled = editable && _textLinkCandidates.Count > 0;
             UnlinkTextButton.IsEnabled = editable && _selectedBalloon!.BalloonData.TextLink != null;
-            ApplyTextLayoutButton.IsEnabled = editable && selectedLink != null &&
-                _mojiPanels.Any(panel => panel.MojiData.ObjectId == selectedLink.TextObjectId);
-            TextLayoutModeComboBox.IsEnabled = ApplyTextLayoutButton.IsEnabled;
-            TextLayoutAlignmentComboBox.IsEnabled = ApplyTextLayoutButton.IsEnabled;
+            UpdateTextLayoutApplyAvailability();
             BringToFrontButton.IsEnabled = editable;
             BringForwardButton.IsEnabled = editable;
             SendBackwardButton.IsEnabled = editable;
@@ -1318,6 +1349,25 @@ namespace MojiCollaTool
         }
 
         private void ApplyTextLayoutButton_Click(object sender, RoutedEventArgs e) => ApplySelectedTextLayout();
+
+        private void TextLayoutModeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+            UpdateTextLayoutApplyAvailability();
+
+        private void UpdateTextLayoutApplyAvailability()
+        {
+            var link = _selectedBalloon?.BalloonData.TextLink;
+            var panel = link == null ? null : _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == link.TextObjectId);
+            var hasLink = link != null && panel != null;
+            var mode = ReadSelectedLayoutMode(link?.LayoutMode ?? BalloonTextLayoutMode.FitTextToBalloon);
+            var targetEditable = mode == BalloonTextLayoutMode.FitTextToBalloon
+                ? panel != null && !panel.MojiData.IsLocked && panel.MojiData.IsVisible
+                : _selectedBalloon != null && !_selectedBalloon.BalloonData.IsLocked && _selectedBalloon.BalloonData.IsVisible;
+            ApplyTextLayoutButton.IsEnabled = hasLink && targetEditable;
+            TextLayoutModeComboBox.IsEnabled = hasLink;
+            TextLayoutAlignmentComboBox.IsEnabled = hasLink;
+            TextLayoutPaddingTextBox.IsEnabled = hasLink;
+            TextLayoutMinimumFontSizeTextBox.IsEnabled = hasLink;
+        }
 
         private BalloonTextLayoutMode ReadSelectedLayoutMode(BalloonTextLayoutMode fallback)
         {
@@ -1357,38 +1407,50 @@ namespace MojiCollaTool
             return Math.Max((int)Math.Ceiling(safeMinimum), Math.Max(1, (int)Math.Floor(candidate)));
         }
 
-        private static Point GetTextPlacement(BalloonData balloon, TextLayoutResult layout,
-            BalloonTextAlignment alignment, TextDirection direction, double padding)
+        private bool TryReadLayoutSettings(MojiData text, BalloonData balloon,
+            out double padding, out double minimumFontSize, out string message)
         {
-            var safePadding = SafePadding(padding);
-            var bounds = balloon.Bounds;
-            var x = balloon.X + safePadding;
-            var y = balloon.Y + safePadding;
-            if (direction == TextDirection.Yokogaki)
+            padding = 0;
+            minimumFontSize = 0;
+            message = string.Empty;
+            if (!TryParseFiniteNumber(TextLayoutPaddingTextBox.Text, out padding) || padding < 0)
             {
-                x = alignment switch
-                {
-                    BalloonTextAlignment.Start => balloon.X + safePadding,
-                    BalloonTextAlignment.End => balloon.X + bounds.Width - safePadding - layout.ContentWidth,
-                    _ => balloon.X + (bounds.Width - layout.ContentWidth) / 2,
-                };
-                y = balloon.Y + (bounds.Height - layout.ContentHeight) / 2;
+                message = "余白は有限な0以上の数値で入力してください。";
+                return false;
             }
-            else
+            if (!TryParseFiniteNumber(TextLayoutMinimumFontSizeTextBox.Text, out minimumFontSize) || minimumFontSize <= 0)
             {
-                x = balloon.X + (bounds.Width - layout.ContentWidth) / 2;
-                y = alignment switch
-                {
-                    BalloonTextAlignment.Start => balloon.Y + safePadding,
-                    BalloonTextAlignment.End => balloon.Y + bounds.Height - safePadding - layout.ContentHeight,
-                    _ => balloon.Y + (bounds.Height - layout.ContentHeight) / 2,
-                };
+                message = "最小文字サイズは有限な正の数値で入力してください。";
+                return false;
             }
-            return new Point(x, y);
+            if (minimumFontSize > text.FontSize)
+            {
+                message = "最小文字サイズは現在の文字サイズ以下にしてください。";
+                return false;
+            }
+            if (double.IsNaN(balloon.Bounds.Width) || double.IsInfinity(balloon.Bounds.Width) ||
+                double.IsNaN(balloon.Bounds.Height) || double.IsInfinity(balloon.Bounds.Height) ||
+                balloon.Bounds.Width <= 0 || balloon.Bounds.Height <= 0)
+            {
+                message = "フキダシの大きさが不正です。";
+                return false;
+            }
+            if (padding * 2 >= Math.Min(balloon.Bounds.Width, balloon.Bounds.Height))
+            {
+                message = "余白がフキダシの大きさに対して大きすぎます。";
+                return false;
+            }
+            return true;
         }
 
-        private static double SafePadding(double value) =>
-            double.IsNaN(value) || double.IsInfinity(value) ? 0 : Math.Max(0, value);
+        private static bool TryParseFiniteNumber(string? value, out double number)
+        {
+            number = 0;
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            var parsed = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out number) ||
+                double.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out number);
+            return parsed && !double.IsNaN(number) && !double.IsInfinity(number);
+        }
 
         private static bool TextLayoutEquivalent(TextLinkData? left, TextLinkData? right)
         {
@@ -1873,6 +1935,7 @@ namespace MojiCollaTool
             Guid? selectedObjectId,
             BalloonData? selectedBalloon,
             IReadOnlyDictionary<Guid, MojiData> mojiDatas,
+            IReadOnlyDictionary<Guid, TextLayoutResult?> computedLayouts,
             IReadOnlyDictionary<Guid, BalloonData> balloons,
             IReadOnlyDictionary<Guid, AttachedSymbolData> symbolModels,
             IReadOnlyDictionary<Guid, AttachedSymbolData> symbols)
@@ -1883,6 +1946,7 @@ namespace MojiCollaTool
             SelectedObjectId = selectedObjectId;
             SelectedBalloon = selectedBalloon;
             MojiDatas = mojiDatas;
+            ComputedLayouts = computedLayouts;
             Balloons = balloons;
             SymbolModels = symbolModels;
             Symbols = symbols;
@@ -1894,6 +1958,7 @@ namespace MojiCollaTool
         public Guid? SelectedObjectId { get; }
         public BalloonData? SelectedBalloon { get; }
         public IReadOnlyDictionary<Guid, MojiData> MojiDatas { get; }
+        public IReadOnlyDictionary<Guid, TextLayoutResult?> ComputedLayouts { get; }
         public IReadOnlyDictionary<Guid, BalloonData> Balloons { get; }
         public IReadOnlyDictionary<Guid, AttachedSymbolData> SymbolModels { get; }
         public IReadOnlyDictionary<Guid, AttachedSymbolData> Symbols { get; }

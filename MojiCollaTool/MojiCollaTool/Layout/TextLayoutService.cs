@@ -34,6 +34,12 @@ namespace MojiCollaTool
         public TextDirection Direction { get; set; } = TextDirection.Yokogaki;
         public double FrameWidth { get; set; } = double.PositiveInfinity;
         public double FrameHeight { get; set; } = double.PositiveInfinity;
+        public double FrameX { get; set; }
+        public double FrameY { get; set; }
+        public double TextX { get; set; }
+        public double TextY { get; set; }
+        public double MinimumFrameWidth { get; set; } = 24;
+        public double MinimumFrameHeight { get; set; } = 24;
         public double Padding { get; set; }
         public double FontSize { get; set; } = 50;
         public double MinimumFontSize { get; set; } = 8;
@@ -57,6 +63,10 @@ namespace MojiCollaTool
                 Direction = text.TextDirection,
                 FrameWidth = balloon.Bounds.Width,
                 FrameHeight = balloon.Bounds.Height,
+                FrameX = balloon.X,
+                FrameY = balloon.Y,
+                TextX = text.X,
+                TextY = text.Y,
                 Padding = link.Padding,
                 FontSize = text.FontSize,
                 MinimumFontSize = link.MinimumFontSize,
@@ -74,7 +84,7 @@ namespace MojiCollaTool
     {
         internal TextLayoutResult(TextLayoutRequest request, double effectiveFontSize,
             IReadOnlyList<TextLayoutLine> lines, double contentWidth, double contentHeight,
-            bool overflow, bool usedFallbackFont)
+            bool overflow, bool usedFallbackFont, bool targetTextToFrame)
         {
             Request = request.Clone();
             EffectiveFontSize = effectiveFontSize;
@@ -83,6 +93,7 @@ namespace MojiCollaTool
             ContentHeight = contentHeight;
             Overflow = overflow;
             UsedFallbackFont = usedFallbackFont;
+            TargetTextToFrame = targetTextToFrame;
         }
 
         public TextLayoutRequest Request { get; }
@@ -99,9 +110,48 @@ namespace MojiCollaTool
         public bool Overflow { get; }
         public bool HasOverflow => Overflow;
         public bool UsedFallbackFont { get; }
+        public bool TargetTextToFrame { get; }
+        public Point TargetTextPosition => TargetTextToFrame
+            ? GetAlignedTextPosition()
+            : new Point(Request.TextX, Request.TextY);
+        public Point TargetBalloonPosition => TargetTextToFrame
+            ? new Point(Request.FrameX, Request.FrameY)
+            : new Point(Request.TextX - SafePadding(Request.Padding), Request.TextY - SafePadding(Request.Padding));
+        public Rect TargetBalloonBounds => TargetTextToFrame
+            ? new Rect(0, 0, SafeFiniteSize(Request.FrameWidth), SafeFiniteSize(Request.FrameHeight))
+            : new Rect(0, 0,
+                Math.Max(SafeFiniteSize(Request.MinimumFrameWidth), TargetWidth),
+                Math.Max(SafeFiniteSize(Request.MinimumFrameHeight), TargetHeight));
         public string? Warning => Overflow ? "文字が枠内に収まりません。最小文字サイズで表示しています。" : null;
 
+        private Point GetAlignedTextPosition()
+        {
+            var padding = SafePadding(Request.Padding);
+            var x = Request.FrameX + (Request.FrameWidth - ContentWidth) / 2;
+            var y = Request.FrameY + (Request.FrameHeight - ContentHeight) / 2;
+            if (Request.Direction == TextDirection.Yokogaki)
+            {
+                x = Request.Alignment switch
+                {
+                    BalloonTextAlignment.Start => Request.FrameX + padding,
+                    BalloonTextAlignment.End => Request.FrameX + Request.FrameWidth - padding - ContentWidth,
+                    _ => x,
+                };
+            }
+            else
+            {
+                y = Request.Alignment switch
+                {
+                    BalloonTextAlignment.Start => Request.FrameY + padding,
+                    BalloonTextAlignment.End => Request.FrameY + Request.FrameHeight - padding - ContentHeight,
+                    _ => y,
+                };
+            }
+            return new Point(x, y);
+        }
+
         private static double SafePadding(double value) => IsFinite(value) && value >= 0 ? value : 0;
+        private static double SafeFiniteSize(double value) => IsFinite(value) && value >= 0 ? value : 0;
         private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
     }
 
@@ -145,10 +195,10 @@ namespace MojiCollaTool
             ValidateRequest(request);
             var upper = NormalizeFontSize(request.FontSize);
             var minimum = Math.Min(upper, NormalizeMinimumFontSize(request.MinimumFontSize));
-            var first = LayoutAt(request, upper);
+            var first = LayoutAt(request, upper, targetTextToFrame: true);
             if (!first.Overflow) return first;
 
-            var lowerResult = LayoutAt(request, minimum);
+            var lowerResult = LayoutAt(request, minimum, targetTextToFrame: true);
             if (lowerResult.Overflow || upper - minimum < 0.01) return lowerResult;
 
             // Overflow is monotonic for this basic wrap strategy.  Keep the
@@ -159,7 +209,7 @@ namespace MojiCollaTool
             for (var i = 0; i < 24; i++)
             {
                 var candidate = (low + high) / 2;
-                var result = LayoutAt(request, candidate);
+                var result = LayoutAt(request, candidate, targetTextToFrame: true);
                 if (result.Overflow) high = candidate;
                 else { low = candidate; best = result; }
             }
@@ -172,13 +222,20 @@ namespace MojiCollaTool
             return LayoutAt(request, NormalizeFontSize(request.FontSize), ignoreFrame: true);
         }
 
+        public TextLayoutResult LayoutWithinFrame(TextLayoutRequest request)
+        {
+            ValidateRequest(request);
+            return LayoutAt(request, NormalizeFontSize(request.FontSize), targetTextToFrame: true);
+        }
+
         public TextLayoutResult Measure(TextLayoutRequest request)
         {
             ValidateRequest(request);
             return LayoutAt(request, NormalizeFontSize(request.FontSize), ignoreFrame: true);
         }
 
-        private TextLayoutResult LayoutAt(TextLayoutRequest source, double fontSize, bool ignoreFrame = false)
+        private TextLayoutResult LayoutAt(TextLayoutRequest source, double fontSize, bool ignoreFrame = false,
+            bool targetTextToFrame = false)
         {
             var request = source.Clone();
             request.FontSize = fontSize;
@@ -243,7 +300,8 @@ namespace MojiCollaTool
                 if (!ignoreFrame && contentWidth > SafeCapacity(request.FrameWidth, padding)) overflow = true;
             }
 
-            return new TextLayoutResult(request, fontSize, lines, contentWidth, contentHeight, overflow, usedFallback);
+            return new TextLayoutResult(request, fontSize, lines, contentWidth, contentHeight, overflow, usedFallback,
+                targetTextToFrame);
         }
 
         private (double advance, double crossSize) MeasureLine(IReadOnlyList<GraphemeCluster> line,

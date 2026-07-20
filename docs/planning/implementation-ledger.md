@@ -42,3 +42,12 @@
 - Current handoff commit before this follow-up: `9360249bb74b6be1876686b4b7ed1ace93930f02`
 - Final implementation commit: `0056d65757cfa7969258cf18c4e9076c6967a5e4`
 - Follow-up validation: Debug 101/101 passed; Release 101/101 passed; 0 failed.
+
+### TASK-140 C140 review follow-up
+
+- Functional base: `6adc3c9affd1cc72fec3dfc7633e8794bdb05b3c`
+- Worktree/branch: `F:/github/MojiCollaTool-worktrees/TASK-140` / `feature/TASK-140-auto-text-layout`
+- Scope: C140-01 lifecycle plan rebuild; C140-02 atomic rollback and subscriber boundary; C140-03 padding/minimum-font UI validation; C140-04 mode-specific target gating; C140-05 service-owned alignment/targets; C140-06 invariants; C140-07 broad tests and performance.
+- Verification: Debug/Release build and test pass, 202/202 each, 0 warnings and 0 errors; `git diff --check` pass.
+- Performance: Release single-operation p95 `<100 ms`, 24-composition batch `<1000 ms`; Debug safety budgets `<3000 ms`.
+- Manual WPF pointer/DPI/IME/final-pixel inspection: not verified. Push/merge/rebase: not performed.

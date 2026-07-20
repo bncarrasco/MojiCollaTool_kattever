@@ -8,6 +8,13 @@
 - 基本wrapは書記素単位で行い、CRLF/LFなどの明示改行とFullTextを変更せず、縦書き・横書き・Start/Center/Endに対応します。高度な禁則・ハイフン分割は対象外です。
 - 最小文字サイズ、はみ出し警告、有限容量のフォント測定cache、1回のUndo/Redo履歴としてのatomic適用を追加しました。
 
+### TASK-140 C140 review follow-up
+
+- Fixed lifecycle rebind/reload loss of computed visual plans, including versioned save/reload explicit-newline restoration.
+- Added atomic pre-commit rollback coverage and kept subscriber exceptions propagating after semantic commit.
+- Added padding/minimum-font controls and finite Japanese validation, mode-specific lock/visibility targeting, service-owned target/alignment mapping, no-op protection, and separate history boundaries for consecutive explicit applies.
+- Added broad unit/UI/lifecycle/persistence/performance coverage: 202 Debug and 202 Release tests passed.
+
 ### TASK-130
 
 - フキダシのしっぽを追加・削除し、先端・付け根・幅の3ハンドルで編集できるようにしました。

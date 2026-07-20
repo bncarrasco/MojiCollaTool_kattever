@@ -681,11 +681,19 @@ namespace MojiCollaTool
                 var image2 = ReadAsset(archive, pageFile.Image2Path, pageId, 2, canvas.ImageData2);
                 if (image1 != null) assets.Add(image1);
                 if (image2 != null) assets.Add(image2);
+                var objects = pageFile.Objects ?? Enumerable.Empty<MojiData>();
+                foreach (var mojiData in objects)
+                {
+                    // XML normalizes CRLF to LF while parsing. Restore the
+                    // application's explicit newline representation before
+                    // PageDocument validates grapheme anchors and links.
+                    mojiData.RestoreFullTextNewLine();
+                }
                 pageDocuments.Add(new PageDocument(
                     pageId,
                     pageFile.Name ?? manifestPage.Name,
                     canvas,
-                    pageFile.Objects ?? Enumerable.Empty<MojiData>(),
+                    objects,
                     pageFile.Balloons ?? Enumerable.Empty<BalloonData>(),
                     pageFile.AttachedSymbols ?? Enumerable.Empty<AttachedSymbolData>()));
             }

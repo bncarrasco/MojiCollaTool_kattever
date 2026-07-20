@@ -57,6 +57,15 @@ TASK-000で再配布可能性を確認し、以下を固定する。
 | Duplicate image extensions | COMPAT/ERROR | Image1/Image1 duplicate-extension archive rejection | Pass | Not verified |
 | Persistence error messages | ERROR/UI | Japanese save/load/Working outer messages; internal exception retained in log builder | Pass | Not verified |
 
+### TASK-140 C140 review verification supplement
+
+- Debug/Release: 202/202 tests passed, 0 failed; build warnings/errors 0.
+- Lifecycle and persistence: BindPage/rebind, page switch, Undo/Redo, saved/dirty/redo branch, and versioned save/reload rebuild `ComputedLayout` without implicit history or dirty changes.
+- Atomicity and UI: complete model/Canvas/live/selection/z-order/attached-symbol/computed-plan rollback is covered for recoverable failures; subscriber exceptions propagate after commit. Padding and minimum-font controls reject empty, bad, NaN, Infinity, negative/non-positive, over-current-font, and overlarge-padding inputs with Japanese status text.
+- Invariants: one-way FitTextToBalloon and FitBalloonToText, no-op, explicit tail, attached symbols, lock/visibility target selection, horizontal/vertical direction, Start/Center/End mapping, two fonts, and full-text preservation.
+- Performance: Release single-operation p95 `<100 ms`, 24-composition batch `<1000 ms`; Debug safety budget `<3000 ms`.
+- Manual WPF pointer/DPI/IME/final-pixel inspection: not verified.
+
 ## Manual baseline procedure
 
 1. 起動し画像を新規読込。
