@@ -547,16 +547,18 @@ namespace MojiCollaTool
             if (!_boundPage.ContainsBalloon(candidateBalloonId))
                 return SetBalloonStatus("同じページに合体候補が見つかりません。", false);
 
-            CapturePage(_boundPage);
-            var trial = _boundPage.Clone(preserveObjectIds: true);
-            if (!trial.MergeBalloons(primaryId, candidateBalloonId))
-                return SetBalloonStatus("同じ合体グループ、またはロック中の要素があるため合体できません。", false);
-
             var snapshot = CaptureLinkMutationSnapshot();
             try
             {
+                CapturePage(_boundPage);
+                var trial = _boundPage.Clone(preserveObjectIds: true);
+                if (!trial.MergeBalloons(primaryId, candidateBalloonId))
+                {
+                    RestoreLinkMutationSnapshot(snapshot);
+                    return SetBalloonStatus("同じ合体グループ、またはロック中の要素があるため合体できません。", false);
+                }
                 if (!_boundPage.MergeBalloons(primaryId, candidateBalloonId))
-                    return SetBalloonStatus("フキダシを合体できませんでした。", false);
+                    throw new InvalidOperationException("Balloon merge trial and commit diverged.");
                 ApplyPageOrderToLiveObjects();
                 RebuildBalloonMergeVisuals();
                 RebuildCanvasObjectOrder();
@@ -582,16 +584,18 @@ namespace MojiCollaTool
             if (_boundPage.FindBalloonMergeByMember(selectedId) == null)
                 return SetBalloonStatus("選択中のフキダシは合体されていません。", false);
 
-            CapturePage(_boundPage);
-            var trial = _boundPage.Clone(preserveObjectIds: true);
-            if (!trial.UnmergeBalloons(selectedId))
-                return SetBalloonStatus("ロック中の要素を含むため合体解除できません。", false);
-
             var snapshot = CaptureLinkMutationSnapshot();
             try
             {
+                CapturePage(_boundPage);
+                var trial = _boundPage.Clone(preserveObjectIds: true);
+                if (!trial.UnmergeBalloons(selectedId))
+                {
+                    RestoreLinkMutationSnapshot(snapshot);
+                    return SetBalloonStatus("ロック中の要素を含むため合体解除できません。", false);
+                }
                 if (!_boundPage.UnmergeBalloons(selectedId))
-                    return SetBalloonStatus("合体解除できませんでした。", false);
+                    throw new InvalidOperationException("Balloon unmerge trial and commit diverged.");
                 RebuildBalloonMergeVisuals();
                 ApplyPageOrderToLiveObjects();
                 RebuildCanvasObjectOrder();
@@ -611,6 +615,8 @@ namespace MojiCollaTool
         {
             if (_selectedBalloon == null || _boundPage == null)
                 return SetBalloonStatus("レイアウト対象のフキダシを選択してください。", false);
+            if (_boundPage.FindBalloonMergeByMember(_selectedBalloon.ObjectId) != null)
+                return SetBalloonStatus("合体中のフキダシは合体解除後にレイアウトを適用してください。", false);
             if (_selectedBalloon.BalloonData.TextLink is not TextLinkData currentLink)
                 return SetBalloonStatus("文字リンクのあるフキダシを選択してください。", false);
             var panel = _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == currentLink.TextObjectId);
@@ -1221,8 +1227,10 @@ namespace MojiCollaTool
                     SetBalloonStatus("ロック状態が変わったため、合体フキダシ操作を取り消しました。", false);
                     return false;
                 }
-                ApplyBalloonMergeDrag(current);
-                return true;
+                if (TryApplyBalloonMergeDrag(current)) return true;
+                CancelBalloonGesture();
+                SetBalloonStatus("移動結果が不正なため、合体フキダシ操作を取り消しました。", false);
+                return false;
             }
             if (_balloonDrag == null) return false;
             if (!CanContinueBalloonGesture())
@@ -1246,7 +1254,12 @@ namespace MojiCollaTool
                     SetBalloonStatus("ロック状態が変わったため、合体フキダシ操作を取り消しました。", false);
                     return false;
                 }
-                ApplyBalloonMergeDrag(current);
+                if (!TryApplyBalloonMergeDrag(current))
+                {
+                    CancelBalloonGesture();
+                    SetBalloonStatus("移動結果が不正なため、合体フキダシ操作を取り消しました。", false);
+                    return false;
+                }
                 var mergeChanged = mergeState.BeforeBalloons.Any(pair =>
                     !BalloonEquivalent(pair.Value, _balloonVisuals.Single(item => item.ObjectId == pair.Key).BalloonData));
                 _balloonMergeDrag = null;
@@ -2060,11 +2073,13 @@ namespace MojiCollaTool
             var link = _selectedBalloon?.BalloonData.TextLink;
             var panel = link == null ? null : _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == link.TextObjectId);
             var hasLink = link != null && panel != null;
+            var isMerged = _selectedBalloon != null &&
+                _boundPage?.FindBalloonMergeByMember(_selectedBalloon.ObjectId) != null;
             var mode = ReadSelectedLayoutMode(link?.LayoutMode ?? BalloonTextLayoutMode.FitTextToBalloon);
             var targetEditable = mode == BalloonTextLayoutMode.FitTextToBalloon
                 ? panel != null && !panel.MojiData.IsLocked && panel.MojiData.IsVisible
                 : _selectedBalloon != null && !_selectedBalloon.BalloonData.IsLocked && _selectedBalloon.BalloonData.IsVisible;
-            ApplyTextLayoutButton.IsEnabled = hasLink && targetEditable;
+            ApplyTextLayoutButton.IsEnabled = hasLink && targetEditable && !isMerged;
             TextLayoutModeComboBox.IsEnabled = hasLink;
             TextLayoutAlignmentComboBox.IsEnabled = hasLink;
             TextLayoutPaddingTextBox.IsEnabled = hasLink;
@@ -2226,33 +2241,38 @@ namespace MojiCollaTool
             return true;
         }
 
-        private void ApplyBalloonMergeDrag(Point current)
+        private bool TryApplyBalloonMergeDrag(Point current)
         {
-            if (_balloonMergeDrag == null) return;
+            if (_balloonMergeDrag == null || _boundPage == null) return false;
             var dx = current.X - _balloonMergeDrag.Start.X;
             var dy = current.Y - _balloonMergeDrag.Start.Y;
+            if (dx == 0 && dy == 0) return true;
+            PageDocument trial;
+            try
+            {
+                trial = _boundPage.Clone(preserveObjectIds: true);
+                var merge = trial.GetBalloonMerge(_balloonMergeDrag.MergeId);
+                if (!trial.MoveBalloonMerge(merge.PrimaryBalloonId, dx, dy)) return false;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
             foreach (var pair in _balloonMergeDrag.BeforeBalloons)
             {
                 var visual = _balloonVisuals.Single(item => item.ObjectId == pair.Key);
-                visual.BalloonData.X = pair.Value.X + dx;
-                visual.BalloonData.Y = pair.Value.Y + dy;
-                if (visual.BalloonData.Tail != null && pair.Value.Tail != null)
-                {
-                    visual.BalloonData.Tail.TipX = pair.Value.Tail.TipX + dx;
-                    visual.BalloonData.Tail.TipY = pair.Value.Tail.TipY + dy;
-                }
-                visual.Refresh();
+                visual.ApplyData(trial.GetBalloon(pair.Key).Clone());
             }
             foreach (var pair in _balloonMergeDrag.BeforeTexts)
             {
                 var panel = _mojiPanels.Single(item => item.MojiData.ObjectId == pair.Key);
-                panel.MojiData.X = pair.Value.X + dx;
-                panel.MojiData.Y = pair.Value.Y + dy;
+                panel.MojiData.Copy(trial.GetObject(pair.Key));
                 panel.UpdateXYView();
                 RefreshAttachedSymbolsForParent(panel);
             }
             RefreshBalloonMergeVisuals();
             UpdateResizeHandles();
+            return true;
         }
 
         private void ApplyBalloonDrag(Point current)

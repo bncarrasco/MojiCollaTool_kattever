@@ -46,12 +46,16 @@ namespace MojiCollaTool
             Members = (members ?? throw new ArgumentNullException(nameof(members)))
                 .Select(PageDocument.CloneBalloonData).ToArray();
             _geometry = _factory.Create(MergeData, Members);
+            var primary = Members.Single(item => item.ObjectId == PrimaryBalloonId);
             var bounds = _geometry.Bounds.IsEmpty ? new Rect(0, 0, 1, 1) : _geometry.Bounds;
             Width = Math.Max(1, bounds.Width);
             Height = Math.Max(1, bounds.Height);
             Canvas.SetLeft(this, bounds.X);
             Canvas.SetTop(this, bounds.Y);
-            IsHitTestVisible = Members.Any(item => item.IsVisible);
+            // Fill, stroke and visibility are all primary-style properties.
+            // A hidden primary hides the complete composition; a hidden
+            // non-primary retains its geometry while the primary is visible.
+            IsHitTestVisible = primary.IsVisible;
             InvalidateVisual();
         }
 
@@ -75,6 +79,7 @@ namespace MojiCollaTool
         protected override HitTestResult? HitTestCore(PointHitTestParameters hitTestParameters)
         {
             var primary = Members.Single(item => item.ObjectId == PrimaryBalloonId);
+            if (!primary.IsVisible) return null;
             var pagePoint = _geometry.Bounds.IsEmpty
                 ? hitTestParameters.HitPoint
                 : new Point(hitTestParameters.HitPoint.X + _geometry.Bounds.X, hitTestParameters.HitPoint.Y + _geometry.Bounds.Y);

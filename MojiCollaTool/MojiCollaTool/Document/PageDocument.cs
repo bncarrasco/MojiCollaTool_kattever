@@ -416,6 +416,11 @@ namespace MojiCollaTool
             if (balloon == null) throw new ArgumentNullException(nameof(balloon));
             var matching = _balloons.FirstOrDefault(candidate => ReferenceEquals(candidate, balloon) || candidate.ObjectId == balloon.ObjectId);
             if (matching == null) return false;
+            // This is the public non-force deletion boundary.  A member must
+            // not be removed while any object in its complete typed merge
+            // composition is locked; SetBalloons remains the normalization /
+            // restore path used by validated snapshots.
+            if (!CanMutateBalloonMerge(matching.ObjectId)) return false;
             _balloons.Remove(matching);
             _objectOrder.Remove(matching.ObjectId);
             ReconcileBalloonMergesAfterRemoval(matching.ObjectId);
@@ -518,9 +523,11 @@ namespace MojiCollaTool
             if (merge == null) return false;
             if (!CanMutateBalloonMerge(balloonId)) return false;
 
+            var balloonCandidates = new Dictionary<Guid, BalloonData>();
+            var textCandidates = new Dictionary<Guid, MojiData>();
             foreach (var memberId in merge.MemberIds)
             {
-                var balloon = GetBalloon(memberId);
+                var balloon = GetBalloon(memberId).Clone();
                 balloon.X += deltaX;
                 balloon.Y += deltaY;
                 if (balloon.Tail != null)
@@ -528,15 +535,40 @@ namespace MojiCollaTool
                     balloon.Tail.TipX += deltaX;
                     balloon.Tail.TipY += deltaY;
                 }
+                balloon.Validate();
+                balloonCandidates.Add(memberId, balloon);
                 if (balloon.TextLink?.TextObjectId is Guid textId)
                 {
-                    var text = GetObject(textId);
+                    var text = GetObject(textId).Clone();
                     text.X += deltaX;
                     text.Y += deltaY;
+                    RequireFiniteMergeCoordinate(text.X, "Text.X");
+                    RequireFiniteMergeCoordinate(text.Y, "Text.Y");
+                    textCandidates.Add(textId, text);
                 }
             }
-            NormalizeObjectOrder();
+
+            // Attached symbols move implicitly with their linked parent text.
+            // Validate cloned relationship data before committing any parent
+            // position so a late symbol failure cannot leave a partial move.
+            var movedTextIds = textCandidates.Keys.ToHashSet();
+            foreach (var symbol in _attachedSymbols.Where(item =>
+                !item.IsDetached && item.ParentId.HasValue && movedTextIds.Contains(item.ParentId.Value)))
+            {
+                var candidate = symbol.Clone();
+                candidate.Validate();
+                ValidateAttachedSymbolParent(candidate);
+            }
+
+            foreach (var pair in balloonCandidates) GetBalloon(pair.Key).Copy(pair.Value);
+            foreach (var pair in textCandidates) GetObject(pair.Key).Copy(pair.Value);
             return true;
+        }
+
+        private static void RequireFiniteMergeCoordinate(double value, string name)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+                throw new InvalidDataException($"Balloon merge {name} must be finite.");
         }
 
         public void SetBalloonMerges(IEnumerable<BalloonMergeData> merges)

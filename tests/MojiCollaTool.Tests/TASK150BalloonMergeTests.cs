@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -353,13 +354,15 @@ public sealed class TASK150BalloonMergeTests
             {
                 TextObjectId = vertical.ObjectId, LayoutMode = BalloonTextLayoutMode.FitBalloonToText,
             };
+            var unlinked = CreateBalloon(390, 45, BalloonShapeKind.RoundedRectangle);
             var attached = new AttachedSymbolData
             {
                 ParentId = horizontal.ObjectId, Text = "※", GraphemeAnchor = 0, OffsetX = .5, OffsetY = -.25,
             };
             var page = new PageDocument(Guid.NewGuid(), "移動", new CanvasData(),
-                new[] { horizontal, vertical }, new[] { first, second }, new[] { attached });
+                new[] { horizontal, vertical }, new[] { first, second, unlinked }, new[] { attached });
             page.MergeBalloons(first.ObjectId, second.ObjectId);
+            page.MergeBalloons(first.ObjectId, unlinked.ObjectId);
             using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "移動", new[] { page }));
             using var editor = new PageEditorControl();
             editor.BindPage(session.ActivePage!, null);
@@ -376,9 +379,11 @@ public sealed class TASK150BalloonMergeTests
             Assert.IsTrue(editor.UpdateBalloonGesture(new Point(35, -15)));
             Assert.AreEqual(55, editor.BalloonVisuals.Single(v => v.ObjectId == first.ObjectId).BalloonData.X);
             Assert.AreEqual(245, editor.BalloonVisuals.Single(v => v.ObjectId == second.ObjectId).BalloonData.X);
+            Assert.AreEqual(425, editor.BalloonVisuals.Single(v => v.ObjectId == unlinked.ObjectId).BalloonData.X);
             Assert.AreEqual(75, editor.MojiPanels.Single(p => p.MojiData.ObjectId == horizontal.ObjectId).MojiData.X);
             editor.CancelBalloonGesture();
             Assert.AreEqual(20, editor.BalloonVisuals.Single(v => v.ObjectId == first.ObjectId).BalloonData.X);
+            Assert.AreEqual(390, editor.BalloonVisuals.Single(v => v.ObjectId == unlinked.ObjectId).BalloonData.X);
             Assert.AreEqual(40, editor.MojiPanels.Single(p => p.MojiData.ObjectId == horizontal.ObjectId).MojiData.X);
             Assert.AreEqual(0, notifications);
 
@@ -388,6 +393,7 @@ public sealed class TASK150BalloonMergeTests
             Assert.AreEqual(1, session.UndoCount);
             Assert.AreEqual(45, session.ActivePage!.GetBalloon(first.ObjectId).X);
             Assert.AreEqual(235, session.ActivePage.GetBalloon(second.ObjectId).X);
+            Assert.AreEqual(415, session.ActivePage.GetBalloon(unlinked.ObjectId).X);
             Assert.AreEqual(65, session.ActivePage.GetObject(horizontal.ObjectId).X);
             Assert.AreEqual(255, session.ActivePage.GetObject(vertical.ObjectId).X);
             Assert.AreEqual(BalloonTextLayoutMode.FitTextToBalloon,
@@ -457,6 +463,359 @@ public sealed class TASK150BalloonMergeTests
         Assert.ThrowsException<InvalidDataException>(() => DataIO.ReadVersionedProject(invalidPath));
         CollectionAssert.AreEqual(bytesBefore, File.ReadAllBytes(invalidPath));
         Assert.AreEqual(1, page.BalloonMerges.Count, "Failed load must not mutate existing working data.");
+    }
+
+    [TestMethod]
+    public void MergedLayoutApplyButtonAndDirectCommandAreRejectedWithoutMutation()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { FullText = "合体中レイアウト", X = 60, Y = 70, FontSize = 32 };
+            var first = CreateBalloon(30, 40, BalloonShapeKind.Ellipse);
+            first.TextLink = new TextLinkData
+            {
+                TextObjectId = text.ObjectId,
+                LayoutMode = BalloonTextLayoutMode.FitTextToBalloon,
+                Padding = 8,
+                MinimumFontSize = 8,
+            };
+            var second = CreateBalloon(150, 40, BalloonShapeKind.Rectangle);
+            var page = new PageDocument("合体レイアウト拒否", new[] { text }, new[] { first, second });
+            page.MergeBalloons(first.ObjectId, second.ObjectId);
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.RestoreViewState(100, first.ObjectId);
+            var apply = (Button)editor.FindName("ApplyTextLayoutButton")!;
+            var mode = (ComboBox)editor.FindName("TextLayoutModeComboBox")!;
+            mode.SelectedItem = mode.Items.Cast<ComboBoxItem>()
+                .Single(item => (string)item.Tag == "FitBalloonToText");
+            var before = page.Clone(page.PageId, preserveObjectIds: true);
+            var notifications = 0;
+            editor.ContentChanged += (_, _) => notifications++;
+
+            Assert.IsFalse(apply.IsEnabled);
+            apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            AssertBalloonEqual(before.GetBalloon(first.ObjectId), page.GetBalloon(first.ObjectId));
+            Assert.AreEqual(0, notifications);
+            Assert.IsFalse(editor.ApplySelectedTextLayout());
+            StringAssert.Contains(((TextBlock)editor.FindName("BalloonStatusTextBlock")!).Text, "合体解除後");
+            AssertBalloonEqual(before.GetBalloon(first.ObjectId), page.GetBalloon(first.ObjectId));
+            Assert.AreEqual(0, notifications);
+        });
+    }
+
+    [TestMethod]
+    public void PublicModelRemovalPreflightsEveryMergedTypedCompositionMember()
+    {
+        var text = new MojiData { FullText = "削除ロック" };
+        var first = CreateBalloon(20, 20, BalloonShapeKind.Ellipse);
+        first.TextLink = new TextLinkData { TextObjectId = text.ObjectId };
+        var second = CreateBalloon(150, 20, BalloonShapeKind.Rectangle);
+        var symbol = new AttachedSymbolData
+        {
+            ParentId = text.ObjectId, Text = "※", GraphemeAnchor = 0,
+        };
+        var page = new PageDocument(Guid.NewGuid(), "削除", new CanvasData(),
+            new[] { text }, new[] { first, second }, new[] { symbol });
+        page.MergeBalloons(first.ObjectId, second.ObjectId);
+        var order = page.AllObjects.Select(item => item.ObjectId).ToArray();
+
+        page.GetBalloon(second.ObjectId).IsLocked = true;
+        Assert.IsFalse(page.RemoveBalloon(page.GetBalloon(first.ObjectId)));
+        Assert.IsTrue(page.ContainsBalloon(first.ObjectId));
+        Assert.AreEqual(1, page.BalloonMerges.Count);
+        CollectionAssert.AreEqual(order, page.AllObjects.Select(item => item.ObjectId).ToArray());
+
+        page.GetBalloon(second.ObjectId).IsLocked = false;
+        page.GetObject(text.ObjectId).IsLocked = true;
+        Assert.IsFalse(page.RemoveBalloon(first.ObjectId));
+        page.GetObject(text.ObjectId).IsLocked = false;
+        page.AttachedSymbols.Single().IsLocked = true;
+        Assert.IsFalse(page.RemoveBalloon(first.ObjectId));
+        Assert.IsTrue(page.ContainsBalloon(first.ObjectId));
+        Assert.AreEqual(1, page.BalloonMerges.Count);
+
+        page.AttachedSymbols.Single().IsLocked = false;
+        Assert.IsTrue(page.RemoveBalloon(first.ObjectId));
+        Assert.IsFalse(page.ContainsBalloon(first.ObjectId));
+        Assert.AreEqual(0, page.BalloonMerges.Count);
+        Assert.IsTrue(page.ContainsObject(text.ObjectId));
+        Assert.IsTrue(page.ContainsObject(symbol.ObjectId));
+    }
+
+    [TestMethod]
+    public void PrimaryVisibilityControlsBothRenderingAndExactHit()
+    {
+        RunOnSta(() =>
+        {
+            var primary = CreateBalloon(0, 0, BalloonShapeKind.Rectangle);
+            primary.Bounds = new Rect(0, 0, 100, 80);
+            var secondary = CreateBalloon(180, 0, BalloonShapeKind.Rectangle);
+            secondary.Bounds = new Rect(0, 0, 100, 80);
+            var merge = Merge(primary, secondary);
+            var visual = new BalloonMergeVisual(merge, new[] { primary, secondary });
+            visual.Measure(new Size(400, 200));
+            visual.Arrange(new Rect(0, 0, visual.DesiredSize.Width, visual.DesiredSize.Height));
+            var secondaryLocal = new Point(230 - Canvas.GetLeft(visual), 40 - Canvas.GetTop(visual));
+
+            primary.IsVisible = false;
+            secondary.IsVisible = true;
+            visual.ApplyData(merge, new[] { primary, secondary });
+            Assert.IsFalse(visual.IsHitTestVisible);
+            Assert.IsFalse(visual.ContainsLocalPoint(secondaryLocal), "Hidden primary must not leave a ghost hit.");
+
+            primary.IsVisible = true;
+            secondary.IsVisible = false;
+            visual.ApplyData(merge, new[] { primary, secondary });
+            Assert.IsTrue(visual.IsHitTestVisible);
+            Assert.IsTrue(visual.ContainsLocalPoint(secondaryLocal),
+                "Primary visibility governs the complete primary-style composition.");
+            visual.Measure(new Size(400, 200));
+            visual.Arrange(new Rect(0, 0, visual.DesiredSize.Width, visual.DesiredSize.Height));
+            Assert.IsTrue(FlattenGeometryDrawings(VisualTreeHelper.GetDrawing(visual)).Any());
+        });
+    }
+
+    [TestMethod]
+    public void ModelAndLiveGroupMoveRejectOverflowAndLateSymbolFailureAtomically()
+    {
+        var text = new MojiData { FullText = "原子移動", X = 60, Y = 70 };
+        var first = CreateBalloon(20, 30, BalloonShapeKind.Ellipse);
+        first.Tail = new BalloonTailData { TipX = 80, TipY = 220, RootParameter = .5, Width = 24 };
+        first.TextLink = new TextLinkData { TextObjectId = text.ObjectId };
+        var second = CreateBalloon(double.MaxValue, 40, BalloonShapeKind.Rectangle);
+        var symbol = new AttachedSymbolData { ParentId = text.ObjectId, Text = "※", GraphemeAnchor = 0, OffsetX = .5 };
+        var page = new PageDocument(Guid.NewGuid(), "overflow", new CanvasData(),
+            new[] { text }, new[] { first, second }, new[] { symbol });
+        page.MergeBalloons(first.ObjectId, second.ObjectId);
+        var beforeFirst = page.GetBalloon(first.ObjectId).Clone();
+        var beforeSecond = page.GetBalloon(second.ObjectId).Clone();
+        var beforeText = page.GetObject(text.ObjectId).Clone();
+        var beforeSymbol = page.AttachedSymbols.Single().Clone();
+
+        Assert.ThrowsException<InvalidDataException>(() =>
+            page.MoveBalloonMerge(first.ObjectId, double.MaxValue, 1));
+        AssertBalloonEqual(beforeFirst, page.GetBalloon(first.ObjectId));
+        AssertBalloonEqual(beforeSecond, page.GetBalloon(second.ObjectId));
+        Assert.AreEqual(beforeText.X, page.GetObject(text.ObjectId).X);
+        Assert.AreEqual(beforeText.Y, page.GetObject(text.ObjectId).Y);
+        Assert.AreEqual(beforeSymbol.OffsetX, page.AttachedSymbols.Single().OffsetX);
+
+        page.GetBalloon(second.ObjectId).X = 200;
+        page.AttachedSymbols.Single().OffsetX = double.PositiveInfinity;
+        beforeFirst = page.GetBalloon(first.ObjectId).Clone();
+        beforeSecond = page.GetBalloon(second.ObjectId).Clone();
+        beforeText = page.GetObject(text.ObjectId).Clone();
+        Assert.ThrowsException<InvalidDataException>(() => page.MoveBalloonMerge(second.ObjectId, 25, -10));
+        AssertBalloonEqual(beforeFirst, page.GetBalloon(first.ObjectId));
+        AssertBalloonEqual(beforeSecond, page.GetBalloon(second.ObjectId));
+        Assert.AreEqual(beforeText.X, page.GetObject(text.ObjectId).X);
+        Assert.AreEqual(beforeText.Y, page.GetObject(text.ObjectId).Y);
+
+        page.AttachedSymbols.Single().OffsetX = .5;
+        page.GetBalloon(second.ObjectId).X = double.MaxValue;
+        RunOnSta(() =>
+        {
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.RestoreViewState(100, first.ObjectId);
+            var notifications = 0;
+            editor.ContentChanged += (_, _) => notifications++;
+            Assert.IsTrue(editor.BeginBalloonGesture(first.ObjectId, new Point(0, 0)));
+            Assert.IsFalse(editor.UpdateBalloonGesture(new Point(double.MaxValue, 0)));
+            Assert.IsFalse(editor.IsBalloonGestureActive);
+            Assert.AreEqual(beforeFirst.X,
+                editor.BalloonVisuals.Single(item => item.ObjectId == first.ObjectId).BalloonData.X);
+            Assert.AreEqual(double.MaxValue,
+                editor.BalloonVisuals.Single(item => item.ObjectId == second.ObjectId).BalloonData.X);
+            Assert.AreEqual(0, notifications);
+            StringAssert.Contains(((TextBlock)editor.FindName("BalloonStatusTextBlock")!).Text, "取り消しました");
+        });
+    }
+
+    [TestMethod]
+    public void EveryMemberCanInitiateAllFourRealZButtonsAndCanvasFollowsDocument()
+    {
+        RunOnSta(() =>
+        {
+            var operations = new[]
+            {
+                ("BringToFrontButton", ObjectOrderOperation.BringToFront, true),
+                ("BringForwardButton", ObjectOrderOperation.BringForward, true),
+                ("SendBackwardButton", ObjectOrderOperation.SendBackward, false),
+                ("SendToBackButton", ObjectOrderOperation.SendToBack, false),
+            };
+            foreach (var memberIndex in new[] { 0, 1 })
+            foreach (var (buttonName, _, movesToFront) in operations)
+            {
+                var back = new MojiData { FullText = "背面", ZIndex = 0 };
+                var first = CreateBalloon(40, 40, BalloonShapeKind.Ellipse);
+                first.ZIndex = 1;
+                var second = CreateBalloon(150, 40, BalloonShapeKind.Rectangle);
+                second.ZIndex = 2;
+                var front = new MojiData { FullText = "前面", ZIndex = 3 };
+                var page = new PageDocument("Z", new[] { back, front }, new[] { first, second });
+                page.MergeBalloons(first.ObjectId, second.ObjectId);
+                using var editor = new PageEditorControl();
+                editor.BindPage(page, null);
+                var selected = memberIndex == 0 ? first.ObjectId : second.ObjectId;
+                editor.RestoreViewState(100, selected);
+                var button = (Button)editor.FindName(buttonName)!;
+                Assert.IsTrue(button.IsEnabled, $"{buttonName}/{memberIndex}");
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                var block = page.GetObjectOrderBlock(selected);
+                CollectionAssert.AreEqual(new[] { first.ObjectId, second.ObjectId }, block.ToArray());
+                var groupMinimumZ = Math.Min(page.GetBalloon(first.ObjectId).ZIndex, page.GetBalloon(second.ObjectId).ZIndex);
+                var mergeVisual = editor.BalloonMergeVisuals.Single();
+                Assert.AreEqual(groupMinimumZ, Canvas.GetZIndex(mergeVisual));
+                var canvasObjects = editor.Canvas.Children.Cast<UIElement>()
+                    .Where(item => item is MojiPanel or BalloonMergeVisual)
+                    .ToArray();
+                var mergeIndex = Array.IndexOf(canvasObjects, mergeVisual);
+                var backIndex = Array.FindIndex(canvasObjects,
+                    item => item is MojiPanel panel && panel.MojiData.ObjectId == back.ObjectId);
+                var frontIndex = Array.FindIndex(canvasObjects,
+                    item => item is MojiPanel panel && panel.MojiData.ObjectId == front.ObjectId);
+                if (movesToFront)
+                {
+                    Assert.IsTrue(mergeIndex > backIndex && mergeIndex > frontIndex, $"{buttonName}/{memberIndex}");
+                    Assert.AreEqual(2, groupMinimumZ);
+                }
+                else
+                {
+                    Assert.IsTrue(mergeIndex < backIndex && mergeIndex < frontIndex, $"{buttonName}/{memberIndex}");
+                    Assert.AreEqual(0, groupMinimumZ);
+                }
+            }
+        });
+    }
+
+    [TestMethod]
+    public void MergeVisualRendersEveryMemberTailWithPrimaryStyle()
+    {
+        RunOnSta(() =>
+        {
+            var members = new[]
+            {
+                CreateBalloon(20, 20, BalloonShapeKind.Ellipse),
+                CreateBalloon(130, 25, BalloonShapeKind.Rectangle),
+                CreateBalloon(250, 30, BalloonShapeKind.Monologue),
+            };
+            members[0].Fill = Colors.Gold;
+            members[0].Stroke = Colors.DarkViolet;
+            members[0].StrokeThickness = 7;
+            members[1].Fill = Colors.Red;
+            members[2].Stroke = Colors.Green;
+            for (var i = 0; i < members.Length; i++)
+            {
+                members[i].Bounds = new Rect(0, 0, 140, 90);
+                members[i].Tail = new BalloonTailData
+                {
+                    TipX = members[i].X + 45,
+                    TipY = 190 + i * 20,
+                    RootParameter = .5,
+                    Width = 24 + i,
+                };
+            }
+            var merge = Merge(members);
+            var visual = new BalloonMergeVisual(merge, members);
+            visual.Measure(new Size(600, 400));
+            visual.Arrange(new Rect(0, 0, visual.DesiredSize.Width, visual.DesiredSize.Height));
+            var drawings = FlattenGeometryDrawings(VisualTreeHelper.GetDrawing(visual)).ToArray();
+
+            Assert.AreEqual(3, visual.Geometry.Tails.Count);
+            Assert.AreEqual(4, drawings.Length, "Three tails and one union body must be rendered together.");
+            Assert.IsTrue(drawings.All(item => item.Brush is SolidColorBrush brush && brush.Color == Colors.Gold));
+            Assert.IsTrue(drawings.All(item => item.Pen?.Brush is SolidColorBrush brush &&
+                brush.Color == Colors.DarkViolet && item.Pen.Thickness == 7));
+            foreach (var tail in visual.Geometry.Tails)
+            {
+                var point = new Point(tail.Bounds.X + tail.Bounds.Width / 2, tail.Bounds.Y + tail.Bounds.Height / 2);
+                Assert.IsTrue(visual.Geometry.Contains(point, members[0].StrokeThickness));
+            }
+        });
+    }
+
+    [TestMethod]
+    public void MergeUiValidationFailureRestoresDocumentLiveCanvasSelectionAndNotification()
+    {
+        RunOnSta(() =>
+        {
+            var first = CreateBalloon(20, 20, BalloonShapeKind.Ellipse);
+            var second = CreateBalloon(150, 20, BalloonShapeKind.Rectangle);
+            var invalid = CreateBalloon(300, 20, BalloonShapeKind.Monologue);
+            invalid.Tail = new BalloonTailData { TipX = 350, TipY = 200, RootParameter = .5, Width = 24 };
+            var page = new PageDocument("rollback", new[] { first, second, invalid });
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.RestoreViewState(100, first.ObjectId);
+            editor.BalloonVisuals.Single(item => item.ObjectId == invalid.ObjectId)
+                .BalloonData.Tail!.RootParameter = 2;
+            var beforeOrder = page.AllObjects.Select(item => item.ObjectId).ToArray();
+            var beforeCanvas = editor.Canvas.Children.Cast<UIElement>()
+                .Where(item => item is BalloonVisual or BalloonMergeVisual or MojiPanel or AttachedSymbolVisual)
+                .ToArray();
+            var notifications = 0;
+            editor.ContentChanged += (_, _) => notifications++;
+            var combo = (ComboBox)editor.FindName("BalloonMergeCandidateComboBox")!;
+            combo.SelectedIndex = 0;
+            ((Button)editor.FindName("MergeBalloonButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.AreEqual(0, page.BalloonMerges.Count);
+            CollectionAssert.AreEqual(beforeOrder, page.AllObjects.Select(item => item.ObjectId).ToArray());
+            Assert.AreEqual(first.ObjectId, editor.SelectedBalloonId);
+            Assert.AreEqual(2d, editor.BalloonVisuals.Single(item => item.ObjectId == invalid.ObjectId)
+                .BalloonData.Tail!.RootParameter);
+            CollectionAssert.AreEqual(beforeCanvas, editor.Canvas.Children.Cast<UIElement>()
+                .Where(item => item is BalloonVisual or BalloonMergeVisual or MojiPanel or AttachedSymbolVisual)
+                .ToArray());
+            Assert.AreEqual(0, notifications);
+            Assert.AreEqual("フキダシ合体に失敗しました。",
+                ((TextBlock)editor.FindName("BalloonStatusTextBlock")!).Text);
+        });
+    }
+
+    [TestMethod]
+    public void UndoRedoRebindRemoveAndDisposeDoNotLeakMergeVisualsOrHandlers()
+    {
+        RunOnSta(() =>
+        {
+            var first = CreateBalloon(20, 20, BalloonShapeKind.Ellipse);
+            var second = CreateBalloon(150, 20, BalloonShapeKind.Rectangle);
+            var page = new PageDocument("lifecycle", new[] { first, second });
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "lifecycle", new[] { page }));
+            Assert.IsTrue(BalloonMergeCommands.Merge(session, page.PageId, first.ObjectId, second.ObjectId));
+            var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            Assert.AreEqual(1, editor.BalloonMergeVisuals.Count);
+            Assert.IsTrue(session.Undo());
+            editor.BindPage(session.ActivePage!, null);
+            Assert.AreEqual(0, editor.BalloonMergeVisuals.Count);
+            Assert.IsTrue(session.Redo());
+            editor.BindPage(session.ActivePage!, null);
+            Assert.AreEqual(1, editor.BalloonMergeVisuals.Count);
+            editor.RestoreViewState(100, first.ObjectId);
+            Assert.IsTrue(editor.RemoveBalloon(first.ObjectId));
+            Assert.AreEqual(0, session.ActivePage!.BalloonMerges.Count);
+            Assert.AreEqual(0, editor.BalloonMergeVisuals.Count);
+
+            var replacementFirst = CreateBalloon(30, 30, BalloonShapeKind.Ellipse);
+            var replacementSecond = CreateBalloon(160, 30, BalloonShapeKind.Rectangle);
+            var replacement = new PageDocument("dispose", new[] { replacementFirst, replacementSecond });
+            replacement.MergeBalloons(replacementFirst.ObjectId, replacementSecond.ObjectId);
+            editor.BindPage(replacement, null);
+            var detachedVisual = editor.BalloonMergeVisuals.Single();
+            editor.Dispose();
+            Assert.AreEqual(0, editor.BalloonMergeVisuals.Count);
+            Assert.AreEqual(0, editor.Canvas.Children.OfType<BalloonMergeVisual>().Count());
+            var mouseDown = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+            {
+                RoutedEvent = UIElement.MouseDownEvent,
+            };
+            detachedVisual.RaiseEvent(mouseDown);
+            Assert.IsFalse(editor.IsBalloonGestureActive, "Disposed editor handler must be detached.");
+        });
     }
 
     [TestMethod]
@@ -531,6 +890,19 @@ public sealed class TASK150BalloonMergeTests
             PrimaryBalloonId = balloons[0].ObjectId,
             MemberIds = balloons.Select(item => item.ObjectId).ToList(),
         };
+
+    private static IEnumerable<GeometryDrawing> FlattenGeometryDrawings(Drawing? drawing)
+    {
+        if (drawing is GeometryDrawing geometry)
+        {
+            yield return geometry;
+            yield break;
+        }
+        if (drawing is not DrawingGroup group) yield break;
+        foreach (var child in group.Children)
+        foreach (var nested in FlattenGeometryDrawings(child))
+            yield return nested;
+    }
 
     private static void AssertBalloonEqual(BalloonData expected, BalloonData actual)
     {
