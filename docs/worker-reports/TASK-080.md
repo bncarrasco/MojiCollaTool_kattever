@@ -1,89 +1,71 @@
 # TASK-080 実施報告
 
-## 結果
+## Result
 
-TASK-080を実装完了。文字、フキダシ、付加記号で共通利用できる4つの重なり順操作とロック／ロック解除を追加し、既存のフキダシ typed composition の順序処理を共通オブジェクト順序処理へ一般化した。
+TASK-080「重なり順とロックUI」は完了した。文字、フキダシ、付加記号へ共通の4方向Z-order操作とロック／ロック解除を実装し、C080-01〜17のレビュー指摘を反映した。保存形式・外部依存・SDKは変更していない。
 
-- 対象ブランチ: `feature/TASK-080-zorder-lock`
-- 対象worktree: `F:/github/MojiCollaTool-worktrees/TASK-080`
-- 開始HEAD: `33c3f1d3c1575763484a379cb4fb3dde0fa4dcda`
-- Round 1修正開始HEAD: `6c02fe2e719e8c101606984240d23e30f1774bf5`
-- Round 2修正開始HEAD: `1840025e51b13dedec9b95c2a84b46077703bb82`
-- Round 2実装コミット: `0bb2be75ece679e669e399e853401035d8896bae`
-- Round 2受入testコミット: `631620b61cc2834e8b5dfa0ef7d34f08920adf39`
-- 検証報告・台帳更新: 実装コミット後の文書コミット
-- push / merge / rebase: 実施していない
+## 開始時Git確認
 
-## 要求・設計対応
+- Branch: `feature/TASK-080-zorder-lock`
+- Worktree: `F:/github/MojiCollaTool-worktrees/TASK-080`
+- Functional base: `33c3f1d3c1575763484a379cb4fb3dde0fa4dcda`
+- 司令役介入後の仕上げ開始HEAD: `c10942c279d6c28f1b9eb18a6f081676736c5942`
+- `git rev-parse --show-toplevel`、branch、HEAD、clean status、正式worktree登録は指示値と一致した。
+- SDK: `C:/Users/user/.dotnet/dotnet.exe`、version `6.0.428`
+- push / merge / rebase: 未実施
 
-- `REQ-ZORDER-001`: 最前面、前面、背面、最背面を `PageDocument.MoveObjectOrder` と共通UI／コンテキストメニューから実行可能にした。
-- `REQ-LOCK-001`: `IsLocked` を共通コマンドで設定し、ロック中の直接選択、ドラッグ、リサイズ、テール操作、プロパティ変更、削除、重なり順変更を拒否した。
-- `REQ-UI-JA-001`: ツールバーと右クリックメニューを日本語化し、ロック中の拒否メッセージも日本語にした。
-- `REQ-UNDO-001`: 成功した順序変更・ロック変更は各1履歴エントリとし、no-op／拒否では履歴、dirty、通知を追加しない。
-- ADR-0003/4: UUID、canonical `_objectOrder`、`ZIndex`、`IsLocked` と既存Undo/Redo方針を維持した。
+## 対応要件・設計
 
-## 司令役レビュー Round 1 対応
+- `REQ-ZORDER-001`: 「最前面へ」「前面へ」「背面へ」「最背面へ」をtext／balloon／attached symbolの共通操作にした。
+- `REQ-LOCK-001`: 直接操作だけでなく、typed composition、relationship変更、親文字移動、削除、semantic commandの間接変更もlock境界で拒否する。
+- `REQ-UI-JA-001`: toolbar、context menu、状態表示、拒否理由を日本語にした。
+- `REQ-UNDO-001`: 成功操作は1履歴、coalesce対象は1履歴へ統合し、no-op／拒否／validation失敗／callback例外は履歴とdirtyを変えない。
+- ADR-0003／0004: UUID、canonical object order、正規化ZIndex、ProjectSession historyを維持した。ADR追加候補はない。
 
-- `C080-01`: linked textと非detach付加記号を含むcomposition全memberをgeometry移動開始時に検査し、locked memberがあれば開始を拒否。gesture途中のlock変更はUpdate／Commitでbefore snapshotへcancelし、lock状態を保持して履歴・dirty・通知を増やさない。balloon単独のresize／tailは変更対象に応じて継続可能とした。
-- `C080-02`: `MojiWindow`のtext／numeric／combo／check／全色／format読込／削除／付加記号CRUDを共通lock guardとcontrol enabled stateへ集約。開いたwindowへlock／unlockを即時反映し、`TryApplyLoadedFormat`をproduction helperとして分離した。
-- `C080-03`: `BalloonCommands`のUpdate／Remove／SetTail／Link／Unlink、`AttachedSymbolCommands`のAdd／Update／Remove／Reanchor、PageEditorのlink／attached symbol／gesture経路で対象lockを検証し、拒否時は0 history・dirty不変とした。raw `PageDocument` mutationはserializer／capture用primitiveとして保持した。
-- `C080-04`: `PageDocument.CanMoveObjectOrder`を共通availability計算として追加し、toolbar／context menuへoperation別の端判定とblock全member lock判定を同一適用。selected object自身のlock操作はcomposition内別memberのlockから独立させた。
-- `C080-05`: TASK-080専用testを7件から12件へ拡張し、実XAML toolbar／context menu、3 object type、gesture atomicity、MojiWindow迂回、semantic command拒否、selection lifecycle／Dispose、saved dirty／0履歴境界をproduction経路で検証した。既存2.0〜2.2互換・2.3保存・横書き／縦書きsuiteも全suiteで再確認した。
+## 実装概要
 
-## 順序・ロックの挙動
+- linked balloon＋text＋非detached symbol、およびunlinked text＋非detached symbolを決定的なtyped blockとして移動する。detached symbolは単独blockとする。
+- model順、live ZIndex、`Canvas.GetZIndex`、Canvas typed children順を同期し、block内にlocked memberがあれば原子的に拒否する。
+- drag／resize／tail／property／MojiWindow／link／unlink／relink／remove／reanchor／generic Updateをlock-awareにし、gesture途中のlockはcapture前にbefore snapshotへ戻す。
+- text削除はlocked linked balloonまたはlocked non-detached symbolを個別にpreflightし、関係を部分変更しない。
+- generic Updateではrelationship fieldの変更を拒否し、専用commandだけを許可する。
+- `AttachedSymbolCommands.TryAdd`は成功IDとlocked／missing parent拒否を区別する。
+- context menuのOpened／Click handlerを所有bindingとして管理し、remove／rebind／unbind／Disposeで明示解除する。
+- 検査済みUpdate candidateはcallbackを再実行せずcommitする。callbackは厳密に1回だけ評価し、確定candidateとnested `Tail`／`TextLink`はdeep cloneして呼出側aliasから隔離する。
 
-リンク済みフキダシ＋リンク済み文字＋非detach付加記号は1つの typed composition block として扱う。非リンク文字＋その非detach付加記号も1ブロック、detach付加記号は単独ブロックとした。操作時には各ブロック内のcanonical順序を保持し、ロックされたメンバーを含むブロックは原子性を保って拒否する。
+## レビューとエスカレーション
 
-右クリックではロック中のオブジェクトを選択可能にし、ロック解除だけを有効化した。ロック解除後は共通コマンド経由で通常操作へ戻る。既存のTASK-130 `MoveBalloonComposition` APIは互換ラッパーとして残し、内部は共通処理を利用する。
+- 通常のimplementer／reviewer loop: 4巡。Round 4でC080-17が残りhard capへ到達した。
+- 司令役の直接介入: 1回。commit `c10942c279d6c28f1b9eb18a6f081676736c5942`で検査済みcandidateの単回commitを実装した。
+- 介入後read-only review: 1巡。BLOCKER 0、MAJOR 0、source findingsなし。
+- 介入後implementer仕上げ: test commit `d5a1b03c055427eea2fb2677bdc4fb48233b00bd`。sourceは変更していない。
+- 主な先行修正commit: `0bb2be75ece679e669e399e853401035d8896bae`、`631620b61cc2834e8b5dfa0ef7d34f08920adf39`、`0a172a01a0696d244424f214a57d1f8217a424f3`。
 
-保存形式のバージョンやスキーマは変更していない。2.0〜2.2の読み込み互換性、2.3の順序・ロック状態の保存／再読込を確認した。
+## 自動検証
 
-## 司令役＋sol_reviewer Round 2 対応
-
-- `C080-06`: balloon、new text、old linked textの3者をlink差替え前に検査し、old linked textがlockedまたはmissingならUI／`BalloonCommands`双方でrelink、unlink、balloon removeを原子的に拒否する。解除後のrelink／remove成功も直接検証した。
-- `C080-07`: toolbar／context lock変更の前に進行中のballoon、text、attached-symbol gestureをbefore snapshotへcancelしてから`CapturePage`する。途中geometryをPageDocument、live、Undo snapshotへ取り込まず、lock変更だけを1履歴として残すproduction testを追加した。
-- `C080-08`: textと非detach attached symbolをgeometry move blockとして扱い、locked memberがある場合は開始拒否、途中lockではtext位置とsymbol表示をbeforeへ戻す。detach locked symbolは親text dragを妨げない。横書き／縦書き双方を確認した。
-- `C080-09`: attached symbolのlock状態反映後、開いている親`MojiWindow`の選択を保持したまま編集controlだけを即時refreshし、handler guardと解除後成功を確認した。
-- `C080-10`: text／balloon／attached symbolのcontext menu handlerを追跡可能なbindingへ変更し、remove、page rebind、unbind、DisposeでOpened／Click handlerを明示解除する。旧panel／menuを保持するnon-vacuous lifecycle testで再操作不能を確認した。
-- `C080-11`: 3 object type×4 Z操作×toolbar/context menuの24 production経路でPageDocument順、live ZIndex、Canvas Z／children順、selectionを検証した。saved dirty、Undo/Redo、redo branch破棄、subscriber例外後のsemantic commit、2.3日本語path round-tripもTASK-080 testへ追加した。2.0〜2.2読込は既存versioned suiteで確認し、TASK-080専用fixtureとは表現していない。
-- `C080-12`: `AttachedSymbolCommands.TryAdd(..., out Guid)`を追加し、成功IDとlocked／missing parent拒否を区別可能にした。既存`Add`は成功時のID契約を維持し、拒否時は`Guid.Empty`を返す。拒否は0 historyでdirtyを変えない。
-
-## 検証
-
-- SDK: `6.0.428`
 - Debug build: 成功、警告0、エラー0
-- Debug test: `232/232` 合格、失敗0
+- Debug全test: `238/238` 合格、失敗0、skip 0
 - Release build: 成功、警告0、エラー0
-- Release no-build test: `232/232` 合格、失敗0
-- TASK-080専用test: Debug／Release各 `20/20` 合格
-- TASK-080性能（Debug）: mixed objects 100件、order p95 `1.186 ms`、100操作 `103.356 ms`
-- TASK-080性能（Release）: mixed objects 100件、order p95 `1.435 ms`、100操作 `116.178 ms`
-- 性能閾値: p95 50 ms未満、100操作 1000 ms未満
+- Release `--no-build`全test: `238/238` 合格、失敗0、skip 0
+- TASK-080専用test: Debug／Release各 `26/26` 合格
 - `git diff --check`: 合格
+- 100 mixed objects性能（直近記録）: Debug p95 `1.186 ms`／100操作 `103.356 ms`、Release p95 `1.435 ms`／100操作 `116.178 ms`。閾値はp95 50 ms未満、100操作1,000 ms未満。
 
-自動テストではモデル、共通コマンド、typed composition／unlinked block、原子性、Undo/Redo、保存互換性、実toolbar／context menu event、selection／lifecycleを確認した。実OSのpointer入力、DPI、IME、最終ピクセル、OS依存のコンテキストメニュー表示・操作は`Not verified`である。
+直接確認した主な境界は、3 object type×4 Z操作×toolbar/context経路、operation別順序、model/live/Canvas/selection、saved dirty、Undo/Redo、redo branch、coalesce、subscriber／callback／validation例外、candidate deep-clone alias隔離、locked relationship、page lifecycle、2.3日本語path round-trip、横書き／縦書きである。2.0〜2.2読込は既存versioned suiteによる間接確認であり、TASK-080専用fixtureとは表現しない。
 
-## 影響範囲・ロールバック
+## 手動未検証・既知事項
 
-主な変更fileは `PageDocument.cs`、`PageEditorControl.xaml.cs`、`MojiPanel.cs`、`MojiWindow.xaml`／`.cs`、`BalloonCommands.cs`、`AttachedSymbolCommands.cs`、`TASK080ZOrderLockTests.cs`である。後続のTASK-200、TASK-210、TASK-230は共通コマンドと `ObjectOrderOperation` を利用できる。
+- 実OS pointer、DPI、IME、最終pixel、OS-native context menuの表示・操作は`Not verified`。
+- locked objectのright-click選択はselection helperとcontext actionを組み合わせた間接確認であり、production routed right-click eventそのものは`Not verified`。
+- routed left-clickは日本語status、選択結果、mouse capture拒否まで自動確認した。
+- 新しい外部依存、保存schema変更、既知の未解決BLOCKER／MAJORはない。
 
-ロールバック時はTASK-080の実装コミットと報告コミットを対象に戻し、保存形式2.3の既存読み書きとTASK-130互換APIを維持すること。
+## 変更file・後続影響
 
-## Round 3 MAJOR correction (C080-13 to C080-16)
+主なproduction変更は`PageDocument.cs`、`PageEditorControl.xaml.cs`、`MojiPanel.cs`、`MojiWindow.xaml.cs`、`ObjectCommands.cs`、`BalloonCommands.cs`、`AttachedSymbolCommands.cs`。自動testは`TASK080ZOrderLockTests.cs`、文書は本報告、implementation ledger、verification matrix、CHANGELOGを更新した。
 
-- Fix start HEAD: `f86ea6e2a18e5642b18d4cdbe7300ca9e2a496a2` on `feature/TASK-080-zorder-lock`.
-- C080-13: `MojiPanel` now performs selection before attempting drag. An unlocked parent text remains selectable when a non-detached attached symbol is locked; only drag start is refused. A text locked by itself still refuses left-click selection, while the existing right-click context unlock route remains available.
-- C080-14: text deletion now performs a complete preflight in `PageEditorControl` and `PageDocument`. Locked linked balloons and locked non-detached attached symbols reject deletion before live collections, model relationships, selection, history, dirty state, or `ContentChanged` are changed. Unlocking all related objects allows the production deletion path to detach the balloon link and symbol safely.
-- C080-15: `BalloonCommands.Update` rejects `TextLink.TextObjectId` changes, and `AttachedSymbolCommands.Update` rejects `ParentId`/`IsDetached` changes after a trial callback. Relationship mutations remain in the dedicated lock-aware commands; ordinary property updates remain available after unlock. Rejected generic updates create no history or dirty state.
-- C080-16: routed mouse selection/drag refusal, toolbar/context-menu order actions for all three object types and four operations, operation-specific expected order, mid-gesture lock cancellation, saved/dirty/Undo/Redo, right-click unlock, validation refusal, page lifecycle, and refresh performance are automated or covered by existing production tests. Physical pointer/DPI/IME/final-pixel/OS context-menu behavior remains `Not verified`.
+TASK-200／210／230は共通ObjectCommandsとlock／order availabilityを利用できる。TASK-080統合時は同じUI領域を変更するtaskと直列化する。
 
-## Verification update
+## ロールバック
 
-- Implementation commit: `0a172a01a0696d244424f214a57d1f8217a424f3` (`fix: close TASK-080 lock mutation gaps`).
-- Debug build: pass, 0 warnings, 0 errors.
-- Debug test: `235/235` passed, 0 failed, 0 skipped.
-- Release build: pass, 0 warnings, 0 errors.
-- Release no-build test: `235/235` passed, 0 failed, 0 skipped.
-- TASK-080 dedicated tests: `23/23` passed in both configurations.
-- `git diff --check`: pass before and after documentation update.
-- Push, merge, and rebase were not performed.
+介入後だけを戻す場合は文書commit、`d5a1b03c055427eea2fb2677bdc4fb48233b00bd`、`c10942c279d6c28f1b9eb18a6f081676736c5942`を逆順にrevertする。TASK-080全体を戻す場合はfunctional base `33c3f1d3c1575763484a379cb4fb3dde0fa4dcda`以後のTASK-080 merge対象commitを逆順にrevertし、既存format 2.3とTASK-130／140の契約を残す。

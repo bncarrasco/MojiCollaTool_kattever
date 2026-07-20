@@ -8,6 +8,8 @@
 - linked composition と unlinked text＋付加記号を一つのblockとして扱い、Undo/Redo、2.3保存、右クリックのロック解除経路を維持します。
 - C080-01〜05の追補として、locked compositionのgesture原子拒否、開いたMojiWindowの全編集入口guard、semantic command guard、端位置を含むtoolbar／context menu availability、受入testを補完しました。
 - C080-06〜12の追補として、旧リンク文字・親文字drag・付加記号追加のlock迂回を防ぎ、操作途中のlock、開いた編集画面、ページ切替・破棄でも状態とhandlerが残らないようにしました。
+- 関係するフキダシ・付加記号がロック中の文字削除と、汎用更新によるlink／親関係の変更を原子的に拒否するようにしました。
+- 更新callbackを一度だけ評価し、検証済みcandidateをdeep copyして履歴へ反映することで、callbackの再実行や参照aliasによる関係・履歴の迂回を防ぎました。
 
 ### TASK-140
 
@@ -102,7 +104,3 @@
 ### Known issues
 
 - legacy形式の検出・移行は後続のTASK-041で実装します。
-- Round 3 follow-up closes the selection-versus-drag lock distinction: unlocked parent text remains selectable when a related attached symbol is locked.
-- Text deletion now rejects locked linked balloons and attached symbols atomically before live/model/history changes.
-- Generic balloon and attached-symbol Update commands cannot rewire relationships; dedicated lock-aware relationship commands remain the supported path.
-- Added routed production acceptance coverage and operation-specific toolbar/context-menu order assertions; full suite is now 235/235 and TASK-080 is 23/23.
