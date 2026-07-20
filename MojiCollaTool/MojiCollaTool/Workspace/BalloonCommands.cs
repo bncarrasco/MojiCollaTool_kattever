@@ -26,11 +26,12 @@ namespace MojiCollaTool
             return true;
         }
 
-        public static void Update(ProjectSession session, Guid pageId, Guid balloonId, Action<BalloonData> update)
+        public static void Update(ProjectSession session, Guid pageId, Guid balloonId, Action<BalloonData> update,
+            string description = "フキダシ更新", string? coalesceKey = null)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
             if (update == null) throw new ArgumentNullException(nameof(update));
-            session.ExecutePage(pageId, page => page.UpdateBalloon(balloonId, update), "フキダシ更新");
+            session.ExecutePage(pageId, page => page.UpdateBalloon(balloonId, update), description, coalesceKey);
         }
 
         public static void SetTail(ProjectSession session, Guid pageId, Guid balloonId, BalloonTailData? tail)
@@ -49,6 +50,15 @@ namespace MojiCollaTool
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
             session.ExecutePage(pageId, page => page.UnlinkBalloonText(balloonId), "フキダシ文字リンク解除");
+        }
+
+        public static bool MoveComposition(ProjectSession session, Guid pageId, Guid balloonId, BalloonCompositionOrder operation)
+        {
+            if (session == null) throw new ArgumentNullException(nameof(session));
+            var trial = session.Document.GetPage(pageId).Clone(preserveObjectIds: true);
+            if (!trial.MoveBalloonComposition(balloonId, operation)) return false;
+            session.ExecutePage(pageId, page => page.MoveBalloonComposition(balloonId, operation), "フキダシ重なり順変更");
+            return true;
         }
     }
 }

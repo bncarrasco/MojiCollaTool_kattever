@@ -33,6 +33,9 @@ namespace MojiCollaTool
         public Guid ObjectId => BalloonData.ObjectId;
         public bool IsSelected { get; set; }
 
+        internal Geometry BodyGeometry => _geometryFactory.Create(BalloonData.ShapeKind, LocalBounds);
+        internal Geometry TailGeometry => BalloonTailGeometry.Create(BalloonData, _geometryFactory);
+
         public event MouseButtonEventHandler? BalloonMouseLeftButtonDown;
         public event MouseButtonEventHandler? BalloonMouseLeftButtonUp;
         public event MouseEventHandler? BalloonMouseMove;
@@ -64,12 +67,15 @@ namespace MojiCollaTool
             base.OnRender(drawingContext);
             if (!BalloonData.IsVisible) return;
 
-            var localBounds = new Rect(0, 0, Math.Max(0, BalloonData.Bounds.Width), Math.Max(0, BalloonData.Bounds.Height));
-            var geometry = _geometryFactory.Create(BalloonData.ShapeKind, localBounds);
+            var geometry = BodyGeometry;
             var fill = new SolidColorBrush(BalloonData.Fill);
             var stroke = new SolidColorBrush(BalloonData.Stroke);
             var thickness = Math.Max(0, BalloonData.StrokeThickness);
             var pen = thickness > 0 ? new Pen(stroke, thickness) : null;
+            if (BalloonData.Tail != null)
+            {
+                drawingContext.DrawGeometry(fill, pen, TailGeometry);
+            }
             drawingContext.DrawGeometry(fill, pen, geometry);
 
             if (IsSelected)
@@ -83,10 +89,18 @@ namespace MojiCollaTool
         {
             if (!BalloonData.IsVisible) return null;
             var point = hitTestParameters.HitPoint;
-            return point.X >= 0 && point.Y >= 0 && point.X <= ActualWidth && point.Y <= ActualHeight
+            var thickness = Math.Max(1, BalloonData.StrokeThickness);
+            var pen = new Pen(Brushes.Black, thickness);
+            var body = BodyGeometry;
+            var tail = BalloonData.Tail == null ? Geometry.Empty : TailGeometry;
+            return body.FillContains(point) || body.StrokeContains(pen, point) ||
+                   tail.FillContains(point) || tail.StrokeContains(pen, point)
                 ? new PointHitTestResult(this, point)
                 : null;
         }
+
+        internal bool ContainsLocalPoint(Point point)
+            => HitTestCore(new PointHitTestParameters(point)) != null;
 
         private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => BalloonMouseLeftButtonDown?.Invoke(this, e);
         private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => BalloonMouseLeftButtonUp?.Invoke(this, e);
@@ -100,5 +114,7 @@ namespace MojiCollaTool
             pen.Freeze();
             return pen;
         }
+
+        private Rect LocalBounds => new(0, 0, Math.Max(0, BalloonData.Bounds.Width), Math.Max(0, BalloonData.Bounds.Height));
     }
 }

@@ -25,6 +25,8 @@ namespace MojiCollaTool
         private readonly List<AttachedSymbolData> _attachedSymbolModels = new();
         private readonly BalloonGeometryFactory _balloonGeometryFactory = new();
         private readonly Dictionary<Rectangle, ResizeHandle> _resizeHandles = new();
+        private readonly Dictionary<Ellipse, ResizeHandle> _tailHandles = new();
+        private readonly ObservableCollection<TextLinkCandidate> _textLinkCandidates = new();
         private readonly Dictionary<Guid, Guid?> _selectedObjectIdsByPage = new();
         private CanvasEditWindow? _canvasEditWindow;
         private bool _runEvent;
@@ -44,11 +46,13 @@ namespace MojiCollaTool
         private const double DefaultBalloonHeight = 140;
         private const double MinimumBalloonSize = 24;
         private const double ResizeHandleSize = 8;
+        private const double TailHandleSize = 10;
 
         public PageEditorControl()
         {
             InitializeComponent();
             MojiListView.ItemsSource = _viewMojiPanels;
+            TextLinkComboBox.ItemsSource = _textLinkCandidates;
             MainCanvas.PreviewMouseLeftButtonDown += MainCanvas_PreviewMouseLeftButtonDown;
             ResetScale();
             _runEvent = true;
@@ -189,6 +193,7 @@ namespace MojiCollaTool
                 foreach (var parent in _mojiPanels) RefreshAttachedSymbolsForParent(parent);
                 RestoreSelectionForPage(page.PageId);
                 foreach (var parent in _mojiPanels) parent.MojiWindow?.LoadMojiDataToWindow(parent.MojiData);
+                RefreshBalloonTools();
             }
             finally
             {
@@ -248,6 +253,7 @@ namespace MojiCollaTool
             _mojiPanels.Add(mojiPanel);
             _viewMojiPanels.Add(mojiPanel);
             MainCanvas.Children.Add(mojiPanel);
+            RefreshBalloonTools();
             RaiseContentChanged("文字追加");
         }
 
@@ -367,6 +373,80 @@ namespace MojiCollaTool
             return true;
         }
 
+        internal bool AddTailToSelectedBalloon()
+        {
+            if (_selectedBalloon == null || _selectedBalloon.BalloonData.IsLocked || !_selectedBalloon.BalloonData.IsVisible)
+                return SetBalloonStatus("編集できるフキダシを選択してください。", false);
+            if (_selectedBalloon.BalloonData.Tail != null)
+                return SetBalloonStatus("選択中のフキダシには既にしっぽがあります。", false);
+            _selectedBalloon.BalloonData.Tail = BalloonTailGeometry.CreateDefault(_selectedBalloon.BalloonData);
+            _selectedBalloon.Refresh();
+            UpdateResizeHandles();
+            RefreshBalloonTools("しっぽを追加しました。");
+            RaiseContentChanged("フキダシしっぽ追加");
+            return true;
+        }
+
+        internal bool RemoveTailFromSelectedBalloon()
+        {
+            if (_selectedBalloon == null || _selectedBalloon.BalloonData.IsLocked || !_selectedBalloon.BalloonData.IsVisible)
+                return SetBalloonStatus("編集できるフキダシを選択してください。", false);
+            if (_selectedBalloon.BalloonData.Tail == null)
+                return SetBalloonStatus("選択中のフキダシにしっぽはありません。", false);
+            _selectedBalloon.BalloonData.Tail = null;
+            _selectedBalloon.Refresh();
+            UpdateResizeHandles();
+            RefreshBalloonTools("しっぽを削除しました。");
+            RaiseContentChanged("フキダシしっぽ削除");
+            return true;
+        }
+
+        internal bool TryLinkSelectedBalloon(Guid textObjectId)
+        {
+            if (_selectedBalloon == null)
+                return SetBalloonStatus("フキダシを選択してください。", false);
+            var panel = _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == textObjectId);
+            if (panel == null)
+                return SetBalloonStatus("同じページにリンク対象の文字が見つかりません。", false);
+            var owner = _balloonVisuals.FirstOrDefault(item => item.ObjectId != _selectedBalloon.ObjectId &&
+                item.BalloonData.TextLink?.TextObjectId == textObjectId);
+            if (owner != null)
+                return SetBalloonStatus("その文字は別のフキダシにリンクされています。", false);
+            if (_selectedBalloon.BalloonData.TextLink?.TextObjectId == textObjectId)
+                return SetBalloonStatus("選択した文字は既にリンクされています。", false);
+
+            _selectedBalloon.BalloonData.TextLink = new TextLinkData { TextObjectId = textObjectId };
+            RefreshBalloonTools($"文字 ID:{panel.MojiData.Id} をリンクしました。");
+            RaiseContentChanged("フキダシ文字リンク");
+            return true;
+        }
+
+        internal bool UnlinkSelectedBalloon()
+        {
+            if (_selectedBalloon == null)
+                return SetBalloonStatus("フキダシを選択してください。", false);
+            if (_selectedBalloon.BalloonData.TextLink == null)
+                return SetBalloonStatus("選択中のフキダシに文字リンクはありません。", false);
+            _selectedBalloon.BalloonData.TextLink = null;
+            RefreshBalloonTools("文字リンクを解除しました。");
+            RaiseContentChanged("フキダシ文字リンク解除");
+            return true;
+        }
+
+        internal bool MoveSelectedBalloonComposition(BalloonCompositionOrder operation)
+        {
+            if (_selectedBalloon == null || _boundPage == null)
+                return SetBalloonStatus("フキダシを選択してください。", false);
+            CapturePage(_boundPage);
+            if (!_boundPage.MoveBalloonComposition(_selectedBalloon.ObjectId, operation))
+                return SetBalloonStatus("これ以上は重なり順を変更できません。", false);
+            ApplyPageOrderToLiveObjects();
+            RebuildCanvasObjectOrder();
+            RefreshBalloonTools("重なり順を変更しました。");
+            RaiseContentChanged("フキダシ重なり順変更");
+            return true;
+        }
+
         public void ReproductionMoji(MojiPanel mojiPanel)
         {
             ArgumentNullException.ThrowIfNull(mojiPanel);
@@ -392,8 +472,11 @@ namespace MojiCollaTool
             }
 
             _viewMojiPanels.Remove(mojiPanel);
+            foreach (var balloon in _balloonVisuals.Where(item => item.BalloonData.TextLink?.TextObjectId == mojiPanel.MojiData.ObjectId))
+                balloon.BalloonData.TextLink = null;
             mojiPanel.Dispose();
             MainCanvas.Children.Remove(mojiPanel);
+            RefreshBalloonTools();
             RaiseContentChanged("文字削除");
         }
 
@@ -616,19 +699,25 @@ namespace MojiCollaTool
 
         internal IReadOnlyCollection<Rectangle> ResizeHandleVisuals => _resizeHandles.Keys;
 
+        internal IReadOnlyCollection<Ellipse> TailHandleVisuals => _tailHandles.Keys;
+
         internal Rectangle CanvasBackgroundVisual => CanvasBackgroundRect;
 
         internal bool BeginBalloonGesture(Guid balloonId, Point start, BalloonResizeHandle handle = BalloonResizeHandle.Move)
         {
             var visual = _balloonVisuals.FirstOrDefault(candidate => candidate.ObjectId == balloonId);
-            if (visual == null || visual.BalloonData.IsLocked || _balloonDrag != null) return false;
+            if (visual == null || visual.BalloonData.IsLocked || !visual.BalloonData.IsVisible || _balloonDrag != null) return false;
+            var linkedPanel = visual.BalloonData.TextLink == null ? null :
+                _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == visual.BalloonData.TextLink.TextObjectId);
             SelectBalloon(visual);
             _balloonDrag = new BalloonDragState(
                 visual,
                 start,
                 visual.BalloonData.Clone(),
                 ToResizeHandle(handle),
-                Guid.NewGuid().ToString("D"));
+                Guid.NewGuid().ToString("D"),
+                linkedPanel,
+                linkedPanel == null ? null : PageDocument.CloneMojiData(linkedPanel.MojiData));
             return true;
         }
 
@@ -644,7 +733,8 @@ namespace MojiCollaTool
             if (_balloonDrag == null) return false;
             var state = _balloonDrag;
             ApplyBalloonDrag(current);
-            var changed = !BalloonEquivalent(state.Before, state.Visual.BalloonData);
+            var changed = !BalloonEquivalent(state.Before, state.Visual.BalloonData) ||
+                !MojiPositionEquivalent(state.BeforeLinkedText, state.LinkedPanel?.MojiData);
             _balloonDrag = null;
             if (changed)
             {
@@ -657,8 +747,19 @@ namespace MojiCollaTool
         {
             if (_balloonDrag == null) return;
             var visual = _balloonDrag.Visual;
+            var linkedPanel = _balloonDrag.LinkedPanel;
+            var linkedBefore = _balloonDrag.BeforeLinkedText;
             _restoringBalloon = true;
-            try { visual.ApplyData(_balloonDrag.Before.Clone()); }
+            try
+            {
+                visual.ApplyData(_balloonDrag.Before.Clone());
+                if (linkedPanel != null && linkedBefore != null)
+                {
+                    linkedPanel.MojiData.X = linkedBefore.X;
+                    linkedPanel.MojiData.Y = linkedBefore.Y;
+                    linkedPanel.UpdateXYView();
+                }
+            }
             finally
             {
                 _restoringBalloon = false;
@@ -723,6 +824,7 @@ namespace MojiCollaTool
         internal void HandleCanvasClickSource(object? source)
         {
             if (source is Rectangle rectangle && _resizeHandles.ContainsKey(rectangle)) return;
+            if (source is Ellipse ellipse && _tailHandles.ContainsKey(ellipse)) return;
             if (source is AttachedSymbolVisual) return;
             SelectAttachedSymbol(null);
             SelectBalloon(null);
@@ -781,6 +883,25 @@ namespace MojiCollaTool
                 : BalloonShapeKind.Ellipse;
             AddNewBalloon(shape);
         }
+
+        private void AddTailButton_Click(object sender, RoutedEventArgs e) => AddTailToSelectedBalloon();
+        private void RemoveTailButton_Click(object sender, RoutedEventArgs e) => RemoveTailFromSelectedBalloon();
+
+        private void LinkTextButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (TextLinkComboBox.SelectedItem is not TextLinkCandidate candidate)
+            {
+                SetBalloonStatus("リンクする文字を選択してください。", false);
+                return;
+            }
+            TryLinkSelectedBalloon(candidate.ObjectId);
+        }
+
+        private void UnlinkTextButton_Click(object sender, RoutedEventArgs e) => UnlinkSelectedBalloon();
+        private void BringToFrontButton_Click(object sender, RoutedEventArgs e) => MoveSelectedBalloonComposition(BalloonCompositionOrder.BringToFront);
+        private void BringForwardButton_Click(object sender, RoutedEventArgs e) => MoveSelectedBalloonComposition(BalloonCompositionOrder.BringForward);
+        private void SendBackwardButton_Click(object sender, RoutedEventArgs e) => MoveSelectedBalloonComposition(BalloonCompositionOrder.SendBackward);
+        private void SendToBackButton_Click(object sender, RoutedEventArgs e) => MoveSelectedBalloonComposition(BalloonCompositionOrder.SendToBack);
 
         private void MainCanvas_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
@@ -919,6 +1040,7 @@ namespace MojiCollaTool
             visual.BalloonLostMouseCapture += BalloonVisual_LostMouseCaptureBoundary;
             _balloonVisuals.Add(visual);
             MainCanvas.Children.Add(visual);
+            RefreshBalloonTools();
             if (raiseContentChanged) RaiseContentChanged("フキダシ追加");
         }
 
@@ -931,6 +1053,7 @@ namespace MojiCollaTool
             visual.BalloonLostMouseCapture -= BalloonVisual_LostMouseCaptureBoundary;
             MainCanvas.Children.Remove(visual);
             if (ReferenceEquals(_selectedBalloon, visual)) SelectBalloon(null);
+            RefreshBalloonTools();
         }
 
         private void RemoveAllBalloonVisuals()
@@ -958,6 +1081,53 @@ namespace MojiCollaTool
             }
             UpdateResizeHandles();
             foreach (var candidate in _balloonVisuals) candidate.InvalidateVisual();
+            RefreshBalloonTools();
+        }
+
+        private void RefreshBalloonTools(string? message = null)
+        {
+            var selectedCandidateId = (TextLinkComboBox.SelectedItem as TextLinkCandidate)?.ObjectId
+                ?? _selectedBalloon?.BalloonData.TextLink?.TextObjectId;
+            _textLinkCandidates.Clear();
+            foreach (var panel in _mojiPanels.OrderBy(item => item.MojiData.Id))
+                _textLinkCandidates.Add(new TextLinkCandidate(panel.MojiData));
+            TextLinkComboBox.SelectedItem = selectedCandidateId.HasValue
+                ? _textLinkCandidates.FirstOrDefault(item => item.ObjectId == selectedCandidateId.Value)
+                : null;
+
+            var editable = _selectedBalloon != null && _selectedBalloon.BalloonData.IsVisible && !_selectedBalloon.BalloonData.IsLocked;
+            AddTailButton.IsEnabled = editable && _selectedBalloon!.BalloonData.Tail == null;
+            RemoveTailButton.IsEnabled = editable && _selectedBalloon!.BalloonData.Tail != null;
+            TextLinkComboBox.IsEnabled = editable && _textLinkCandidates.Count > 0;
+            LinkTextButton.IsEnabled = editable && _textLinkCandidates.Count > 0;
+            UnlinkTextButton.IsEnabled = editable && _selectedBalloon!.BalloonData.TextLink != null;
+            BringToFrontButton.IsEnabled = editable;
+            BringForwardButton.IsEnabled = editable;
+            SendBackwardButton.IsEnabled = editable;
+            SendToBackButton.IsEnabled = editable;
+
+            if (message != null)
+            {
+                BalloonStatusTextBlock.Text = message;
+                return;
+            }
+            if (_selectedBalloon?.BalloonData.TextLink is TextLinkData link)
+            {
+                var panel = _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == link.TextObjectId);
+                BalloonStatusTextBlock.Text = panel == null
+                    ? "リンク先の文字が見つかりません。"
+                    : $"リンク中: ID:{panel.MojiData.Id} {panel.MojiData.ExampleText}";
+            }
+            else
+            {
+                BalloonStatusTextBlock.Text = _selectedBalloon == null ? "フキダシ未選択" : "文字リンクなし";
+            }
+        }
+
+        private bool SetBalloonStatus(string message, bool result)
+        {
+            BalloonStatusTextBlock.Text = message;
+            return result;
         }
 
         private void BalloonVisual_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1005,6 +1175,37 @@ namespace MojiCollaTool
             {
                 data.X = before.X + dx;
                 data.Y = before.Y + dy;
+                if (data.Tail != null && before.Tail != null)
+                {
+                    data.Tail.TipX = before.Tail.TipX + dx;
+                    data.Tail.TipY = before.Tail.TipY + dy;
+                }
+                if (_balloonDrag.LinkedPanel != null && _balloonDrag.BeforeLinkedText != null)
+                {
+                    _balloonDrag.LinkedPanel.MojiData.X = _balloonDrag.BeforeLinkedText.X + dx;
+                    _balloonDrag.LinkedPanel.MojiData.Y = _balloonDrag.BeforeLinkedText.Y + dy;
+                    _balloonDrag.LinkedPanel.UpdateXYView();
+                }
+            }
+            else if (_balloonDrag.Handle == ResizeHandle.TailTip && data.Tail != null)
+            {
+                data.Tail.Tip = current;
+                data.Tail.Validate();
+            }
+            else if (_balloonDrag.Handle == ResizeHandle.TailRoot && data.Tail != null)
+            {
+                var local = BalloonTailGeometry.PageToLocal(data, current);
+                data.Tail.RootParameter = BalloonTailGeometry.FindNearestRootParameter(
+                    data.ShapeKind, new Rect(0, 0, data.Bounds.Width, data.Bounds.Height), local, _balloonGeometryFactory);
+                data.Tail.Validate();
+            }
+            else if (_balloonDrag.Handle == ResizeHandle.TailWidth && data.Tail != null)
+            {
+                var local = BalloonTailGeometry.PageToLocal(data, current);
+                var placement = BalloonTailGeometry.GetRootPlacement(data.ShapeKind,
+                    new Rect(0, 0, data.Bounds.Width, data.Bounds.Height), data.Tail.RootParameter, _balloonGeometryFactory);
+                data.Tail.Width = Math.Max(0, Math.Abs(Vector.Multiply(local - placement.Point, placement.Tangent)) * 2);
+                data.Tail.Validate();
             }
             else
             {
@@ -1025,7 +1226,15 @@ namespace MojiCollaTool
         }
 
         private static bool BalloonEquivalent(BalloonData left, BalloonData right)
-            => left.X == right.X && left.Y == right.Y && left.Bounds == right.Bounds && left.Rotation == right.Rotation;
+            => left.X == right.X && left.Y == right.Y && left.Bounds == right.Bounds && left.Rotation == right.Rotation &&
+               TailEquivalent(left.Tail, right.Tail);
+
+        private static bool TailEquivalent(BalloonTailData? left, BalloonTailData? right)
+            => left == null ? right == null : right != null && left.TipX == right.TipX && left.TipY == right.TipY &&
+               left.RootParameter == right.RootParameter && left.Width == right.Width;
+
+        private static bool MojiPositionEquivalent(MojiData? left, MojiData? right)
+            => left == null ? right == null : right != null && left.X == right.X && left.Y == right.Y;
 
         private void RebuildCanvasObjectOrder()
         {
@@ -1053,10 +1262,28 @@ namespace MojiCollaTool
             UpdateResizeHandles();
         }
 
+        private void ApplyPageOrderToLiveObjects()
+        {
+            if (_boundPage == null) return;
+            foreach (var item in _boundPage.AllObjects)
+            {
+                var panel = _mojiPanels.FirstOrDefault(candidate => candidate.MojiData.ObjectId == item.ObjectId);
+                if (panel != null) panel.MojiData.ZIndex = item.ZIndex;
+                var balloon = _balloonVisuals.FirstOrDefault(candidate => candidate.ObjectId == item.ObjectId);
+                if (balloon != null) balloon.BalloonData.ZIndex = item.ZIndex;
+                var symbolIndex = _attachedSymbolModels.FindIndex(candidate => candidate.ObjectId == item.ObjectId);
+                if (symbolIndex >= 0) _attachedSymbolModels[symbolIndex].ZIndex = item.ZIndex;
+                var symbolVisual = _attachedSymbolVisuals.FirstOrDefault(candidate => candidate.ObjectId == item.ObjectId);
+                if (symbolVisual != null) symbolVisual.SymbolData.ZIndex = item.ZIndex;
+            }
+        }
+
         private void UpdateResizeHandles()
         {
             ClearResizeHandles();
-            if (_selectedBalloon == null || !_balloonVisuals.Contains(_selectedBalloon)) return;
+            ClearTailHandles();
+            if (_selectedBalloon == null || !_balloonVisuals.Contains(_selectedBalloon) ||
+                _selectedBalloon.BalloonData.IsLocked || !_selectedBalloon.BalloonData.IsVisible) return;
             var scale = Math.Max(0.01, CanvasScaleTransform.ScaleX);
             var logicalSize = ResizeHandleSize / scale;
             var half = logicalSize / 2;
@@ -1073,6 +1300,14 @@ namespace MojiCollaTool
             AddResizeHandle(ResizeHandle.BottomLeft, x, y + h, logicalSize, half);
             AddResizeHandle(ResizeHandle.Bottom, x + w / 2, y + h, logicalSize, half);
             AddResizeHandle(ResizeHandle.BottomRight, x + w, y + h, logicalSize, half);
+            if (data.Tail != null)
+            {
+                var tailSize = TailHandleSize / scale;
+                var placement = BalloonTailGeometry.GetRootPlacement(data, _balloonGeometryFactory);
+                AddTailHandle(ResizeHandle.TailTip, data.Tail.Tip, tailSize, Brushes.OrangeRed);
+                AddTailHandle(ResizeHandle.TailRoot, placement.Point, tailSize, Brushes.LimeGreen);
+                AddTailHandle(ResizeHandle.TailWidth, BalloonTailGeometry.GetWidthHandlePoint(data, _balloonGeometryFactory), tailSize, Brushes.Gold);
+            }
         }
 
         private void AddResizeHandle(ResizeHandle handle, double centerX, double centerY, double size, double half)
@@ -1086,7 +1321,36 @@ namespace MojiCollaTool
             Canvas.SetLeft(rectangle, centerX - half);
             Canvas.SetTop(rectangle, centerY - half);
             MainCanvas.Children.Add(rectangle);
+            Canvas.SetZIndex(rectangle, int.MaxValue);
             _resizeHandles.Add(rectangle, handle);
+        }
+
+        private void AddTailHandle(ResizeHandle handle, Point center, double size, Brush fill)
+        {
+            var ellipse = new Ellipse
+            {
+                Width = size,
+                Height = size,
+                Fill = fill,
+                Stroke = Brushes.DodgerBlue,
+                StrokeThickness = 1,
+                Tag = handle,
+                Cursor = Cursors.Cross,
+            };
+            ellipse.MouseLeftButtonDown += TailHandle_MouseLeftButtonDown;
+            Canvas.SetLeft(ellipse, center.X - size / 2);
+            Canvas.SetTop(ellipse, center.Y - size / 2);
+            Canvas.SetZIndex(ellipse, int.MaxValue);
+            MainCanvas.Children.Add(ellipse);
+            _tailHandles.Add(ellipse, handle);
+        }
+
+        private void TailHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not Ellipse ellipse || _selectedBalloon == null || !_tailHandles.TryGetValue(ellipse, out var handle)) return;
+            if (!BeginBalloonGesture(_selectedBalloon.ObjectId, e.GetPosition(MainCanvas), FromResizeHandle(handle))) return;
+            _selectedBalloon.CaptureMouse();
+            e.Handled = true;
         }
 
         private void ResizeHandle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1120,6 +1384,9 @@ namespace MojiCollaTool
                 BalloonResizeHandle.TopRight => ResizeHandle.TopRight,
                 BalloonResizeHandle.BottomLeft => ResizeHandle.BottomLeft,
                 BalloonResizeHandle.BottomRight => ResizeHandle.BottomRight,
+                BalloonResizeHandle.TailTip => ResizeHandle.TailTip,
+                BalloonResizeHandle.TailRoot => ResizeHandle.TailRoot,
+                BalloonResizeHandle.TailWidth => ResizeHandle.TailWidth,
                 _ => ResizeHandle.Move,
             };
         }
@@ -1136,6 +1403,9 @@ namespace MojiCollaTool
                 ResizeHandle.TopRight => BalloonResizeHandle.TopRight,
                 ResizeHandle.BottomLeft => BalloonResizeHandle.BottomLeft,
                 ResizeHandle.BottomRight => BalloonResizeHandle.BottomRight,
+                ResizeHandle.TailTip => BalloonResizeHandle.TailTip,
+                ResizeHandle.TailRoot => BalloonResizeHandle.TailRoot,
+                ResizeHandle.TailWidth => BalloonResizeHandle.TailWidth,
                 _ => BalloonResizeHandle.Move,
             };
         }
@@ -1150,25 +1420,40 @@ namespace MojiCollaTool
             _resizeHandles.Clear();
         }
 
+        private void ClearTailHandles()
+        {
+            foreach (var ellipse in _tailHandles.Keys.ToArray())
+            {
+                ellipse.MouseLeftButtonDown -= TailHandle_MouseLeftButtonDown;
+                MainCanvas.Children.Remove(ellipse);
+            }
+            _tailHandles.Clear();
+        }
+
         [Flags]
         private enum ResizeHandle
         {
             Move = 0, Left = 1, Right = 2, Top = 4, Bottom = 8,
             TopLeft = Top | Left, TopRight = Top | Right,
             BottomLeft = Bottom | Left, BottomRight = Bottom | Right,
+            TailTip = 16, TailRoot = 32, TailWidth = 64,
         }
 
         private sealed class BalloonDragState
         {
-            public BalloonDragState(BalloonVisual visual, Point start, BalloonData before, ResizeHandle handle, string coalesceKey)
+            public BalloonDragState(BalloonVisual visual, Point start, BalloonData before, ResizeHandle handle, string coalesceKey,
+                MojiPanel? linkedPanel, MojiData? beforeLinkedText)
             {
                 Visual = visual; Start = start; Before = before; Handle = handle; CoalesceKey = coalesceKey;
+                LinkedPanel = linkedPanel; BeforeLinkedText = beforeLinkedText;
             }
             public BalloonVisual Visual { get; }
             public Point Start { get; }
             public BalloonData Before { get; }
             public ResizeHandle Handle { get; }
             public string CoalesceKey { get; }
+            public MojiPanel? LinkedPanel { get; }
+            public MojiData? BeforeLinkedText { get; }
         }
 
         private void ThrowIfDisposed()
@@ -1325,6 +1610,21 @@ namespace MojiCollaTool
         TopRight = Top | Right,
         BottomLeft = Bottom | Left,
         BottomRight = Bottom | Right,
+        TailTip = 16,
+        TailRoot = 32,
+        TailWidth = 64,
+    }
+
+    internal sealed class TextLinkCandidate
+    {
+        public TextLinkCandidate(MojiData data)
+        {
+            ObjectId = data.ObjectId;
+            DisplayText = $"ID:{data.Id} [{data.ObjectId.ToString("D")[..8]}] {data.ExampleText}";
+        }
+
+        public Guid ObjectId { get; }
+        public string DisplayText { get; }
     }
 
     internal sealed class AttachedSymbolDragState
