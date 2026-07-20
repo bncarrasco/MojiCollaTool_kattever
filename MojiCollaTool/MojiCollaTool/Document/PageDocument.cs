@@ -89,7 +89,11 @@ namespace MojiCollaTool
                 _objectOrder.AddRange(_mojiDatas.Select(mojiData => mojiData.ObjectId));
                 _objectOrder.AddRange(_balloons.Select(balloon => balloon.ObjectId));
             }
-            NormalizeObjectOrder();
+            // Version 2.2 archives written before TASK-130 could contain more
+            // than one balloon linked to the same text.  The constructor is
+            // the format-boundary where that legacy state is repaired; all
+            // subsequent mutations use the strict validator below.
+            NormalizeObjectOrder(migrateDuplicateLinks: true);
         }
 
         public PageDocument(
@@ -196,8 +200,12 @@ namespace MojiCollaTool
         {
             if (mojiDatas == null) throw new ArgumentNullException(nameof(mojiDatas));
             var replacement = mojiDatas.Select(CloneMojiData).ToList();
+            var replacementBalloons = _balloons.Select(CloneBalloonData).ToList();
             var replacementSymbols = _attachedSymbols.Select(CloneAttachedSymbolData).ToList();
-            ValidateObjectIds(replacement, _balloons, replacementSymbols);
+            var replacementTextIds = replacement.Select(item => item.ObjectId).ToHashSet();
+            foreach (var balloon in replacementBalloons.Where(item => item.TextLink != null && !replacementTextIds.Contains(item.TextLink.TextObjectId)))
+                balloon.TextLink = null;
+            ValidateObjectIds(replacement, replacementBalloons, replacementSymbols);
 
             foreach (var previous in _mojiDatas)
             {
@@ -226,10 +234,13 @@ namespace MojiCollaTool
                 }
             }
 
-            ValidateObjectIds(replacement, _balloons, replacementSymbols);
+            ValidateObjectIds(replacement, replacementBalloons, replacementSymbols);
             ValidateAttachedSymbolState(replacement, replacementSymbols);
+            ValidateBalloonTextLinks(replacement, replacementBalloons);
             _mojiDatas.Clear();
             _mojiDatas.AddRange(replacement);
+            _balloons.Clear();
+            _balloons.AddRange(replacementBalloons);
             _attachedSymbols.Clear();
             _attachedSymbols.AddRange(replacementSymbols);
             RebuildObjectOrderPreservingExisting();
@@ -264,6 +275,7 @@ namespace MojiCollaTool
             var clone = CloneBalloonData(balloon);
             clone.Validate();
             ValidateObjectIds(_mojiDatas, _balloons.Concat(new[] { clone }), _attachedSymbols);
+            ValidateBalloonTextLinks(_mojiDatas, _balloons.Concat(new[] { clone }));
             _balloons.Add(clone);
             _objectOrder.Add(clone.ObjectId);
             NormalizeObjectOrder();
@@ -277,6 +289,7 @@ namespace MojiCollaTool
             var replacement = balloons.Select(CloneBalloonData).ToList();
             foreach (var balloon in replacement) balloon.Validate();
             ValidateObjectIds(_mojiDatas, replacement, _attachedSymbols);
+            ValidateBalloonTextLinks(_mojiDatas, replacement);
             _balloons.Clear();
             _balloons.AddRange(replacement);
             RebuildObjectOrderPreservingExisting();
@@ -420,6 +433,8 @@ namespace MojiCollaTool
                 throw new InvalidOperationException("A balloon object ID cannot be changed.");
             }
             candidate.Validate();
+            var candidateBalloons = _balloons.Select(item => item.ObjectId == objectId ? candidate : item).ToList();
+            ValidateBalloonTextLinks(_mojiDatas, candidateBalloons);
             _balloons[index] = candidate;
             NormalizeObjectOrder();
         }
@@ -435,6 +450,10 @@ namespace MojiCollaTool
             {
                 throw new KeyNotFoundException($"Text object was not found: {textObjectId}");
             }
+            if (_balloons.Any(balloon => balloon.ObjectId != balloonId && balloon.TextLink?.TextObjectId == textObjectId))
+            {
+                throw new InvalidOperationException("The text object is already linked to another balloon.");
+            }
 
             UpdateBalloon(balloonId, balloon =>
             {
@@ -449,11 +468,70 @@ namespace MojiCollaTool
             UpdateBalloon(balloonId, balloon => balloon.TextLink = null);
         }
 
+        public bool MoveBalloonComposition(Guid balloonId, BalloonCompositionOrder operation)
+        {
+            GetBalloon(balloonId);
+            var compositionByObject = new Dictionary<Guid, IReadOnlyList<Guid>>();
+            foreach (var balloon in _balloons)
+            {
+                var composition = GetBalloonCompositionObjectIds(balloon.ObjectId);
+                foreach (var objectId in composition) compositionByObject[objectId] = composition;
+            }
+
+            var blocks = new List<List<Guid>>();
+            var emitted = new HashSet<Guid>();
+            foreach (var objectId in _objectOrder)
+            {
+                if (!emitted.Add(objectId)) continue;
+                if (!compositionByObject.TryGetValue(objectId, out var composition))
+                {
+                    blocks.Add(new List<Guid> { objectId });
+                    continue;
+                }
+                var block = composition.Where(emitted.Add).ToList();
+                block.Insert(0, objectId);
+                blocks.Add(CanonicalizeComposition(block, composition));
+            }
+
+            var currentIndex = blocks.FindIndex(block => block.Contains(balloonId));
+            if (currentIndex < 0) throw new InvalidOperationException("Balloon composition was not found in object order.");
+            var targetIndex = operation switch
+            {
+                BalloonCompositionOrder.BringToFront => blocks.Count - 1,
+                BalloonCompositionOrder.BringForward => Math.Min(blocks.Count - 1, currentIndex + 1),
+                BalloonCompositionOrder.SendBackward => Math.Max(0, currentIndex - 1),
+                BalloonCompositionOrder.SendToBack => 0,
+                _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+            };
+            if (targetIndex == currentIndex) return false;
+            var selected = blocks[currentIndex];
+            blocks.RemoveAt(currentIndex);
+            blocks.Insert(targetIndex, selected);
+            _objectOrder.Clear();
+            _objectOrder.AddRange(blocks.SelectMany(block => block));
+            NormalizeObjectOrder();
+            return true;
+        }
+
+        public IReadOnlyList<Guid> GetBalloonCompositionObjectIds(Guid balloonId)
+        {
+            var balloon = GetBalloon(balloonId);
+            var ids = new List<Guid> { balloon.ObjectId };
+            if (balloon.TextLink != null && _mojiDatas.Any(text => text.ObjectId == balloon.TextLink.TextObjectId))
+            {
+                var textId = balloon.TextLink.TextObjectId;
+                ids.Add(textId);
+                ids.AddRange(_objectOrder.Where(objectId => _attachedSymbols.Any(symbol =>
+                    symbol.ObjectId == objectId && symbol.ParentId == textId && !symbol.IsDetached)));
+            }
+            return ids;
+        }
+
         /// <summary>
         /// Makes list order the canonical drawing order and repairs IDs from
         /// legacy XML that did not contain the new identity fields.
         /// </summary>
-        public void NormalizeObjectOrder()
+        public void NormalizeObjectOrder(bool migrateDuplicateLinks = false)
         {
             var objectIds = new HashSet<Guid>();
             foreach (var mojiData in _mojiDatas)
@@ -498,6 +576,11 @@ namespace MojiCollaTool
             }
 
             ReconcileRelationships(objectIds);
+            if (migrateDuplicateLinks)
+            {
+                MigrateDuplicateBalloonTextLinks();
+            }
+            ValidateBalloonTextLinks(_mojiDatas, _balloons);
             var knownIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId)
                 .Concat(_balloons.Select(item => item.ObjectId))
                 .Concat(_attachedSymbols.Select(item => item.ObjectId)));
@@ -508,6 +591,7 @@ namespace MojiCollaTool
             {
                 if (!_objectOrder.Contains(id)) _objectOrder.Add(id);
             }
+            CanonicalizeBalloonCompositions();
             for (var index = 0; index < _objectOrder.Count; index++)
             {
                 GetDocumentObject(_objectOrder[index]).ZIndex = index;
@@ -570,6 +654,39 @@ namespace MojiCollaTool
                 objects,
                 balloons,
                 attachedSymbols);
+        }
+
+        /// <summary>
+        /// Restores this page in place from a same-identity snapshot.  The
+        /// editor uses this only for rolling back a failed, pre-notification
+        /// synchronization; keeping the page instance is important because
+        /// ProjectSession and the active editor both reference it.
+        /// </summary>
+        internal void RestoreFrom(PageDocument source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            if (source.PageId != PageId) throw new InvalidOperationException("Page identity cannot be changed while restoring a snapshot.");
+            var restored = source.Clone(PageId, preserveObjectIds: true);
+            Name = restored.Name;
+            Order = restored.Order;
+            Canvas.CanvasWidth = restored.Canvas.CanvasWidth;
+            Canvas.CanvasHeight = restored.Canvas.CanvasHeight;
+            Canvas.ImageData1 = restored.Canvas.ImageData1.Clone();
+            Canvas.ImageData2 = restored.Canvas.ImageData2.Clone();
+            Canvas.Image2LocatePosition = restored.Canvas.Image2LocatePosition;
+            Canvas.ImageMarginTop = restored.Canvas.ImageMarginTop;
+            Canvas.ImageMarginLeft = restored.Canvas.ImageMarginLeft;
+            Canvas.ImageMarginBottom = restored.Canvas.ImageMarginBottom;
+            Canvas.ImageMarginRight = restored.Canvas.ImageMarginRight;
+            Canvas.CanvasColor = restored.Canvas.CanvasColor;
+            _mojiDatas.Clear();
+            _mojiDatas.AddRange(restored._mojiDatas.Select(CloneMojiData));
+            _balloons.Clear();
+            _balloons.AddRange(restored._balloons.Select(CloneBalloonData));
+            _attachedSymbols.Clear();
+            _attachedSymbols.AddRange(restored._attachedSymbols.Select(CloneAttachedSymbolData));
+            _objectOrder.Clear();
+            _objectOrder.AddRange(restored._objectOrder);
         }
 
         internal static CanvasData CloneCanvas(CanvasData source)
@@ -678,6 +795,59 @@ namespace MojiCollaTool
                 {
                     throw new InvalidOperationException($"Duplicate object ID: {item.ObjectId}");
                 }
+            }
+        }
+
+        private static void ValidateBalloonTextLinks(IEnumerable<MojiData> mojiDatas, IEnumerable<BalloonData> balloons)
+        {
+            var textIds = mojiDatas.Select(item => item.ObjectId).ToHashSet();
+            var linkedTextIds = new HashSet<Guid>();
+            foreach (var balloon in balloons.Where(item => item.TextLink != null))
+            {
+                var textId = balloon.TextLink!.TextObjectId;
+                if (!textIds.Contains(textId)) throw new InvalidDataException("Balloon text link target was not found on this page.");
+                if (!linkedTextIds.Add(textId)) throw new InvalidDataException("A text object cannot be linked to more than one balloon.");
+            }
+        }
+
+        private void MigrateDuplicateBalloonTextLinks()
+        {
+            var order = _objectOrder
+                .Select((objectId, index) => (objectId, index))
+                .ToDictionary(item => item.objectId, item => item.index);
+            var linkedTextIds = new HashSet<Guid>();
+            foreach (var balloon in _balloons
+                .Where(item => item.TextLink != null)
+                .OrderBy(item => order.TryGetValue(item.ObjectId, out var index) ? index : int.MaxValue))
+            {
+                var textId = balloon.TextLink!.TextObjectId;
+                if (!linkedTextIds.Add(textId))
+                {
+                    // Keep the first link in canonical drawing order.  This
+                    // is deterministic even when the archive's list order
+                    // differs from its persisted ZIndex values.
+                    balloon.TextLink = null;
+                }
+            }
+        }
+
+        private List<Guid> CanonicalizeComposition(IEnumerable<Guid> block, IReadOnlyList<Guid> composition)
+        {
+            var blockIds = block.ToHashSet();
+            return composition.Where(blockIds.Contains).ToList();
+        }
+
+        private void CanonicalizeBalloonCompositions()
+        {
+            foreach (var balloon in _balloons.Where(item => item.TextLink != null))
+            {
+                var composition = GetBalloonCompositionObjectIds(balloon.ObjectId);
+                var members = composition.ToHashSet();
+                var balloonIndex = _objectOrder.IndexOf(balloon.ObjectId);
+                if (balloonIndex < 0) continue;
+                var insertionIndex = _objectOrder.Take(balloonIndex).Count(objectId => !members.Contains(objectId));
+                _objectOrder.RemoveAll(members.Contains);
+                _objectOrder.InsertRange(Math.Min(insertionIndex, _objectOrder.Count), composition);
             }
         }
 
@@ -840,5 +1010,13 @@ namespace MojiCollaTool
                 }
             }
         }
+    }
+
+    public enum BalloonCompositionOrder
+    {
+        BringToFront,
+        BringForward,
+        SendBackward,
+        SendToBack,
     }
 }

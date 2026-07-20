@@ -29,8 +29,8 @@ namespace MojiCollaTool.Tests
             var page = new PageDocument("01", new[] { text }, new[] { balloon });
 
             Assert.AreEqual(2, page.ObjectCount);
-            Assert.AreEqual(0, page.GetDocumentObject(text.ObjectId).ZIndex);
-            Assert.AreEqual(1, page.GetBalloon(balloon.ObjectId).ZIndex);
+            Assert.AreEqual(0, page.GetBalloon(balloon.ObjectId).ZIndex);
+            Assert.AreEqual(1, page.GetDocumentObject(text.ObjectId).ZIndex);
             Assert.AreEqual(text.ObjectId, page.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
             Assert.AreEqual(BalloonShapeKind.RoundedRectangle, page.GetBalloon(balloon.ObjectId).ShapeKind);
         }
