@@ -155,22 +155,9 @@ namespace MojiCollaTool
 
         private void MojiPanel_MouseMove(object sender, MouseEventArgs e)
         {
-            if (MojiData.IsLocked)
-            {
-                pageEditor.ReportInteractionStatus("ロック中の文字は操作できません。");
-                CancelDragForLock();
-                return;
-            }
             if (dragStart != null && e.LeftButton == MouseButtonState.Pressed)
             {
-                var element = (UIElement)sender;
-                var p2 = e.GetPosition(pageEditor.Canvas);
-
-                MojiData.X = p2.X - dragStart.Value.X;
-                MojiData.Y = p2.Y - dragStart.Value.Y;
-                dragMoved = true;
-
-                Margin = new Thickness(MojiData.X, MojiData.Y, 0, 0);
+                UpdateDrag(e.GetPosition(pageEditor.Canvas));
             }
         }
 
@@ -180,24 +167,7 @@ namespace MojiCollaTool
 
             if(dragStart != null)
             {
-                if (MojiData.IsLocked)
-                {
-                    CancelDragForLock();
-                }
-                else
-                {
-                    MojiData.X = VisualOffset.X;
-                    MojiData.Y = VisualOffset.Y;
-                    MojiWindow?.UpdateXY(MojiData.X, MojiData.Y);
-                    if (dragMoved)
-                    {
-                        pageEditor.InvalidateLinkedTextLayout(MojiData.ObjectId);
-                        pageEditor.NotifyContentChanged("位置変更", MojiData.ObjectId.ToString("D"));
-                    }
-                    dragStart = null;
-                    dragBeforePosition = null;
-                    dragMoved = false;
-                }
+                CommitDrag();
             }
             element.ReleaseMouseCapture();
 
@@ -245,7 +215,7 @@ namespace MojiCollaTool
         private void MojiPanel_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton != MouseButton.Left) return;
-            if (MojiData.IsLocked)
+            if (!BeginDrag(e.GetPosition((UIElement)sender)))
             {
                 e.Handled = true;
                 pageEditor.ReportInteractionStatus("ロック中の文字は左クリックで選択できません。");
@@ -253,10 +223,57 @@ namespace MojiCollaTool
             }
             pageEditor.HandleMojiListItemClickFromUi(this);
             var element = (UIElement)sender;
-            dragStart = e.GetPosition(element);
+            element.CaptureMouse();
+        }
+
+        internal bool BeginDrag(Point relativeStart)
+        {
+            if (_isDisposed || MojiData.IsLocked || !pageEditor.CanMoveTextWithAttachedSymbols(MojiData.ObjectId)) return false;
+            dragStart = relativeStart;
             dragBeforePosition = new Point(MojiData.X, MojiData.Y);
             dragMoved = false;
-            element.CaptureMouse();
+            return true;
+        }
+
+        internal bool UpdateDrag(Point canvasPosition)
+        {
+            if (dragStart == null) return false;
+            if (MojiData.IsLocked || !pageEditor.CanMoveTextWithAttachedSymbols(MojiData.ObjectId))
+            {
+                pageEditor.ReportInteractionStatus("ロック状態が変わったため、文字操作を取り消しました。");
+                CancelDragForLock();
+                return false;
+            }
+            MojiData.X = canvasPosition.X - dragStart.Value.X;
+            MojiData.Y = canvasPosition.Y - dragStart.Value.Y;
+            dragMoved = true;
+            Margin = new Thickness(MojiData.X, MojiData.Y, 0, 0);
+            return true;
+        }
+
+        internal bool CommitDrag()
+        {
+            if (dragStart == null) return false;
+            if (MojiData.IsLocked || !pageEditor.CanMoveTextWithAttachedSymbols(MojiData.ObjectId))
+            {
+                CancelDragForLock();
+                return false;
+            }
+            MojiData.X = Margin.Left;
+            MojiData.Y = Margin.Top;
+            MojiWindow?.UpdateXY(MojiData.X, MojiData.Y);
+            var changed = dragMoved && (!dragBeforePosition.HasValue ||
+                MojiData.X != dragBeforePosition.Value.X || MojiData.Y != dragBeforePosition.Value.Y);
+            if (changed)
+            {
+                UpdateXYView();
+                pageEditor.InvalidateLinkedTextLayout(MojiData.ObjectId);
+                pageEditor.NotifyContentChanged("位置変更", MojiData.ObjectId.ToString("D"));
+            }
+            dragStart = null;
+            dragBeforePosition = null;
+            dragMoved = false;
+            return changed;
         }
 
         private void CancelDragForLock()
@@ -272,6 +289,11 @@ namespace MojiCollaTool
             dragBeforePosition = null;
             dragMoved = false;
             ReleaseMouseCapture();
+        }
+
+        internal void CancelActiveDragForLock()
+        {
+            if (dragStart != null || dragBeforePosition.HasValue) CancelDragForLock();
         }
 
         internal void NotifyContentChanged(string description = "ページ編集", string? coalesceKey = null)

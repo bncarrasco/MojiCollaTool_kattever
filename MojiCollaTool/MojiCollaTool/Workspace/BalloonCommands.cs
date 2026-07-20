@@ -22,7 +22,8 @@ namespace MojiCollaTool
             if (session == null) throw new ArgumentNullException(nameof(session));
             var page = session.Document.GetPage(pageId);
             if (!page.ContainsBalloon(balloonId)) return false;
-            if (page.GetBalloon(balloonId).IsLocked) return false;
+            var balloon = page.GetBalloon(balloonId);
+            if (balloon.IsLocked || IsLinkedTextMutationBlocked(page, balloon)) return false;
             session.ExecutePage(pageId, target => target.RemoveBalloon(target.GetBalloon(balloonId)), "フキダシ削除");
             return true;
         }
@@ -47,7 +48,9 @@ namespace MojiCollaTool
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
             var page = session.Document.GetPage(pageId);
-            if (page.GetBalloon(balloonId).IsLocked || page.GetObject(textObjectId).IsLocked) return;
+            var balloon = page.GetBalloon(balloonId);
+            if (!page.ContainsObject(textObjectId) || balloon.IsLocked || page.GetObject(textObjectId).IsLocked ||
+                IsLinkedTextMutationBlocked(page, balloon)) return;
             session.ExecutePage(pageId, page => page.LinkBalloonText(balloonId, textObjectId, link), "フキダシ文字リンク");
         }
 
@@ -56,7 +59,7 @@ namespace MojiCollaTool
             if (session == null) throw new ArgumentNullException(nameof(session));
             var page = session.Document.GetPage(pageId);
             var balloon = page.GetBalloon(balloonId);
-            if (balloon.IsLocked || (balloon.TextLink != null && page.GetObject(balloon.TextLink.TextObjectId).IsLocked)) return;
+            if (balloon.IsLocked || IsLinkedTextMutationBlocked(page, balloon)) return;
             session.ExecutePage(pageId, page => page.UnlinkBalloonText(balloonId), "フキダシ文字リンク解除");
         }
 
@@ -68,5 +71,9 @@ namespace MojiCollaTool
             session.ExecutePage(pageId, page => page.MoveBalloonComposition(balloonId, operation), "フキダシ重なり順変更");
             return true;
         }
+
+        private static bool IsLinkedTextMutationBlocked(PageDocument page, BalloonData balloon)
+            => balloon.TextLink?.TextObjectId is Guid textObjectId &&
+               (!page.ContainsObject(textObjectId) || page.GetDocumentObject(textObjectId).IsLocked);
     }
 }

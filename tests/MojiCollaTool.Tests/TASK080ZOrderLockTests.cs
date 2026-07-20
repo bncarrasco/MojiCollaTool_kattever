@@ -105,7 +105,7 @@ public sealed class TASK080ZOrderLockTests
         page.SetObjectLocked(text.ObjectId, true);
         page.MoveObjectOrder(text.ObjectId, ObjectOrderOperation.BringToFront);
         var project = new ProjectDocument(Guid.NewGuid(), "保存テスト", new[] { page });
-        var path = Path.Combine(Path.GetTempPath(), $"task080-{Guid.NewGuid():N}.mctzip");
+        var path = Path.Combine(Path.GetTempPath(), $"日本語-task080-{Guid.NewGuid():N}.mctzip");
         try
         {
             DataIO.WriteVersionedProject(path, project);
@@ -395,17 +395,351 @@ public sealed class TASK080ZOrderLockTests
             var project = new ProjectDocument(Guid.NewGuid(), "日本語 project", new[] { firstPage, secondPage });
             using var editor = new PageEditorControl();
             editor.BindPage(firstPage, null);
-            editor.HandleMojiListItemClickFromUi(editor.MojiPanels.Single());
+            var firstPanel = editor.MojiPanels.Single();
+            var firstMenu = firstPanel.ContextMenu!;
+            editor.HandleMojiListItemClickFromUi(firstPanel);
             editor.BindPage(secondPage, null);
             Assert.IsNull(editor.SelectedObjectId);
+            Assert.IsNull(firstPanel.ContextMenu);
+            Assert.IsFalse(firstMenu.IsOpen);
             Assert.IsTrue(editor.MojiPanels.Single().ContextMenu != null);
             editor.BindPage(firstPage, null);
             Assert.AreEqual(firstText.ObjectId, editor.SelectedObjectId);
-            var menu = editor.MojiPanels.Single().ContextMenu!;
+            var retainedPanel = editor.MojiPanels.Single();
+            var menu = retainedPanel.ContextMenu!;
             menu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
             editor.Dispose();
-            Assert.IsNull(editor.MojiPanels.SingleOrDefault()?.ContextMenu);
+            Assert.IsNull(retainedPanel.ContextMenu);
+            Assert.IsFalse(menu.IsOpen);
+            var oldLock = menu.Items.OfType<MenuItem>().Single(item => (string)item.Header == "ロック");
+            oldLock.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.IsFalse(firstPage.GetDocumentObject(firstText.ObjectId).IsLocked);
         });
+    }
+
+    [TestMethod]
+    public void RelinkAndBalloonRemovalProtectLockedPreviousLinkedTextInUiAndCommands()
+    {
+        var oldText = new MojiData { FullText = "old" };
+        var newText = new MojiData { FullText = "new" };
+        var balloon = new BalloonData();
+        var page = new PageDocument("01", new[] { oldText, newText }, new[] { balloon });
+        page.LinkBalloonText(balloon.ObjectId, oldText.ObjectId);
+        page.SetObjectLocked(oldText.ObjectId, true);
+        using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "project", new[] { page }));
+        var sessionPage = session.Document.GetPage(page.PageId);
+        var beforeUndo = session.UndoCount;
+
+        BalloonCommands.LinkText(session, page.PageId, balloon.ObjectId, newText.ObjectId);
+        Assert.IsFalse(BalloonCommands.Remove(session, page.PageId, balloon.ObjectId));
+        Assert.AreEqual(oldText.ObjectId, sessionPage.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
+        Assert.AreEqual(beforeUndo, session.UndoCount);
+        Assert.IsFalse(session.IsDirty);
+
+        RunOnSta(() =>
+        {
+            using var editor = new PageEditorControl();
+            editor.BindPage(sessionPage, null);
+            editor.SelectBalloonFromUi(editor.BalloonVisuals.Single());
+            Assert.IsFalse(editor.TryLinkSelectedBalloon(newText.ObjectId));
+            Assert.IsFalse(editor.RemoveBalloon(balloon.ObjectId));
+            Assert.AreEqual(oldText.ObjectId, editor.BalloonVisuals.Single().BalloonData.TextLink!.TextObjectId);
+        });
+
+        sessionPage.SetObjectLocked(oldText.ObjectId, false);
+        BalloonCommands.LinkText(session, page.PageId, balloon.ObjectId, newText.ObjectId);
+        Assert.AreEqual(newText.ObjectId, sessionPage.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
+        Assert.IsTrue(BalloonCommands.Remove(session, page.PageId, balloon.ObjectId));
+    }
+
+    [TestMethod]
+    public void ProductionLockCommandCancelsInProgressGeometryBeforeCapture()
+    {
+        RunOnSta(() =>
+        {
+            var balloon = new BalloonData { X = 15, Y = 20 };
+            var page = new PageDocument("01", balloons: new[] { balloon });
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "project", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+            var visual = editor.BalloonVisuals.Single();
+            Assert.IsTrue(editor.BeginBalloonGesture(visual.ObjectId, new Point(0, 0)));
+            Assert.IsTrue(editor.UpdateBalloonGesture(new Point(80, 50)));
+            Assert.AreNotEqual(15d, visual.BalloonData.X);
+
+            Assert.IsTrue(editor.SetSelectedObjectLocked(true));
+            Assert.AreEqual(15d, visual.BalloonData.X);
+            Assert.AreEqual(20d, visual.BalloonData.Y);
+            Assert.AreEqual(15d, page.GetBalloon(balloon.ObjectId).X);
+            Assert.IsTrue(page.GetBalloon(balloon.ObjectId).IsLocked);
+            Assert.AreEqual(1, session.UndoCount);
+            Assert.IsFalse(editor.IsBalloonGestureActive);
+        });
+    }
+
+    [TestMethod]
+    public void ParentTextDragHonorsAttachedSymbolLocksAndDetachedExceptionInBothDirections()
+    {
+        RunOnSta(() =>
+        {
+            foreach (var direction in new[] { TextDirection.Yokogaki, TextDirection.Tategaki })
+            {
+                var text = new MojiData { FullText = "方向", TextDirection = direction, X = 10, Y = 20 };
+                var member = new AttachedSymbolData
+                {
+                    ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "!", IsLocked = true,
+                };
+                var detached = new AttachedSymbolData { Text = "?", IsDetached = true, IsLocked = true };
+                var page = new PageDocument(direction.ToString(), new[] { text });
+                page.AddAttachedSymbol(member);
+                page.AddAttachedSymbol(detached);
+                using var editor = new PageEditorControl();
+                editor.BindPage(page, null);
+                var panel = editor.MojiPanels.Single();
+                Assert.IsFalse(panel.BeginDrag(new Point(0, 0)));
+                Assert.AreEqual(10d, panel.MojiData.X);
+
+                editor.SelectAttachedSymbolFromUi(editor.AttachedSymbolVisuals.Single());
+                Assert.IsTrue(editor.SetSelectedObjectLocked(false));
+                Assert.IsTrue(panel.BeginDrag(new Point(0, 0)));
+                Assert.IsTrue(panel.UpdateDrag(new Point(40, 60)));
+                Assert.IsTrue(panel.CommitDrag());
+                Assert.AreEqual(40d, panel.MojiData.X);
+                Assert.AreEqual(60d, panel.MojiData.Y);
+
+                Assert.IsTrue(panel.BeginDrag(new Point(0, 0)));
+                Assert.IsTrue(panel.UpdateDrag(new Point(80, 90)));
+                editor.SelectAttachedSymbolFromUi(editor.AttachedSymbolVisuals.Single());
+                Assert.IsTrue(editor.SetSelectedObjectLocked(true));
+                Assert.AreEqual(40d, panel.MojiData.X);
+                Assert.AreEqual(60d, panel.MojiData.Y);
+                Assert.IsFalse(panel.CommitDrag());
+            }
+        });
+    }
+
+    [TestMethod]
+    public void SymbolLockImmediatelyRefreshesOpenParentWindowControls()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { FullText = "parent" };
+            var symbol = new AttachedSymbolData { ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "!" };
+            var page = new PageDocument("01", new[] { text });
+            page.AddAttachedSymbol(symbol);
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            var panel = editor.MojiPanels.Single();
+            var window = panel.MojiWindow!;
+            var visual = editor.AttachedSymbolVisuals.Single();
+            editor.SelectAttachedSymbolFromUi(visual);
+            window.LoadMojiDataToWindow(panel.MojiData);
+            var remove = (Button)window.FindName("AttachedSymbolRemoveButton")!;
+            Assert.IsTrue(remove.IsEnabled);
+            Assert.IsTrue(editor.SetSelectedObjectLocked(true));
+            Assert.IsFalse(remove.IsEnabled);
+            Assert.IsTrue(editor.SetSelectedObjectLocked(false));
+            Assert.IsTrue(remove.IsEnabled);
+        });
+    }
+
+    [TestMethod]
+    public void TryAddAttachedSymbolDistinguishesSuccessLockedAndInvalidParentWithoutHistory()
+    {
+        var text = new MojiData { FullText = "parent" };
+        var page = new PageDocument("01", new[] { text });
+        using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "project", new[] { page }));
+        var sessionPage = session.Document.GetPage(page.PageId);
+        var first = new AttachedSymbolData { ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "!" };
+        Assert.IsTrue(AttachedSymbolCommands.TryAdd(session, page.PageId, first, out var addedId));
+        Assert.AreEqual(first.ObjectId, addedId);
+        Assert.IsTrue(sessionPage.ContainsAttachedSymbol(addedId));
+        var afterSuccess = session.UndoCount;
+
+        sessionPage.SetObjectLocked(text.ObjectId, true);
+        var locked = new AttachedSymbolData { ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "?" };
+        Assert.IsFalse(AttachedSymbolCommands.TryAdd(session, page.PageId, locked, out var lockedId));
+        Assert.AreEqual(Guid.Empty, lockedId);
+        Assert.AreEqual(Guid.Empty, AttachedSymbolCommands.Add(session, page.PageId, locked));
+        Assert.AreEqual(afterSuccess, session.UndoCount);
+        Assert.IsFalse(sessionPage.ContainsAttachedSymbol(locked.ObjectId));
+
+        var invalid = new AttachedSymbolData { ParentId = Guid.NewGuid(), GraphemeAnchor = 0, Text = "x" };
+        Assert.IsFalse(AttachedSymbolCommands.TryAdd(session, page.PageId, invalid, out var invalidId));
+        Assert.AreEqual(Guid.Empty, invalidId);
+        Assert.AreEqual(afterSuccess, session.UndoCount);
+    }
+
+    [TestMethod]
+    public void ProductionToolbarAndContextMenuExerciseAllFourOrderActionsForEveryObjectType()
+    {
+        RunOnSta(() =>
+        {
+            foreach (var kind in Enum.GetValues<TestObjectKind>())
+            foreach (var operation in Enum.GetValues<ObjectOrderOperation>())
+            foreach (var useContextMenu in new[] { false, true })
+                AssertProductionOrderAction(kind, operation, useContextMenu);
+        });
+    }
+
+    [TestMethod]
+    public void ProductionOrderTracksSavedDirtyUndoRedoBranchAndSubscriberCommitBoundary()
+    {
+        RunOnSta(() =>
+        {
+            var texts = new[]
+            {
+                new MojiData { FullText = "a" }, new MojiData { FullText = "b" }, new MojiData { FullText = "c" },
+            };
+            var page = new PageDocument("01", texts);
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "project", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+            editor.HandleMojiListItemClickFromUi(editor.MojiPanels[1]);
+            session.MarkSaved();
+            ((Button)editor.FindName("BringToFrontButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.IsTrue(session.IsDirty);
+            Assert.AreEqual(1, session.UndoCount);
+            Assert.IsTrue(session.Undo());
+            editor.ReloadBoundPage();
+            Assert.IsFalse(session.IsDirty);
+            Assert.IsTrue(session.CanRedo);
+            Assert.IsTrue(session.Redo());
+            editor.ReloadBoundPage();
+            Assert.IsTrue(session.IsDirty);
+            Assert.IsTrue(session.Undo());
+            editor.ReloadBoundPage();
+            editor.RestoreViewState(100, texts[1].ObjectId);
+            Assert.IsTrue(editor.SetSelectedObjectLocked(true));
+            Assert.IsFalse(session.CanRedo);
+        });
+
+        RunOnSta(() =>
+        {
+            var texts = new[]
+            {
+                new MojiData { FullText = "a" }, new MojiData { FullText = "b" }, new MojiData { FullText = "c" },
+            };
+            var page = new PageDocument("subscriber", texts);
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            var panel = editor.MojiPanels[1];
+            editor.HandleMojiListItemClickFromUi(panel);
+            var before = page.AllObjects.Select(item => item.ObjectId).ToArray();
+            editor.ContentChanged += (_, _) => throw new InvalidOperationException("subscriber");
+            Assert.ThrowsException<InvalidOperationException>(() => editor.MoveSelectedObject(ObjectOrderOperation.BringToFront));
+            CollectionAssert.AreNotEqual(before, page.AllObjects.Select(item => item.ObjectId).ToArray());
+            Assert.AreEqual(panel.MojiData.ObjectId, editor.SelectedObjectId);
+            Assert.AreEqual(page.GetDocumentObject(panel.MojiData.ObjectId).ZIndex, Canvas.GetZIndex(panel));
+        });
+    }
+
+    private static void AssertProductionOrderAction(TestObjectKind kind, ObjectOrderOperation operation, bool useContextMenu)
+    {
+        var first = new MojiData { FullText = "first" };
+        var targetText = new MojiData { FullText = "target" };
+        var last = new MojiData { FullText = "last" };
+        var balloons = new[] { new BalloonData(), new BalloonData(), new BalloonData() };
+        var page = new PageDocument("matrix", new[] { first, targetText, last }, balloons);
+        var symbol = new AttachedSymbolData { ParentId = targetText.ObjectId, GraphemeAnchor = 0, Text = "!" };
+        page.AddAttachedSymbol(symbol);
+        using var editor = new PageEditorControl();
+        editor.BindPage(page, null);
+
+        FrameworkElement element;
+        Guid targetId;
+        switch (kind)
+        {
+            case TestObjectKind.Text:
+                var panel = editor.MojiPanels.Single(item => item.MojiData.ObjectId == targetText.ObjectId);
+                editor.HandleMojiListItemClickFromUi(panel);
+                element = panel;
+                targetId = panel.MojiData.ObjectId;
+                break;
+            case TestObjectKind.Balloon:
+                var balloon = editor.BalloonVisuals[1];
+                editor.SelectBalloonFromUi(balloon);
+                element = balloon;
+                targetId = balloon.ObjectId;
+                break;
+            default:
+                var symbolVisual = editor.AttachedSymbolVisuals.Single();
+                editor.SelectAttachedSymbolFromUi(symbolVisual);
+                element = symbolVisual;
+                targetId = symbolVisual.ObjectId;
+                break;
+        }
+
+        var before = page.AllObjects.Select(item => item.ObjectId).ToArray();
+        if (useContextMenu)
+        {
+            var headers = new System.Collections.Generic.Dictionary<ObjectOrderOperation, string>
+            {
+                [ObjectOrderOperation.BringToFront] = "最前面へ",
+                [ObjectOrderOperation.BringForward] = "前面へ",
+                [ObjectOrderOperation.SendBackward] = "背面へ",
+                [ObjectOrderOperation.SendToBack] = "最背面へ",
+            };
+            var menu = element.ContextMenu!;
+            menu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            var item = menu.Items.OfType<MenuItem>().Single(candidate => (string)candidate.Header == headers[operation]);
+            Assert.IsTrue(item.IsEnabled, $"{kind}/{operation} context menu must be enabled");
+            item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        }
+        else
+        {
+            var names = new System.Collections.Generic.Dictionary<ObjectOrderOperation, string>
+            {
+                [ObjectOrderOperation.BringToFront] = "BringToFrontButton",
+                [ObjectOrderOperation.BringForward] = "BringForwardButton",
+                [ObjectOrderOperation.SendBackward] = "SendBackwardButton",
+                [ObjectOrderOperation.SendToBack] = "SendToBackButton",
+            };
+            var button = (Button)editor.FindName(names[operation])!;
+            Assert.IsTrue(button.IsEnabled, $"{kind}/{operation} toolbar must be enabled");
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }
+
+        CollectionAssert.AreNotEqual(before, page.AllObjects.Select(item => item.ObjectId).ToArray());
+        Assert.AreEqual(targetId, editor.SelectedObjectId);
+        CollectionAssert.AreEqual(
+            Enumerable.Range(0, page.ObjectCount).ToArray(),
+            page.AllObjects.Select(item => item.ZIndex).ToArray());
+        foreach (var panel in editor.MojiPanels)
+            Assert.AreEqual(page.GetDocumentObject(panel.MojiData.ObjectId).ZIndex, Canvas.GetZIndex(panel));
+        foreach (var balloon in editor.BalloonVisuals)
+            Assert.AreEqual(page.GetDocumentObject(balloon.ObjectId).ZIndex, Canvas.GetZIndex(balloon));
+        foreach (var attached in editor.AttachedSymbolVisuals)
+            Assert.AreEqual(page.GetDocumentObject(attached.ObjectId).ZIndex, Canvas.GetZIndex(attached));
+        CollectionAssert.AreEqual(
+            page.AllObjects.Select(item => item.ObjectId).ToArray(),
+            editor.Canvas.Children.OfType<FrameworkElement>()
+                .Select(child => child switch
+                {
+                    MojiPanel panel => panel.MojiData.ObjectId,
+                    BalloonVisual balloon => balloon.ObjectId,
+                    AttachedSymbolVisual attached => attached.ObjectId,
+                    _ => Guid.Empty,
+                })
+                .Where(id => id != Guid.Empty)
+                .ToArray());
+    }
+
+    private enum TestObjectKind
+    {
+        Text,
+        Balloon,
+        AttachedSymbol,
     }
 
     private static void RunOnSta(Action action)

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace MojiCollaTool
 {
@@ -10,12 +11,34 @@ namespace MojiCollaTool
     {
         public static Guid Add(ProjectSession session, Guid pageId, AttachedSymbolData symbol, string description = "付加記号追加")
         {
+            return TryAdd(session, pageId, symbol, out var id, description) ? id : Guid.Empty;
+        }
+
+        /// <summary>
+        /// Adds an attached symbol when its parent exists and is editable.
+        /// A false result is a refusal and never creates history or marks the session dirty.
+        /// </summary>
+        public static bool TryAdd(ProjectSession session, Guid pageId, AttachedSymbolData symbol, out Guid objectId,
+            string description = "付加記号追加")
+        {
             if (session == null) throw new ArgumentNullException(nameof(session));
             if (symbol == null) throw new ArgumentNullException(nameof(symbol));
-            if (symbol.ParentId is Guid parentId && session.Document.GetPage(pageId).GetDocumentObject(parentId).IsLocked) return symbol.ObjectId;
-            var id = symbol.ObjectId;
-            session.ExecutePage(pageId, page => page.AddAttachedSymbol(symbol), description);
-            return id;
+            objectId = Guid.Empty;
+            var page = session.Document.GetPage(pageId);
+            if (symbol.ParentId is Guid parentId)
+            {
+                var parent = page.AllObjects.FirstOrDefault(item => item.ObjectId == parentId);
+                if (parent == null || parent.IsLocked) return false;
+            }
+
+            var trial = page.Clone(preserveObjectIds: true);
+            try { trial.AddAttachedSymbol(symbol); }
+            catch (InvalidOperationException) { return false; }
+            catch (System.IO.InvalidDataException) { return false; }
+
+            session.ExecutePage(pageId, target => target.AddAttachedSymbol(symbol), description);
+            objectId = symbol.ObjectId;
+            return true;
         }
 
         public static void Update(ProjectSession session, Guid pageId, Guid symbolId, Action<AttachedSymbolData> update,

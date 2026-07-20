@@ -215,6 +215,8 @@ namespace MojiCollaTool
             }) control.IsEnabled = symbolEditable;
         }
 
+        internal void RefreshEditabilityFromModel() => RefreshEditability();
+
         private void ReproductionButton_Click(object sender, RoutedEventArgs e)
         {
             if (!CanEditTextMutation()) return;
