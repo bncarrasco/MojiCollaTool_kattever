@@ -24,7 +24,8 @@ TASK-150を完了しました。2件以上のフキダシをpage-levelのrelatio
 - Branch: `feature/TASK-150-balloon-merge`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-150`
 - Functional base / 開始HEAD: `c87417f3d235365e4e6d5266997acbf15a6099c7`
-- Implementation / test commit: `0f9a657c89159f94f42a61f04e87d507cf040afc`
+- Initial implementation / test commit: `0f9a657ad2a87ad315c81f6cb4887926ad834b9d`
+- Review round 1 correction commit: `8aa9a7431891700821b153a7d074ca7230e505b0`
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` = `6.0.428`
 - push / merge / rebase: 実施していません
 - 開始時確認: top-level、branch、HEAD、clean status、正式worktree登録、変更前diffなしを確認済みです。
@@ -57,22 +58,32 @@ TASK-150を完了しました。2件以上のフキダシをpage-levelのrelatio
 
 ADR-0009の決定を実装し、ADR-0005／ADR-0008と互換仕様を現行2.4 policyへ更新しました。新しいADR候補はありません。
 
+## Review round 1修正
+
+- 合体中は`FitTextToBalloon`／`FitBalloonToText`のApply commandを直接呼出しと実buttonの双方で拒否し、個別frame resizeを迂回できないようにしました。
+- public modelの非force `RemoveBalloon`で、target、他merge member、linked text、non-detached attached symbolのlockを全てpreflightします。
+- primaryの`IsVisible`をfill／strokeと同じprimary-style policyとし、hidden primaryでは描画・hitとも無効、hidden non-primaryではprimaryがvisibleならgroup geometryを維持します。
+- group moveは全balloon／tail／linked text candidateとrelated symbolをclone上で先に検証し、overflowまたはlate validation failureでは一切commitしません。live gestureも同じmodel trialを通し、不正結果をbefore snapshotへ戻します。
+- merge／unmergeの最初の`CapturePage`をrollback範囲へ含め、UI同期validation failureでもdocument、live、Canvas、selection、history、dirty、notificationを復元します。
+- 各member×4実Z button、actual Canvas children/Z、全tail同時描画とprimary style、unlinked member移動、Undo/Redo rebind、remove、Dispose後の旧visual eventを追加検証しました。
+- review結果: BLOCKER 0、MAJOR 5件を修正、MINOR 1件のcommit hash記録を訂正しました。
+
 ## 検証
 
 - Debug build: 成功、警告0、エラー0
-- Debug全test: 246/246成功、失敗0
+- Debug全test: 254/254成功、失敗0
 - Release build: 成功、警告0、エラー0
-- Release全test: 246/246成功、失敗0
-- TASK-150専用test: Debug/Release 8/8成功
+- Release全test: 254/254成功、失敗0
+- TASK-150専用test: Debug/Release 16/16成功
 - `git diff --check`: 成功
-- Baseline 238 testsを退行させていません。
+- Baseline 238 testsを退行させていません。review round 1で追加した8件を含め、専用testは16件です。
 
-専用testでは、strict validation、cross-group重複とatomic failure、flat combine、primary/member削除、clone ID preserve/remap、全member dataのdeep非破壊比較、typed block、lock、history／dirty／Undo/Redo／redo branch、subscriber例外、5 shape、rotation、overlap／touch／containment／non-overlap、tail、内部stroke抑制、transparent gap exact hit、実XAML UI、one merge visual、個別handle抑制、group gesture、途中lock、lifecycle、2.4 round-trip、2.3読込、2.5／invalid拒否、日本語pathを確認しました。
+専用testでは、strict validation、cross-group重複とatomic failure、flat combine、primary/member削除、clone ID preserve/remap、全member dataのdeep非破壊比較、typed block、lock、history／dirty／Undo/Redo／redo branch、subscriber例外、5 shape、rotation、overlap／touch／containment／non-overlap、全member tail同時描画、primary style／visibility、内部stroke抑制、transparent gap exact hit、各memberからの4実Z buttonとCanvas順、実Apply buttonでの合体中layout拒否、model delete全composition lock、overflow／late symbol failure atomic move、linked横／縦＋unlinked member gesture、merge同期失敗rollback、Undo/Redo rebind、remove、Dispose handler解放、2.4 round-trip、2.3読込、2.5／invalid拒否、日本語pathを確認しました。
 
 ### 性能実測
 
-- Debug: single refresh/hit p95 `0.049 ms`、24 group × 100 batch `85.828 ms`
-- Release: single refresh/hit p95 `0.045 ms`、24 group × 100 batch `112.663 ms`
+- Debug: single refresh/hit p95 `0.045 ms`、24 group × 100 batch `79.505 ms`
+- Release: single refresh/hit p95 `0.039 ms`、24 group × 100 batch `62.594 ms`
 - Release目標: single p95 50 ms未満、100 refresh batch 1,500 ms未満
 - Debug safety: 3,000 ms未満
 - geometry cacheはcapacityを超えないことを確認しました。
