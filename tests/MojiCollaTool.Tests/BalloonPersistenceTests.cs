@@ -53,7 +53,8 @@ namespace MojiCollaTool.Tests
             Assert.AreEqual(balloon.Tail.RootParameter, restoredBalloon.Tail.RootParameter);
             Assert.AreEqual(text.ObjectId, restoredBalloon.TextLink!.TextObjectId);
             Assert.AreEqual(BalloonTextAlignment.Start, restoredBalloon.TextLink.Alignment);
-            Assert.AreEqual(1, restoredBalloon.ZIndex);
+            Assert.AreEqual(0, restoredBalloon.ZIndex);
+            Assert.AreEqual(1, restoredPage.GetDocumentObject(text.ObjectId).ZIndex);
         }
 
         [TestMethod]
