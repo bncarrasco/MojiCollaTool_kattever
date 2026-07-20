@@ -134,7 +134,7 @@ public class TASK130BalloonTailLinkTests
     {
         RunOnSta(() =>
         {
-            var text = new MojiData { Id = 7, FullText = "縦横リンク" };
+            var text = new MojiData { Id = 7, FullText = "縦横リンク", TextDirection = TextDirection.Tategaki, FontSize = 43 };
             var balloon = new BalloonData();
             var page = new PageDocument("01", new[] { text }, new[] { balloon });
             using var editor = new PageEditorControl();
@@ -152,6 +152,8 @@ public class TASK130BalloonTailLinkTests
 
             Assert.IsTrue(editor.TryLinkSelectedBalloon(text.ObjectId));
             Assert.AreEqual(text.ObjectId, editor.BalloonVisuals.Single().BalloonData.TextLink!.TextObjectId);
+            Assert.AreEqual(TextDirection.Tategaki, editor.MojiPanels.Single().MojiData.TextDirection);
+            Assert.AreEqual(43, editor.MojiPanels.Single().MojiData.FontSize);
             Assert.IsFalse(editor.TryLinkSelectedBalloon(Guid.NewGuid()));
             Assert.IsTrue(((TextBlock)editor.FindName("BalloonStatusTextBlock")!).Text.Contains("同じページ"));
             Assert.IsTrue(editor.UnlinkSelectedBalloon());
