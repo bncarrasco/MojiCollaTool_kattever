@@ -102,6 +102,8 @@
                 <Button x:Name="BringForwardButton" Content="前面へ" Click="BringForwardButton_Click" Margin="4,0,0,0" Padding="7,2"/>
                 <Button x:Name="SendBackwardButton" Content="背面へ" Click="SendBackwardButton_Click" Margin="4,0,0,0" Padding="7,2"/>
                 <Button x:Name="SendToBackButton" Content="最背面へ" Click="SendToBackButton_Click" Margin="4,0,0,0" Padding="7,2"/>
+                <Button x:Name="LockButton" Content="ロック" Click="LockButton_Click" Margin="12,0,0,0" Padding="7,2"/>
+                <Button x:Name="UnlockButton" Content="ロック解除" Click="UnlockButton_Click" Margin="4,0,0,0" Padding="7,2"/>
                 <TextBlock x:Name="BalloonStatusTextBlock" Margin="10,3,0,0" VerticalAlignment="Center"/>
             </WrapPanel>
         </StackPanel>

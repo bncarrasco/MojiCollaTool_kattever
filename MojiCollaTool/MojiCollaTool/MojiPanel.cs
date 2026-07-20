@@ -141,6 +141,7 @@ namespace MojiCollaTool
         /// </summary>
         public void Remove()
         {
+            if (MojiData.IsLocked) return;
             pageEditor.RemoveMojiPanel(this);
         }
 
@@ -152,6 +153,7 @@ namespace MojiCollaTool
 
         private void MojiPanel_MouseMove(object sender, MouseEventArgs e)
         {
+            if (MojiData.IsLocked) return;
             if (dragStart != null && e.LeftButton == MouseButtonState.Pressed)
             {
                 var element = (UIElement)sender;
@@ -227,6 +229,13 @@ namespace MojiCollaTool
 
         private void MojiPanel_MouseDown(object sender, MouseButtonEventArgs e)
         {
+            if (e.ChangedButton != MouseButton.Left) return;
+            if (MojiData.IsLocked)
+            {
+                e.Handled = true;
+                return;
+            }
+            pageEditor.HandleMojiListItemClickFromUi(this);
             var element = (UIElement)sender;
             dragStart = e.GetPosition(element);
             dragMoved = false;

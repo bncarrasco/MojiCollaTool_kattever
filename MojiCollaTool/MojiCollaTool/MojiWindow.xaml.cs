@@ -192,6 +192,11 @@ namespace MojiCollaTool
 
         public void UpdateMojiView(bool isTextDecoraitonUpdated, string changeDescription = "スタイル変更", string? coalesceKey = null)
         {
+            if (_mojiPanel.MojiData.IsLocked && _runEvent)
+            {
+                LoadMojiDataToWindow(_mojiPanel.MojiData);
+                return;
+            }
             var data = _mojiPanel.MojiData;
             var layoutInputsChanged = data.FullText != TextTextBox.Text ||
                 data.FontSize != FontSizeTextBox.Value ||
