@@ -215,13 +215,21 @@ namespace MojiCollaTool
         private void MojiPanel_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton != MouseButton.Left) return;
+
+            // Selection and drag are separate permissions. A locked attached
+            // symbol rejects the move gesture, not the parent text selection.
+            pageEditor.HandleMojiListItemClickFromUi(this);
+            if (MojiData.IsLocked)
+            {
+                e.Handled = true;
+                return;
+            }
             if (!BeginDrag(e.GetPosition((UIElement)sender)))
             {
                 e.Handled = true;
-                pageEditor.ReportInteractionStatus("ロック中の文字は左クリックで選択できません。");
+                pageEditor.ReportInteractionStatus("関連する付加記号がロック中のため、文字を移動できません。");
                 return;
             }
-            pageEditor.HandleMojiListItemClickFromUi(this);
             var element = (UIElement)sender;
             element.CaptureMouse();
         }

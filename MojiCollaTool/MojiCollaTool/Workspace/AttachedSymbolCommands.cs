@@ -45,9 +45,15 @@ namespace MojiCollaTool
             string description = "付加記号編集", string? coalesceKey = null)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
-            var page = session.Document.GetPage(pageId);
-            var symbol = page.GetAttachedSymbol(symbolId);
-            if (symbol.IsLocked || (symbol.ParentId is Guid parentId && page.GetDocumentObject(parentId).IsLocked)) return;
+            if (update == null) throw new ArgumentNullException(nameof(update));
+            var sourcePage = session.Document.GetPage(pageId);
+            var symbol = sourcePage.GetAttachedSymbol(symbolId);
+            if (symbol.IsLocked || (symbol.ParentId is Guid parentId && sourcePage.GetDocumentObject(parentId).IsLocked)) return;
+            var candidate = symbol.Clone();
+            update(candidate);
+            // ParentId and IsDetached define ownership. Reanchor may still
+            // change GraphemeAnchor, but generic Update cannot reparent/orphan.
+            if (candidate.ParentId != symbol.ParentId || candidate.IsDetached != symbol.IsDetached) return;
             session.ExecutePage(pageId, page => page.UpdateAttachedSymbol(symbolId, update), description, coalesceKey);
         }
 

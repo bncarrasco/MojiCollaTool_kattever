@@ -760,7 +760,7 @@ namespace MojiCollaTool
 
         public void RemoveMojiPanel(MojiPanel mojiPanel, bool force = false)
         {
-            if (mojiPanel == null || (!force && mojiPanel.MojiData.IsLocked)) return;
+            if (mojiPanel == null || !CanRemoveMojiPanel(mojiPanel, force)) return;
             if (!_mojiPanels.Remove(mojiPanel)) return;
 
             // Keep a removed parent's symbols as explicit detached objects so
@@ -785,6 +785,37 @@ namespace MojiCollaTool
             MainCanvas.Children.Remove(mojiPanel);
             RefreshBalloonTools();
             RaiseContentChanged("文字削除");
+        }
+
+        private bool CanRemoveMojiPanel(MojiPanel mojiPanel, bool force)
+        {
+            if (force) return true;
+            var objectId = mojiPanel.MojiData.ObjectId;
+            if (mojiPanel.MojiData.IsLocked)
+            {
+                ReportInteractionStatus("ロック中の文字は削除できません。右クリックからロックを解除してください。");
+                return false;
+            }
+
+            var lockedSymbol = _attachedSymbolVisuals.Any(symbol => symbol.SymbolData.ParentId == objectId &&
+                !symbol.SymbolData.IsDetached && symbol.SymbolData.IsLocked) ||
+                _attachedSymbolModels.Any(symbol => symbol.ParentId == objectId && !symbol.IsDetached && symbol.IsLocked) ||
+                (_boundPage?.AttachedSymbols.Any(symbol => symbol.ParentId == objectId && !symbol.IsDetached && symbol.IsLocked) == true);
+            if (lockedSymbol)
+            {
+                ReportInteractionStatus("関連する付加記号がロック中のため、文字を削除できません。");
+                return false;
+            }
+
+            var lockedBalloon = _balloonVisuals.Any(balloon => balloon.BalloonData.TextLink?.TextObjectId == objectId &&
+                balloon.BalloonData.IsLocked) ||
+                (_boundPage?.Balloons.Any(balloon => balloon.TextLink?.TextObjectId == objectId && balloon.IsLocked) == true);
+            if (lockedBalloon)
+            {
+                ReportInteractionStatus("リンク中のフキダシがロック中のため、文字を削除できません。");
+                return false;
+            }
+            return true;
         }
 
         public void RemoveAllMojiPanel()

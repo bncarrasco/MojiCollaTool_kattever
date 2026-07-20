@@ -366,30 +366,27 @@ namespace MojiCollaTool
         public bool RemoveMojiData(MojiData mojiData)
         {
             if (mojiData == null) throw new ArgumentNullException(nameof(mojiData));
-            var removed = _mojiDatas.Remove(mojiData);
-            if (!removed && mojiData.ObjectId != Guid.Empty)
-            {
-                var matching = _mojiDatas.FirstOrDefault(candidate => candidate.ObjectId == mojiData.ObjectId);
-                if (matching != null) removed = _mojiDatas.Remove(matching);
-            }
+            var matching = _mojiDatas.FirstOrDefault(candidate => ReferenceEquals(candidate, mojiData) ||
+                (mojiData.ObjectId != Guid.Empty && candidate.ObjectId == mojiData.ObjectId));
+            if (matching == null || matching.IsLocked) return false;
+            if (_balloons.Any(balloon => balloon.TextLink?.TextObjectId == matching.ObjectId && balloon.IsLocked) ||
+                _attachedSymbols.Any(symbol => symbol.ParentId == matching.ObjectId && !symbol.IsDetached && symbol.IsLocked))
+                return false;
 
-            if (removed)
+            _mojiDatas.Remove(matching);
+            _objectOrder.Remove(matching.ObjectId);
+            foreach (var balloon in _balloons.Where(balloon => balloon.TextLink?.TextObjectId == matching.ObjectId))
             {
-                _objectOrder.Remove(mojiData.ObjectId);
-                foreach (var balloon in _balloons.Where(balloon => balloon.TextLink?.TextObjectId == mojiData.ObjectId))
-                {
-                    // Deleting text detaches the composition link but keeps the balloon.
-                    balloon.TextLink = null;
-                }
-                foreach (var symbol in _attachedSymbols.Where(symbol => symbol.ParentId == mojiData.ObjectId))
-                {
-                    symbol.ParentId = null;
-                    symbol.IsDetached = true;
-                    symbol.AnchorText = null;
-                }
-                NormalizeObjectOrder();
+                balloon.TextLink = null;
             }
-            return removed;
+            foreach (var symbol in _attachedSymbols.Where(symbol => symbol.ParentId == matching.ObjectId))
+            {
+                symbol.ParentId = null;
+                symbol.IsDetached = true;
+                symbol.AnchorText = null;
+            }
+            NormalizeObjectOrder();
+            return true;
         }
 
         public bool RemoveBalloon(BalloonData balloon)

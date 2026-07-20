@@ -33,7 +33,14 @@ namespace MojiCollaTool
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
             if (update == null) throw new ArgumentNullException(nameof(update));
-            if (session.Document.GetPage(pageId).GetBalloon(balloonId).IsLocked) return;
+            var sourcePage = session.Document.GetPage(pageId);
+            var before = sourcePage.GetBalloon(balloonId);
+            if (before.IsLocked) return;
+            var candidate = before.Clone();
+            update(candidate);
+            // TextLink is a relationship and has dedicated lock-aware link
+            // commands. Do not let generic Update bypass them or create history.
+            if (candidate.TextLink?.TextObjectId != before.TextLink?.TextObjectId) return;
             session.ExecutePage(pageId, page => page.UpdateBalloon(balloonId, update), description, coalesceKey);
         }
 
