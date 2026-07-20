@@ -1,62 +1,65 @@
-# TASK-140 Auto Text Layout Implementation Report
+# TASK-140 自動テキストレイアウト実装報告
 
-## Result
+## 結果
 
-TASK-140 now provides a deterministic, visual-only, grapheme-aware layout plan. `FullText` is never rewritten by wrapping, and CR/LF/CRLF explicit breaks remain explicit visual breaks. Advanced language-specific prohibition rules and hyphenation remain out of scope.
+TASK-140の自動レイアウトを、明示Applyによる一方向操作として実装しました。基本wrapは書記素単位で行い、`FullText`を書き換えません。CR/LF/CRLF/mixedの明示改行も保持します。高度な禁則、ハイフン分割、言語別line-break engineは対象外です。
 
-`FitTextToBalloon` changes only the linked text's persisted font size/position plus its visual plan. `FitBalloonToText` changes only the balloon position/bounds while preserving linked text, tail geometry, and attached-symbol data. Both are explicit one-way operations and each invocation is one history boundary.
+未適用の単なる文字リンクは、保存再読込・BindPage・ページ切替・Undo/Redo後もwrapしません。`LayoutMode=Unapplied`を既存2.2フィールドのsentinelとして使用し、明示Apply後だけplanを再構築します。適用後の手動text/style編集、text drag、balloon drag/resizeでは未適用へ戻します。
 
-## C140 review coverage
+`FitTextToBalloon`はtext側のfont/position/visual planだけを変更し、`FitBalloonToText`はballoon側のposition/boundsだけを変更します。padding、最小文字サイズ、alignment、modeは同じ1履歴へcommitします。FitBalloonでは現在のframeが小さくても、有限・非負paddingならtext計測後の新しいboundsへ適用できます。
 
-- C140-01: `BindPage`, page/project switching, `ReloadBoundPage`, Undo/Redo rebinding, and versioned save/reload rebuild a visual plan from persisted geometry, font, and `TextLinkData` without creating history or dirtying the document.
-- C140-02: pre-commit service/trial failures restore the bound `PageDocument`, Canvas, selection, z-order, attached symbols, computed plans, and live visuals. Subscriber exceptions are outside the rollback boundary and therefore propagate while retaining the semantic commit.
-- C140-03: the UI exposes current padding and minimum-font values. It rejects empty, non-numeric, NaN, Infinity, negative padding, non-positive minimum size, minimum size above the current font, and overlarge padding with Japanese status text and no mutation. Valid mode/alignment/padding/minimum values commit together.
-- C140-04: FitTextToBalloon gates only the text target; FitBalloonToText gates only the balloon target. The fixed side may be locked or hidden and is still measured.
-- C140-05: direction/alignment mapping and target text/balloon geometry are returned by `TextLayoutService`; `PageEditorControl` applies the result.
-- C140-06: both modes, no-op, explicit breaks, tail preservation, attached symbols, two directions, one-entry Undo/Redo, redo branches, dirty/saved state, and rebind plan/canvas behavior are covered.
-- C140-07: unit, lifecycle, UI, persistence, compatibility, and performance coverage is included below.
+## C140-08〜13対応
 
-## Git scope
+- C140-08: 未適用link、明示Apply済みlink、適用後の手動編集・drag・resizeを区別し、lifecycleで意図しない自動wrapを行わないことを検証しました。
+- C140-09: versioned XMLを`NewLineHandling.Entitize`で出力し、LF-only、CR-only、CRLF、mixed改行の文字列を完全往復します。version/schemaは変更していません。
+- C140-10: FitTextのframe内padding拒否とFitBalloonのtext＋padding計測を分離しました。24×24 frame、padding 20のFitBalloonを検証しました。
+- C140-11: 適用途中に別balloonの不正linkで`CapturePage`を失敗させ、live model、PageDocument、Canvas、selection、z-order、AttachedSymbol、ComputedLayout、history、dirtyをdeep rollbackするテストを追加しました。
+- C140-12: 実ComboBox選択と実Apply buttonのRaiseEvent、visual hierarchy/Z、redo branch、saved/dirty、両modeのPageEditor経路を検証しました。24 compositionを両modeで実測しました。
+- C140-13: 本報告、CHANGELOG、ledger、verification matrixを日本語の受入記録へ整理しました。
+
+## Git情報
 
 - Task: `TASK-140`
 - Worktree: `F:/github/MojiCollaTool-worktrees/TASK-140`
 - Branch: `feature/TASK-140-auto-text-layout`
-- Functional start HEAD: `6adc3c9affd1cc72fec3dfc7633e8794bdb05b3c`
-- Previous implementation commits retained: `fdbf417` and `96b1629f5f9b8663558644f5c1bb9689f7f76c22`
-- Review-fix commit: `faf756c3bfca72dc740ca3a3596bd198b99b9744`
+- Functional base / 開始HEAD: `6adc3c9affd1cc72fec3dfc7633e8794bdb05b3c`
+- 前回レビュー修正commit: `faf756cec414bb7fcf65b3a300778c7a62e52065`
+- 今回の実装・テストcommit: `467a62c278ed38d70a69c53f1be9d902b96dfe0c`
+- 未知のLayoutModeを暗黙適用しない安全弁commit: `5a74db3a8c38d7b2b900d11109942c4460d7e3de`
+- 最終記録commit: 文書commit後にfull hashを記録します
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` = `6.0.428`
-- Push, merge, and rebase: not performed
+- push / merge / rebase: 実施していません
 
-## Changed files
+## 主な変更ファイル
 
-- `MojiCollaTool/MojiCollaTool/Layout/TextLayoutService.cs`
-- `MojiCollaTool/MojiCollaTool/MojiPanel.cs`
-- `MojiCollaTool/MojiCollaTool/PageEditorControl.xaml`
-- `MojiCollaTool/MojiCollaTool/PageEditorControl.xaml.cs`
 - `MojiCollaTool/MojiCollaTool/Document/BalloonData.cs`
 - `MojiCollaTool/MojiCollaTool/Document/VersionedProjectFormat.cs`
+- `MojiCollaTool/MojiCollaTool/Layout/TextLayoutService.cs`
+- `MojiCollaTool/MojiCollaTool/MojiPanel.cs`
+- `MojiCollaTool/MojiCollaTool/MojiWindow.xaml.cs`
+- `MojiCollaTool/MojiCollaTool/PageEditorControl.xaml`
+- `MojiCollaTool/MojiCollaTool/PageEditorControl.xaml.cs`
 - `tests/MojiCollaTool.Tests/TASK140AutoTextLayoutTests.cs`
-- `docs/planning/implementation-ledger.md`
-- `docs/testing/verification-matrix.md`
-- `CHANGELOG.md`
 
-## Verification
+## 検証
 
-- Debug build: pass, 0 warnings, 0 errors
-- Debug test: 202 passed, 0 failed
-- Release build: pass, 0 warnings, 0 errors
-- Release test: 202 passed, 0 failed
-- `git diff --check`: pass
-- Measured layout performance: Debug p95 `0.015 ms`, batch24 `0.302 ms`; Release p95 `0.017 ms`, batch24 `0.246 ms` (Release budgets: `<100 ms` / `<1000 ms`; Debug safety budget: `<3000 ms`).
-- Automated coverage: grapheme wrap, explicit CR/LF/CRLF breaks, surrogate/combining/ZWJ content, two directions, two fonts, minimum-font behavior, bounded cache, FullText immutability, service-owned alignment, FitTextToBalloon/FitBalloonToText invariants, lifecycle rebuild, persistence, UI validation, atomic rollback, subscriber propagation, no-op, tail, attached symbols, lock/visibility targeting, dirty/saved state, and Undo/Redo
-- Manual WPF pointer/DPI/IME/final-pixel inspection: not verified
+- Debug build: 成功、警告0、エラー0
+- Debug全test: 208/208成功、失敗0
+- Release build: 成功、警告0、エラー0
+- Release全test: 208/208成功、失敗0
+- `git diff --check`: 成功
+- Release production PageEditor実測: p95 36.124 ms、FitText 24件 755.202 ms、FitBalloon 24件 715.984 ms
+- Debug production PageEditor実測: p95 38.318 ms、FitText 24件 764.291 ms、FitBalloon 24件 751.505 ms
+- Release閾値: single p95 100 ms未満、各24件batch 1,000 ms未満。Debug安全閾値は3,000 ms未満です。
+- 自動検証範囲: 書記素wrap、4改行variant、2方向・2フォント、未適用lifecycle、versioned round-trip、padding、UI拒否、deep rollback、subscriber例外、両mode invariants、no-op、tail、AttachedSymbol、redo branch、visual hierarchy、実UI、production performance
+- WPFの実マウスpointer、OS DPI、IME、最終pixel目視: 未検証
 
-## Known boundaries
+## 既知の境界
 
-- The layout policy remains explicit: text edit, drag, or resize does not implicitly reapply a previous plan.
-- FormattedText falls back to a finite approximation if a font cannot be constructed; the bounded measure cache remains capped at 2048 entries.
-- Advanced prohibition rules, hyphenation, blur effects, and future reactive layout remain outside TASK-140.
+- text edit、drag、resize後は自動再適用せず、ユーザーが再度Applyします。
+- フォント生成に失敗した場合は有限な近似measureへfallbackします。measure cache容量は2048です。
+- 高度禁則、hyphenation、blur、continuous reactive layoutはTASK-140対象外です。
 
 ## Rollback
 
-Create a revert commit for the TASK-140 changes on this branch if rollback is requested. Do not push, merge, or rebase.
+rollbackが必要な場合は、このbranch上でrevert commitを作成してください。push、merge、rebaseは行いません。

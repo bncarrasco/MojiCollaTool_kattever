@@ -8,12 +8,12 @@
 - 基本wrapは書記素単位で行い、CRLF/LFなどの明示改行とFullTextを変更せず、縦書き・横書き・Start/Center/Endに対応します。高度な禁則・ハイフン分割は対象外です。
 - 最小文字サイズ、はみ出し警告、有限容量のフォント測定cache、1回のUndo/Redo履歴としてのatomic適用を追加しました。
 
-### TASK-140 C140 review follow-up
+### TASK-140 C140レビュー追補
 
-- Fixed lifecycle rebind/reload loss of computed visual plans, including versioned save/reload explicit-newline restoration.
-- Added atomic pre-commit rollback coverage and kept subscriber exceptions propagating after semantic commit.
-- Added padding/minimum-font controls and finite Japanese validation, mode-specific lock/visibility targeting, service-owned target/alignment mapping, no-op protection, and separate history boundaries for consecutive explicit applies.
-- Added broad unit/UI/lifecycle/persistence/performance coverage: 202 Debug and 202 Release tests passed.
+- 未適用リンクをBindPage・再バインド・保存再読込で暗黙wrapせず、手動編集後も明示適用だけがレイアウトを生成するようにしました。
+- versioned形式のLF・CR・CRLF・混在改行を保持し、FitBalloonのpadding検証を現在の小さい枠から分離しました。
+- 適用途中のdeep rollback、実Apply Button／ComboBox、redo branch、visual hierarchy、24 composition×両modeのPageEditor経路を検証しました。
+- Debug/Releaseとも208テスト合格、ビルド警告0・エラー0です。
 
 ### TASK-130
 
