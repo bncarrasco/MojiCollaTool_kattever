@@ -30,6 +30,8 @@ namespace MojiCollaTool
 
     public enum BalloonTextLayoutMode
     {
+        // A link is visual-only until the user explicitly applies a mode.
+        Unapplied = -1,
         FitTextToBalloon = 0,
         TextToBalloon = FitTextToBalloon,
         FitBalloonToText = 1,
@@ -115,7 +117,7 @@ namespace MojiCollaTool
         public Guid TextObjectId { get; set; }
 
         [XmlIgnore]
-        public BalloonTextLayoutMode LayoutMode { get; set; }
+        public BalloonTextLayoutMode LayoutMode { get; set; } = BalloonTextLayoutMode.Unapplied;
 
         [XmlElement("LayoutMode")]
         public string LayoutModeValue
@@ -125,7 +127,7 @@ namespace MojiCollaTool
             {
                 LayoutMode = Enum.TryParse(value, ignoreCase: true, out BalloonTextLayoutMode parsed)
                     ? parsed
-                    : BalloonTextLayoutMode.FitTextToBalloon;
+                    : BalloonTextLayoutMode.Unapplied;
             }
         }
 

@@ -174,7 +174,11 @@ namespace MojiCollaTool
                 MojiData.X = VisualOffset.X;
                 MojiData.Y = VisualOffset.Y;
                 MojiWindow?.UpdateXY(MojiData.X, MojiData.Y);
-                if (dragMoved) pageEditor.NotifyContentChanged("位置変更", MojiData.ObjectId.ToString("D"));
+                if (dragMoved)
+                {
+                    pageEditor.InvalidateLinkedTextLayout(MojiData.ObjectId);
+                    pageEditor.NotifyContentChanged("位置変更", MojiData.ObjectId.ToString("D"));
+                }
             }
             dragStart = null;
             dragMoved = false;
@@ -231,6 +235,9 @@ namespace MojiCollaTool
 
         internal void NotifyContentChanged(string description = "ページ編集", string? coalesceKey = null)
             => pageEditor.NotifyContentChanged(description, coalesceKey);
+
+        internal void InvalidateLinkedTextLayout()
+            => pageEditor.InvalidateLinkedTextLayout(MojiData.ObjectId);
 
         private void MojiPanel_Unloaded(object sender, RoutedEventArgs e)
         {

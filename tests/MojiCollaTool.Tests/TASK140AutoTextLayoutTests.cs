@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -493,6 +494,290 @@ public class TASK140AutoTextLayoutTests
         });
     }
 
+    [TestMethod]
+    public void UnappliedLinksAndManualEditsNeverRebuildAPlanOnRebind()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { FullText = "plain link text that must remain explicit", FontSize = 28 };
+            var balloon = new BalloonData
+            {
+                X = 20,
+                Y = 30,
+                Bounds = new Rect(0, 0, 45, 30),
+                TextLink = new TextLinkData { TextObjectId = text.ObjectId },
+            };
+            var page = new PageDocument("01", new[] { text }, new[] { balloon });
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.RestoreViewState(100, balloon.ObjectId);
+            Assert.AreEqual(BalloonTextLayoutMode.Unapplied, page.Balloons.Single().TextLink!.LayoutMode);
+            Assert.IsNull(editor.MojiPanels.Single().ComputedLayout);
+            editor.ReloadBoundPage();
+            Assert.IsNull(editor.MojiPanels.Single().ComputedLayout);
+
+            editor.ContentChanged += (_, _) => editor.CapturePage();
+            Assert.IsTrue(editor.FitTextToBalloon());
+            Assert.IsNotNull(editor.MojiPanels.Single().ComputedLayout);
+            editor.ReloadBoundPage();
+            Assert.IsNotNull(editor.MojiPanels.Single().ComputedLayout);
+
+            editor.InvalidateLinkedTextLayout(text.ObjectId);
+            editor.MojiPanels.Single().MojiData.FullText += " manual";
+            editor.MojiPanels.Single().UpdateMojiView(false);
+            editor.CapturePage();
+            Assert.AreEqual(BalloonTextLayoutMode.Unapplied, page.Balloons.Single().TextLink!.LayoutMode);
+            editor.ReloadBoundPage();
+            Assert.IsNull(editor.MojiPanels.Single().ComputedLayout);
+            Assert.AreEqual("plain link text that must remain explicit manual", editor.MojiPanels.Single().MojiData.FullText);
+        });
+    }
+
+    [TestMethod]
+    public void VersionedRoundTripPreservesLfCrCrLfAndMixedFullTextExactly()
+    {
+        foreach (var fullText in new[] { "A\nB", "A\rB", "A\r\nB", "A\nB\rC\r\nD" })
+        {
+            using var scope = TemporaryDirectory.Create();
+            var path = Path.Combine(scope.Path, "newline.mctzip");
+            var page = new PageDocument("01", new[] { new MojiData { FullText = fullText } });
+            DataIO.WriteVersionedProject(path, new ProjectDocument(Guid.NewGuid(), "newline", new[] { page }));
+            var restored = DataIO.ReadVersionedProject(path);
+            Assert.AreEqual(fullText, restored.Pages.Single().MojiDatas.Single().FullText,
+                $"newline variant was changed: {Escape(fullText)}");
+        }
+    }
+
+    [TestMethod]
+    public void FitBalloonAllowsPaddingLargerThanTheCurrentMinimumFrame()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { FullText = "padding must be measured against the new frame", FontSize = 24 };
+            var balloon = new BalloonData
+            {
+                Bounds = new Rect(0, 0, 24, 24),
+                TextLink = new TextLinkData
+                {
+                    TextObjectId = text.ObjectId,
+                    Padding = 20,
+                    MinimumFontSize = 8,
+                },
+            };
+            var page = new PageDocument("01", new[] { text }, new[] { balloon });
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "padding", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.RestoreViewState(100, balloon.ObjectId);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+            Assert.IsTrue(editor.FitBalloonToText());
+            Assert.AreEqual(1, session.UndoCount);
+            Assert.AreEqual(BalloonTextLayoutMode.FitBalloonToText, page.Balloons.Single().TextLink!.LayoutMode);
+            Assert.IsTrue(page.Balloons.Single().Bounds.Width > 24 || page.Balloons.Single().Bounds.Height > 24);
+            Assert.AreEqual(text.FullText, editor.MojiPanels.Single().MojiData.FullText);
+        });
+    }
+
+    [TestMethod]
+    public void ApplyFailureAfterLiveMutationDeepRollsBackAllEditorState()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { FullText = "valid selected text", FontSize = 30 };
+            var selected = new BalloonData
+            {
+                X = 30,
+                Y = 40,
+                Bounds = new Rect(0, 0, 70, 40),
+                TextLink = new TextLinkData
+                {
+                    TextObjectId = text.ObjectId,
+                    LayoutMode = BalloonTextLayoutMode.FitTextToBalloon,
+                    Padding = 2,
+                    MinimumFontSize = 8,
+                },
+            };
+            var sibling = new BalloonData { X = 160, Y = 50, Bounds = new Rect(0, 0, 50, 35) };
+            var symbol = new AttachedSymbolData { ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "!" };
+            var page = new PageDocument("01", new[] { text }, new[] { selected, sibling });
+            page.AddAttachedSymbol(symbol);
+            page.Canvas.CanvasWidth = 1234;
+            page.Canvas.CanvasHeight = 987;
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "rollback", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.RestoreViewState(100, selected.ObjectId);
+            var beforeText = editor.MojiPanels.Single().MojiData.Clone();
+            var beforeSelected = editor.SelectedObjectId;
+            var beforeCanvas = PageDocument.CloneCanvas(editor.CanvasData);
+            var beforePlan = editor.MojiPanels.Single().ComputedLayout;
+            var beforeOrder = VisualObjectIds(editor);
+            var beforeSymbol = editor.AttachedSymbolVisuals.Single().SymbolData.Clone();
+            var beforeRevision = session.CurrentRevision;
+            var beforeUndo = session.UndoCount;
+            var beforeDirty = session.IsDirty;
+            var beforeStatus = PrivateStatus(editor).Text;
+
+            editor.BalloonVisuals.Single(item => item.ObjectId == sibling.ObjectId).BalloonData.TextLink =
+                new TextLinkData { TextObjectId = Guid.NewGuid() };
+            Assert.IsFalse(editor.FitTextToBalloon());
+
+            Assert.AreEqual(beforeSelected, editor.SelectedObjectId);
+            Assert.AreEqual(beforeRevision, session.CurrentRevision);
+            Assert.AreEqual(beforeUndo, session.UndoCount);
+            Assert.AreEqual(beforeDirty, session.IsDirty);
+            Assert.AreEqual(beforeText.FullText, editor.MojiPanels.Single().MojiData.FullText);
+            Assert.AreEqual(beforeText.FontSize, editor.MojiPanels.Single().MojiData.FontSize);
+            Assert.AreEqual(beforePlan, editor.MojiPanels.Single().ComputedLayout);
+            AssertCanvasDataEqual(beforeCanvas, editor.CanvasData);
+            CollectionAssert.AreEqual(beforeOrder, VisualObjectIds(editor));
+            Assert.AreEqual(beforeSymbol.OffsetX, editor.AttachedSymbolVisuals.Single().SymbolData.OffsetX);
+            Assert.AreEqual(beforeSymbol.OffsetY, editor.AttachedSymbolVisuals.Single().SymbolData.OffsetY);
+            Assert.AreNotEqual(beforeStatus, PrivateStatus(editor).Text);
+            Assert.IsTrue(PrivateStatus(editor).Text.Contains("失敗", StringComparison.Ordinal));
+        });
+    }
+
+    [TestMethod]
+    public void RealApplyButtonComboBoxesVisualHierarchyAndRedoBranchAreVerified()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { FullText = "実UIから明示適用する本文", FontSize = 28 };
+            var balloon = new BalloonData
+            {
+                X = 20,
+                Y = 30,
+                Bounds = new Rect(0, 0, 90, 50),
+                TextLink = new TextLinkData { TextObjectId = text.ObjectId, Padding = 3, MinimumFontSize = 8 },
+            };
+            var symbol = new AttachedSymbolData { ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "!" };
+            var second = new BalloonData { X = 150, Y = 30, Bounds = new Rect(0, 0, 40, 30) };
+            var page = new PageDocument("01", new[] { text }, new[] { balloon, second });
+            page.AddAttachedSymbol(symbol);
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "real-ui", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.RestoreViewState(100, balloon.ObjectId);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+            var modeCombo = (ComboBox)editor.FindName("TextLayoutModeComboBox")!;
+            var alignmentCombo = (ComboBox)editor.FindName("TextLayoutAlignmentComboBox")!;
+            var apply = (Button)editor.FindName("ApplyTextLayoutButton")!;
+            var padding = (TextBox)editor.FindName("TextLayoutPaddingTextBox")!;
+            var minimum = (TextBox)editor.FindName("TextLayoutMinimumFontSizeTextBox")!;
+            modeCombo.SelectedItem = modeCombo.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "FitBalloonToText");
+            alignmentCombo.SelectedItem = alignmentCombo.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "End");
+            padding.Text = "4";
+            minimum.Text = "10";
+            apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.AreEqual(1, session.UndoCount);
+            Assert.AreEqual(BalloonTextLayoutMode.FitBalloonToText, page.Balloons.Single(item => item.ObjectId == balloon.ObjectId).TextLink!.LayoutMode);
+            Assert.AreEqual(BalloonTextAlignment.End, page.Balloons.Single(item => item.ObjectId == balloon.ObjectId).TextLink!.Alignment);
+            Assert.IsNotNull(editor.MojiPanels.Single().ComputedLayout);
+            Assert.AreEqual(symbol.ObjectId, editor.AttachedSymbolVisuals.Single().ObjectId);
+            AssertCanvasHierarchy(editor, page);
+
+            session.MarkSaved();
+            Assert.IsTrue(session.Undo());
+            editor.ReloadBoundPage();
+            editor.RestoreViewState(100, balloon.ObjectId);
+            Assert.IsTrue(session.IsDirty);
+            Assert.IsTrue(session.CanRedo);
+            modeCombo = (ComboBox)editor.FindName("TextLayoutModeComboBox")!;
+            alignmentCombo = (ComboBox)editor.FindName("TextLayoutAlignmentComboBox")!;
+            apply = (Button)editor.FindName("ApplyTextLayoutButton")!;
+            modeCombo.SelectedItem = modeCombo.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "FitTextToBalloon");
+            alignmentCombo.SelectedItem = alignmentCombo.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "Start");
+            apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.IsFalse(session.CanRedo, "a new explicit UI apply must abandon the redo branch");
+            Assert.AreEqual(1, session.UndoCount);
+            AssertCanvasHierarchy(editor, session.ActivePage!);
+        });
+    }
+
+    [TestMethod]
+    public void ProductionPageEditorApplyPerformanceCoversTwentyFourCompositionsAndBothModes()
+    {
+        RunOnSta(() =>
+        {
+            var texts = Enumerable.Range(0, 24).Select(index => new MojiData
+            {
+                FullText = $"composition {index} with enough text to measure",
+                X = index * 8,
+                Y = index * 4,
+                FontSize = 24,
+                FontFamilyName = index % 2 == 0 ? "Segoe UI" : "Arial",
+                TextDirection = index % 2 == 0 ? TextDirection.Yokogaki : TextDirection.Tategaki,
+            }).ToArray();
+            var balloons = texts.Select((text, index) => new BalloonData
+            {
+                X = 40 + index * 8,
+                Y = 60 + index * 4,
+                Bounds = new Rect(0, 0, 110, 72),
+                TextLink = new TextLinkData { TextObjectId = text.ObjectId, Padding = 4, MinimumFontSize = 8 },
+            }).ToArray();
+            var page = new PageDocument("01", texts, balloons);
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "production-perf", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+            var apply = (Button)editor.FindName("ApplyTextLayoutButton")!;
+            var modeCombo = (ComboBox)editor.FindName("TextLayoutModeComboBox")!;
+            var alignmentCombo = (ComboBox)editor.FindName("TextLayoutAlignmentComboBox")!;
+            var textTimes = new List<double>();
+            var balloonTimes = new List<double>();
+            foreach (var balloon in balloons)
+            {
+                editor.RestoreViewState(100, balloon.ObjectId);
+                modeCombo.SelectedItem = modeCombo.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "FitTextToBalloon");
+                alignmentCombo.SelectedItem = alignmentCombo.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "Center");
+                var watch = Stopwatch.StartNew();
+                apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                watch.Stop();
+                textTimes.Add(watch.Elapsed.TotalMilliseconds);
+            }
+            foreach (var balloon in balloons)
+            {
+                editor.RestoreViewState(100, balloon.ObjectId);
+                modeCombo.SelectedItem = modeCombo.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "FitBalloonToText");
+                alignmentCombo.SelectedItem = alignmentCombo.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "End");
+                var watch = Stopwatch.StartNew();
+                apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                watch.Stop();
+                balloonTimes.Add(watch.Elapsed.TotalMilliseconds);
+            }
+            var singleSamples = textTimes.Concat(balloonTimes).OrderBy(value => value).ToArray();
+            var p95 = singleSamples[(int)Math.Ceiling(singleSamples.Length * 0.95) - 1];
+            var textBatch = textTimes.Sum();
+            var balloonBatch = balloonTimes.Sum();
+            Console.WriteLine($"TASK-140 production PageEditor: p95={p95:0.###}ms; FitText24={textBatch:0.###}ms; FitBalloon24={balloonBatch:0.###}ms");
+#if DEBUG
+            const double singleBudget = 3000;
+            const double batchBudget = 3000;
+#else
+            const double singleBudget = 100;
+            const double batchBudget = 1000;
+#endif
+            Assert.IsTrue(p95 < singleBudget, $"production p95={p95:0.###}ms budget={singleBudget}ms");
+            Assert.IsTrue(textBatch < batchBudget, $"FitText24={textBatch:0.###}ms budget={batchBudget}ms");
+            Assert.IsTrue(balloonBatch < batchBudget, $"FitBalloon24={balloonBatch:0.###}ms budget={batchBudget}ms");
+            Assert.AreEqual(48, session.UndoCount);
+        });
+    }
+
     private static void AssertStateUnchanged(PageEditorControl editor, MojiData beforeText,
         BalloonData beforeBalloon, ProjectSession session, long beforeRevision, int beforeUndo, bool beforeDirty)
     {
@@ -508,6 +793,61 @@ public class TASK140AutoTextLayoutTests
         Assert.AreEqual(beforeUndo, session.UndoCount);
         Assert.AreEqual(beforeDirty, session.IsDirty);
     }
+
+    private static Guid[] VisualObjectIds(PageEditorControl editor) => editor.Canvas.Children
+        .OfType<UIElement>()
+        .Where(child => child is MojiPanel || child is BalloonVisual || child is AttachedSymbolVisual)
+        .Select(child => child switch
+        {
+            MojiPanel panel => panel.MojiData.ObjectId,
+            BalloonVisual visual => visual.ObjectId,
+            AttachedSymbolVisual visual => visual.ObjectId,
+            _ => Guid.Empty,
+        }).ToArray();
+
+    private static void AssertCanvasHierarchy(PageEditorControl editor, PageDocument page)
+    {
+        editor.Measure(new Size(1000, 1000));
+        editor.Arrange(new Rect(0, 0, 1000, 1000));
+        editor.UpdateLayout();
+        CollectionAssert.AreEqual(page.AllObjects.Select(item => item.ObjectId).ToArray(), VisualObjectIds(editor));
+        foreach (var item in page.AllObjects)
+        {
+            var visual = editor.Canvas.Children.OfType<UIElement>().Single(child => child switch
+            {
+                MojiPanel panel => panel.MojiData.ObjectId == item.ObjectId,
+                BalloonVisual balloon => balloon.ObjectId == item.ObjectId,
+                AttachedSymbolVisual symbol => symbol.ObjectId == item.ObjectId,
+                _ => false,
+            });
+            Assert.AreEqual(item.ZIndex, Canvas.GetZIndex(visual));
+        }
+    }
+
+    private static void AssertCanvasDataEqual(CanvasData expected, CanvasData actual)
+    {
+        Assert.AreEqual(expected.CanvasWidth, actual.CanvasWidth);
+        Assert.AreEqual(expected.CanvasHeight, actual.CanvasHeight);
+        Assert.AreEqual(expected.Image2LocatePosition, actual.Image2LocatePosition);
+        Assert.AreEqual(expected.ImageMarginTop, actual.ImageMarginTop);
+        Assert.AreEqual(expected.ImageMarginLeft, actual.ImageMarginLeft);
+        Assert.AreEqual(expected.ImageMarginBottom, actual.ImageMarginBottom);
+        Assert.AreEqual(expected.ImageMarginRight, actual.ImageMarginRight);
+        Assert.AreEqual(expected.CanvasColor, actual.CanvasColor);
+        AssertImageDataEqual(expected.ImageData1, actual.ImageData1);
+        AssertImageDataEqual(expected.ImageData2, actual.ImageData2);
+    }
+
+    private static void AssertImageDataEqual(ImageData expected, ImageData actual)
+    {
+        Assert.AreEqual(expected.OriginalWidth, actual.OriginalWidth);
+        Assert.AreEqual(expected.OriginalHeight, actual.OriginalHeight);
+        Assert.AreEqual(expected.ModifiedWidth, actual.ModifiedWidth);
+        Assert.AreEqual(expected.ModifiedHeight, actual.ModifiedHeight);
+    }
+
+    private static string Escape(string value) => value.Replace("\r", "\\r", StringComparison.Ordinal)
+        .Replace("\n", "\\n", StringComparison.Ordinal);
 
     private static TextBox PrivateTextBox(PageEditorControl editor, string name) =>
         (TextBox)(typeof(PageEditorControl).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(editor)

@@ -214,7 +214,11 @@ namespace MojiCollaTool
             _mojiPanel.MojiData.RotateAngle = RotateTextBox.Value;
 
             _mojiPanel.UpdateMojiView(isTextDecoraitonUpdated);
-            if (_runEvent) _mojiPanel.NotifyContentChanged(changeDescription, coalesceKey);
+            if (_runEvent)
+            {
+                _mojiPanel.InvalidateLinkedTextLayout();
+                _mojiPanel.NotifyContentChanged(changeDescription, coalesceKey);
+            }
         }
 
         private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -269,6 +273,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.ForeColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.InvalidateLinkedTextLayout();
                 _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }
@@ -280,6 +285,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.BorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.InvalidateLinkedTextLayout();
                 _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }
@@ -291,6 +297,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.SecondBorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.InvalidateLinkedTextLayout();
                 _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }
@@ -302,6 +309,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.BackgroundBoxColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.InvalidateLinkedTextLayout();
                 _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }
@@ -313,6 +321,7 @@ namespace MojiCollaTool
                 _mojiPanel.MojiData.BackgroundBoxBorderColor = color;
                 ((Button)sender).Background = new SolidColorBrush(color);
                 _mojiPanel.UpdateMojiView(true);
+                _mojiPanel.InvalidateLinkedTextLayout();
                 _mojiPanel.NotifyContentChanged("スタイル変更", _mojiPanel.MojiData.ObjectId.ToString("D"));
             });
         }

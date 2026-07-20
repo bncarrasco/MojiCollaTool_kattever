@@ -167,10 +167,14 @@ namespace MojiCollaTool
         internal static byte[] Serialize<T>(XmlSerializer serializer, T value)
         {
             using var stream = new MemoryStream();
-            using (var writer = new StreamWriter(stream, new UTF8Encoding(false), 1024, leaveOpen: true))
+            var settings = new XmlWriterSettings
             {
+                Encoding = new UTF8Encoding(false),
+                Indent = true,
+                NewLineHandling = NewLineHandling.Entitize,
+            };
+            using (var writer = XmlWriter.Create(stream, settings))
                 serializer.Serialize(writer, value);
-            }
 
             return stream.ToArray();
         }
@@ -681,19 +685,11 @@ namespace MojiCollaTool
                 var image2 = ReadAsset(archive, pageFile.Image2Path, pageId, 2, canvas.ImageData2);
                 if (image1 != null) assets.Add(image1);
                 if (image2 != null) assets.Add(image2);
-                var objects = pageFile.Objects ?? Enumerable.Empty<MojiData>();
-                foreach (var mojiData in objects)
-                {
-                    // XML normalizes CRLF to LF while parsing. Restore the
-                    // application's explicit newline representation before
-                    // PageDocument validates grapheme anchors and links.
-                    mojiData.RestoreFullTextNewLine();
-                }
                 pageDocuments.Add(new PageDocument(
                     pageId,
                     pageFile.Name ?? manifestPage.Name,
                     canvas,
-                    objects,
+                    pageFile.Objects ?? Enumerable.Empty<MojiData>(),
                     pageFile.Balloons ?? Enumerable.Empty<BalloonData>(),
                     pageFile.AttachedSymbols ?? Enumerable.Empty<AttachedSymbolData>()));
             }

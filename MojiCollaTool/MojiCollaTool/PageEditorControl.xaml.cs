@@ -481,7 +481,7 @@ namespace MojiCollaTool
             if (mode == BalloonTextLayoutMode.FitBalloonToText &&
                 (_selectedBalloon.BalloonData.IsLocked || !_selectedBalloon.BalloonData.IsVisible))
                 return SetBalloonStatus("フキダシ側がロック中または非表示のため、レイアウトを適用できません。", false);
-            if (!TryReadLayoutSettings(panel.MojiData, _selectedBalloon.BalloonData, out var padding,
+            if (!TryReadLayoutSettings(panel.MojiData, _selectedBalloon.BalloonData, mode, out var padding,
                 out var minimumFontSize, out var validationMessage))
                 return SetBalloonStatus(validationMessage, false);
 
@@ -940,6 +940,7 @@ namespace MojiCollaTool
             _balloonDrag = null;
             if (changed)
             {
+                InvalidateLinkedTextLayout(state.Visual.ObjectId);
                 RaiseContentChanged("フキダシ位置・サイズ変更", state.CoalesceKey);
             }
             return changed;
@@ -1134,6 +1135,7 @@ namespace MojiCollaTool
             foreach (var balloon in _balloonVisuals)
             {
                 if (balloon.BalloonData.TextLink is not TextLinkData link) continue;
+                if (link.LayoutMode == BalloonTextLayoutMode.Unapplied) continue;
                 var panel = _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == link.TextObjectId);
                 if (panel == null) continue;
                 var request = TextLayoutRequest.From(panel.MojiData, link, balloon.BalloonData);
@@ -1141,6 +1143,15 @@ namespace MojiCollaTool
                     ? _textLayoutService.LayoutWithinFrame(request)
                     : _textLayoutService.FitBalloonToText(request);
                 panel.ApplyComputedLayout(layout);
+            }
+        }
+
+        internal void InvalidateLinkedTextLayout(Guid textObjectId)
+        {
+            foreach (var balloon in _balloonVisuals.Where(item =>
+                item.BalloonData.TextLink?.TextObjectId == textObjectId))
+            {
+                balloon.BalloonData.TextLink!.LayoutMode = BalloonTextLayoutMode.Unapplied;
             }
         }
 
@@ -1407,7 +1418,7 @@ namespace MojiCollaTool
             return Math.Max((int)Math.Ceiling(safeMinimum), Math.Max(1, (int)Math.Floor(candidate)));
         }
 
-        private bool TryReadLayoutSettings(MojiData text, BalloonData balloon,
+        private bool TryReadLayoutSettings(MojiData text, BalloonData balloon, BalloonTextLayoutMode mode,
             out double padding, out double minimumFontSize, out string message)
         {
             padding = 0;
@@ -1423,6 +1434,11 @@ namespace MojiCollaTool
                 message = "最小文字サイズは有限な正の数値で入力してください。";
                 return false;
             }
+            if (padding > double.MaxValue / 4)
+            {
+                message = "余白が大きすぎます。有限な数値を入力してください。";
+                return false;
+            }
             if (minimumFontSize > text.FontSize)
             {
                 message = "最小文字サイズは現在の文字サイズ以下にしてください。";
@@ -1435,7 +1451,8 @@ namespace MojiCollaTool
                 message = "フキダシの大きさが不正です。";
                 return false;
             }
-            if (padding * 2 >= Math.Min(balloon.Bounds.Width, balloon.Bounds.Height))
+            if (mode == BalloonTextLayoutMode.FitTextToBalloon &&
+                padding * 2 >= Math.Min(balloon.Bounds.Width, balloon.Bounds.Height))
             {
                 message = "余白がフキダシの大きさに対して大きすぎます。";
                 return false;
