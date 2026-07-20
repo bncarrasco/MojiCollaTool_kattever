@@ -534,6 +534,69 @@ public class TASK140AutoTextLayoutTests
     }
 
     [TestMethod]
+    public void BalloonResizeInvalidatesAppliedLayoutButMovePreservesIt()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { FullText = "resize must invalidate the applied frame plan", FontSize = 28 };
+            var balloon = new BalloonData
+            {
+                X = 20,
+                Y = 30,
+                Bounds = new Rect(0, 0, 45, 30),
+                TextLink = new TextLinkData
+                {
+                    TextObjectId = text.ObjectId,
+                    Padding = 2,
+                    MinimumFontSize = 8,
+                },
+            };
+            var page = new PageDocument("01", new[] { text }, new[] { balloon });
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "resize", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            editor.RestoreViewState(100, balloon.ObjectId);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+
+            Assert.IsTrue(editor.FitTextToBalloon());
+            Assert.AreEqual(BalloonTextLayoutMode.FitTextToBalloon,
+                editor.BalloonVisuals.Single().BalloonData.TextLink!.LayoutMode);
+            Assert.IsNotNull(editor.MojiPanels.Single().ComputedLayout);
+
+            var beforeResizeHistory = session.UndoCount;
+            Assert.IsTrue(editor.BeginBalloonGesture(balloon.ObjectId, new Point(0, 0), BalloonResizeHandle.Right));
+            Assert.IsTrue(editor.CommitBalloonGesture(new Point(20, 0)));
+            Assert.AreEqual(beforeResizeHistory + 1, session.UndoCount);
+            Assert.AreEqual(BalloonTextLayoutMode.Unapplied,
+                editor.BalloonVisuals.Single().BalloonData.TextLink!.LayoutMode);
+            Assert.IsNull(editor.MojiPanels.Single().ComputedLayout);
+            Assert.AreEqual(BalloonTextLayoutMode.Unapplied, page.Balloons.Single().TextLink!.LayoutMode);
+            editor.ReloadBoundPage();
+            Assert.IsNull(editor.MojiPanels.Single().ComputedLayout);
+
+            Assert.IsTrue(editor.FitTextToBalloon());
+            var appliedPlan = editor.MojiPanels.Single().ComputedLayout;
+            Assert.IsNotNull(appliedPlan);
+            var beforeMoveHistory = session.UndoCount;
+            Assert.IsTrue(editor.BeginBalloonGesture(balloon.ObjectId, new Point(0, 0), BalloonResizeHandle.Move));
+            Assert.IsTrue(editor.CommitBalloonGesture(new Point(15, 10)));
+            Assert.AreEqual(beforeMoveHistory + 1, session.UndoCount);
+            Assert.AreEqual(BalloonTextLayoutMode.FitTextToBalloon,
+                editor.BalloonVisuals.Single().BalloonData.TextLink!.LayoutMode);
+            Assert.IsNotNull(editor.MojiPanels.Single().ComputedLayout);
+            Assert.AreSame(appliedPlan, editor.MojiPanels.Single().ComputedLayout);
+            editor.ReloadBoundPage();
+            Assert.IsNotNull(editor.MojiPanels.Single().ComputedLayout);
+            Assert.AreEqual(BalloonTextLayoutMode.FitTextToBalloon,
+                editor.BalloonVisuals.Single().BalloonData.TextLink!.LayoutMode);
+        });
+    }
+
+    [TestMethod]
     public void VersionedRoundTripPreservesLfCrCrLfAndMixedFullTextExactly()
     {
         foreach (var fullText in new[] { "A\nB", "A\rB", "A\r\nB", "A\nB\rC\r\nD" })

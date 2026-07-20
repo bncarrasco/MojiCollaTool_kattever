@@ -940,7 +940,9 @@ namespace MojiCollaTool
             _balloonDrag = null;
             if (changed)
             {
-                InvalidateLinkedTextLayout(state.Visual.ObjectId);
+                if (IsFrameResizeHandle(state.Handle) &&
+                    state.Visual.BalloonData.TextLink?.TextObjectId is Guid textObjectId)
+                    InvalidateLinkedTextLayout(textObjectId);
                 RaiseContentChanged("フキダシ位置・サイズ変更", state.CoalesceKey);
             }
             return changed;
@@ -1155,6 +1157,8 @@ namespace MojiCollaTool
             {
                 balloon.BalloonData.TextLink!.LayoutMode = BalloonTextLayoutMode.Unapplied;
             }
+            _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == textObjectId)
+                ?.ApplyComputedLayout(null);
         }
 
         private void AddAttachedSymbolVisual(AttachedSymbolVisual visual, bool raiseContentChanged = true)
@@ -1589,6 +1593,10 @@ namespace MojiCollaTool
 
         private static bool MojiPositionEquivalent(MojiData? left, MojiData? right)
             => left == null ? right == null : right != null && left.X == right.X && left.Y == right.Y;
+
+        private static bool IsFrameResizeHandle(ResizeHandle handle)
+            => handle.HasFlag(ResizeHandle.Left) || handle.HasFlag(ResizeHandle.Right) ||
+               handle.HasFlag(ResizeHandle.Top) || handle.HasFlag(ResizeHandle.Bottom);
 
         private void RebuildCanvasObjectOrder()
         {

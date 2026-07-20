@@ -286,6 +286,9 @@ namespace MojiCollaTool
             if (ComputedLayout != null &&
                 (ComputedLayout.Request.FullText != MojiData.FullText ||
                  ComputedLayout.Request.FontSize != MojiData.FontSize ||
+                 ComputedLayout.Request.FontFamilyName != MojiData.FontFamilyName ||
+                 ComputedLayout.Request.IsBold != MojiData.IsBold ||
+                 ComputedLayout.Request.IsItalic != MojiData.IsItalic ||
                  ComputedLayout.Request.Direction != MojiData.TextDirection ||
                  ComputedLayout.Request.CharacterMargin != MojiData.CharacterMargin ||
                  ComputedLayout.Request.LineMargin != MojiData.LineMargin))
