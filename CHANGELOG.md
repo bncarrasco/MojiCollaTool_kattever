@@ -9,6 +9,7 @@
 - フキダシ、リンク文字、その付加記号を一つの構成単位として、前面・背面へ移動できる日本語UIを追加しました。
 - しっぽ編集、文字リンク、一体移動、重なり順の変更をUndo/Redoと保存再読込へ対応しました。
 - link直後に文書順・実Canvas順を同期し、既存format 2.2の重複文字linkはcanonical順で後続をunlinkする互換移行を追加しました。実UIのlink／unlink・Z操作・履歴・page切替の受入確認を拡張しました。
+- link／unlinkの同期失敗は文書・visual・履歴を原子的に復元し、semantic commit後の通知subscriber例外は上位処理へ伝播するようにしました。内部例外の詳細は日本語statusへ表示しません。
 
 ### TASK-100
 

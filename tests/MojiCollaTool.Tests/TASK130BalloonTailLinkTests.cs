@@ -415,6 +415,119 @@ public class TASK130BalloonTailLinkTests
     }
 
     [TestMethod]
+    public void LinkNotificationSubscriberExceptionPropagatesAfterSemanticCommit()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { Id = 1, FullText = "通知対象" };
+            var balloon = new BalloonData();
+            var page = new PageDocument("01", new[] { text }, new[] { balloon });
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "p", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(session.ActivePage!.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+            var faultCalls = 0;
+            EventHandler fault = (_, _) =>
+            {
+                faultCalls++;
+                throw new InvalidOperationException("synthetic subscriber fault");
+            };
+            editor.ContentChanged += fault;
+            session.MarkSaved();
+            editor.RestoreViewState(100, balloon.ObjectId);
+            var combo = (ComboBox)editor.FindName("TextLinkComboBox")!;
+            combo.SelectedItem = combo.Items.Cast<TextLinkCandidate>().Single(item => item.ObjectId == text.ObjectId);
+
+            Assert.ThrowsException<InvalidOperationException>(() => editor.TryLinkSelectedBalloon(text.ObjectId));
+            Assert.AreEqual(1, faultCalls);
+            Assert.AreEqual(text.ObjectId, session.ActivePage!.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
+            Assert.AreEqual(text.ObjectId, editor.BalloonVisuals.Single().BalloonData.TextLink!.TextObjectId);
+            Assert.IsTrue(session.IsDirty);
+            Assert.AreEqual(1, session.UndoCount);
+            AssertLiveOrderAndZ(editor, session.ActivePage!);
+
+            editor.ContentChanged -= fault;
+            Assert.IsTrue(editor.UnlinkSelectedBalloon());
+            Assert.IsTrue(editor.TryLinkSelectedBalloon(text.ObjectId));
+            editor.ContentChanged += fault;
+            Assert.ThrowsException<InvalidOperationException>(() => editor.UnlinkSelectedBalloon());
+            Assert.IsNull(session.ActivePage!.GetBalloon(balloon.ObjectId).TextLink);
+            Assert.IsNull(editor.BalloonVisuals.Single().BalloonData.TextLink);
+            Assert.AreEqual(4, session.UndoCount);
+            AssertLiveOrderAndZ(editor, session.ActivePage!);
+        });
+    }
+
+    [TestMethod]
+    public void LinkTrialValidationFailureRollsBackEditorDocumentCanvasHistoryDirtyAndStatus()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { Id = 1, FullText = "検証対象" };
+            var selected = new BalloonData();
+            var invalidBefore = new BalloonData();
+            var page = new PageDocument("01", new[] { text }, new[] { selected, invalidBefore });
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "p", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            editor.RestoreViewState(100, selected.ObjectId);
+            var invalidId = Guid.NewGuid();
+            editor.BalloonVisuals.Single(visual => visual.ObjectId == invalidBefore.ObjectId).BalloonData.TextLink =
+                new TextLinkData { TextObjectId = invalidId };
+            var beforeOrder = session.ActivePage!.AllObjects.Select(item => item.ObjectId).ToArray();
+            var beforeCanvasOrder = editor.Canvas.Children.OfType<UIElement>()
+                .Where(child => child is MojiPanel || child is BalloonVisual || child is AttachedSymbolVisual)
+                .Select(child => child switch
+                {
+                    MojiPanel panel => panel.MojiData.ObjectId,
+                    BalloonVisual visual => visual.ObjectId,
+                    AttachedSymbolVisual visual => visual.ObjectId,
+                    _ => Guid.Empty,
+                }).ToArray();
+            var combo = (ComboBox)editor.FindName("TextLinkComboBox")!;
+            combo.SelectedItem = combo.Items.Cast<TextLinkCandidate>().Single(item => item.ObjectId == text.ObjectId);
+            var notifications = 0;
+            editor.ContentChanged += (_, _) => notifications++;
+
+            var linkCompleted = false;
+            try
+            {
+                ((Button)editor.FindName("LinkTextButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                linkCompleted = true;
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail($"trial validation must be recoverable, but raised {ex}");
+            }
+            Assert.IsTrue(linkCompleted);
+            Assert.IsFalse(editor.TryLinkSelectedBalloon(text.ObjectId));
+            Assert.AreEqual(0, notifications);
+            Assert.AreEqual(0, session.UndoCount);
+            Assert.IsFalse(session.IsDirty);
+            CollectionAssert.AreEqual(beforeOrder, session.ActivePage!.AllObjects.Select(item => item.ObjectId).ToArray());
+            CollectionAssert.AreEqual(beforeCanvasOrder, editor.Canvas.Children.OfType<UIElement>()
+                .Where(child => child is MojiPanel || child is BalloonVisual || child is AttachedSymbolVisual)
+                .Select(child => child switch
+                {
+                    MojiPanel panel => panel.MojiData.ObjectId,
+                    BalloonVisual visual => visual.ObjectId,
+                    AttachedSymbolVisual visual => visual.ObjectId,
+                    _ => Guid.Empty,
+                }).ToArray());
+            Assert.AreEqual(invalidId, editor.BalloonVisuals.Single(visual => visual.ObjectId == invalidBefore.ObjectId)
+                .BalloonData.TextLink!.TextObjectId);
+            Assert.IsNull(session.ActivePage!.GetBalloon(selected.ObjectId).TextLink);
+            Assert.AreEqual(selected.ObjectId, editor.SelectedBalloonId);
+            Assert.AreEqual("文字リンクに失敗しました。", ((TextBlock)editor.FindName("BalloonStatusTextBlock")!).Text);
+            AssertLiveOrderAndZ(editor, session.ActivePage!);
+        });
+    }
+
+    [TestMethod]
     public void TailHandlesChangeOnlyTheirFieldKeepScreenSizeAndCancelCleanly()
     {
         RunOnSta(() =>

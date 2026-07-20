@@ -415,22 +415,25 @@ namespace MojiCollaTool
             if (_selectedBalloon.BalloonData.TextLink?.TextObjectId == textObjectId)
                 return SetBalloonStatus("選択した文字は既にリンクされています。", false);
 
-            var previousLink = _selectedBalloon.BalloonData.TextLink?.Clone();
+            var snapshot = CaptureLinkMutationSnapshot();
             try
             {
                 _selectedBalloon.BalloonData.TextLink = new TextLinkData { TextObjectId = textObjectId };
                 SynchronizeBoundPageAfterLinkMutation();
                 RefreshBalloonTools($"文字 ID:{panel.MojiData.Id} をリンクしました。");
-                RaiseContentChanged("フキダシ文字リンク");
-                return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _selectedBalloon.BalloonData.TextLink = previousLink;
+                RestoreLinkMutationSnapshot(snapshot);
                 RefreshBalloonTools("文字リンクに失敗しました。");
-                SetBalloonStatus($"文字リンクに失敗しました: {ex.Message}", false);
+                SetBalloonStatus("文字リンクに失敗しました。", false);
                 return false;
             }
+            // This is the semantic commit boundary.  Subscriber exceptions
+            // must propagate to the existing application error boundary and
+            // must never be translated into a recoverable link failure.
+            RaiseContentChanged("フキダシ文字リンク");
+            return true;
         }
 
         internal bool UnlinkSelectedBalloon()
@@ -439,22 +442,22 @@ namespace MojiCollaTool
                 return SetBalloonStatus("フキダシを選択してください。", false);
             if (_selectedBalloon.BalloonData.TextLink == null)
                 return SetBalloonStatus("選択中のフキダシに文字リンクはありません。", false);
-            var previousLink = _selectedBalloon.BalloonData.TextLink.Clone();
+            var snapshot = CaptureLinkMutationSnapshot();
             try
             {
                 _selectedBalloon.BalloonData.TextLink = null;
                 SynchronizeBoundPageAfterLinkMutation();
                 RefreshBalloonTools("文字リンクを解除しました。");
-                RaiseContentChanged("フキダシ文字リンク解除");
-                return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _selectedBalloon.BalloonData.TextLink = previousLink;
+                RestoreLinkMutationSnapshot(snapshot);
                 RefreshBalloonTools("文字リンク解除に失敗しました。");
-                SetBalloonStatus($"文字リンク解除に失敗しました: {ex.Message}", false);
+                SetBalloonStatus("文字リンク解除に失敗しました。", false);
                 return false;
             }
+            RaiseContentChanged("フキダシ文字リンク解除");
+            return true;
         }
 
         private void SynchronizeBoundPageAfterLinkMutation()
@@ -465,6 +468,68 @@ namespace MojiCollaTool
             CapturePage(_boundPage);
             ApplyPageOrderToLiveObjects();
             RebuildCanvasObjectOrder();
+        }
+
+        private LinkMutationSnapshot CaptureLinkMutationSnapshot()
+        {
+            return new LinkMutationSnapshot(
+                _boundPage?.Clone(_boundPage.PageId, preserveObjectIds: true),
+                CanvasData.Clone(),
+                ScalePercent,
+                SelectedObjectId,
+                _selectedBalloon?.BalloonData.Clone(),
+                _mojiPanels.ToDictionary(panel => panel.MojiData.ObjectId, panel => PageDocument.CloneMojiData(panel.MojiData)),
+                _balloonVisuals.ToDictionary(visual => visual.ObjectId, visual => PageDocument.CloneBalloonData(visual.BalloonData)),
+                _attachedSymbolModels.ToDictionary(symbol => symbol.ObjectId, symbol => PageDocument.CloneAttachedSymbolData(symbol)),
+                _attachedSymbolVisuals.ToDictionary(visual => visual.ObjectId, visual => PageDocument.CloneAttachedSymbolData(visual.SymbolData)));
+        }
+
+        private void RestoreLinkMutationSnapshot(LinkMutationSnapshot snapshot)
+        {
+            var wasSuppressed = _suppressChanges;
+            _suppressChanges = true;
+            try
+            {
+                if (_boundPage != null && snapshot.Page != null)
+                {
+                    _boundPage.RestoreFrom(snapshot.Page);
+                    CanvasData = snapshot.Canvas.Clone();
+                    UpdateCanvas();
+                    foreach (var panel in _mojiPanels)
+                    {
+                        if (!snapshot.MojiDatas.TryGetValue(panel.MojiData.ObjectId, out var data)) continue;
+                        panel.MojiData = PageDocument.CloneMojiData(data);
+                        panel.UpdateMojiView(true);
+                    }
+                    foreach (var visual in _balloonVisuals)
+                    {
+                        if (snapshot.Balloons.TryGetValue(visual.ObjectId, out var data))
+                            visual.ApplyData(PageDocument.CloneBalloonData(data));
+                    }
+                    _attachedSymbolModels.Clear();
+                    _attachedSymbolModels.AddRange(snapshot.SymbolModels.Values.Select(PageDocument.CloneAttachedSymbolData));
+                    foreach (var visual in _attachedSymbolVisuals)
+                    {
+                        if (!snapshot.Symbols.TryGetValue(visual.ObjectId, out var data)) continue;
+                        var parent = _mojiPanels.FirstOrDefault(panel => panel.MojiData.ObjectId == data.ParentId);
+                        if (parent != null)
+                            visual.ApplyData(PageDocument.CloneAttachedSymbolData(data), parent.MojiData,
+                                parent.GetGraphemeAnchorBounds(data.GraphemeAnchor, MainCanvas));
+                    }
+                    ApplyPageOrderToLiveObjects();
+                    RebuildCanvasObjectOrder();
+                    RestoreViewState(snapshot.ScalePercent, snapshot.SelectedObjectId);
+                }
+                else if (_selectedBalloon != null && snapshot.SelectedBalloon != null)
+                {
+                    _selectedBalloon.ApplyData(PageDocument.CloneBalloonData(snapshot.SelectedBalloon));
+                    RefreshBalloonTools();
+                }
+            }
+            finally
+            {
+                _suppressChanges = wasSuppressed;
+            }
         }
 
         internal bool MoveSelectedBalloonComposition(BalloonCompositionOrder operation)
@@ -1623,6 +1688,41 @@ namespace MojiCollaTool
             ContentChangeCoalesceKey = coalesceKey;
             ContentChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    internal sealed class LinkMutationSnapshot
+    {
+        public LinkMutationSnapshot(
+            PageDocument? page,
+            CanvasData canvas,
+            int scalePercent,
+            Guid? selectedObjectId,
+            BalloonData? selectedBalloon,
+            IReadOnlyDictionary<Guid, MojiData> mojiDatas,
+            IReadOnlyDictionary<Guid, BalloonData> balloons,
+            IReadOnlyDictionary<Guid, AttachedSymbolData> symbolModels,
+            IReadOnlyDictionary<Guid, AttachedSymbolData> symbols)
+        {
+            Page = page;
+            Canvas = canvas;
+            ScalePercent = scalePercent;
+            SelectedObjectId = selectedObjectId;
+            SelectedBalloon = selectedBalloon;
+            MojiDatas = mojiDatas;
+            Balloons = balloons;
+            SymbolModels = symbolModels;
+            Symbols = symbols;
+        }
+
+        public PageDocument? Page { get; }
+        public CanvasData Canvas { get; }
+        public int ScalePercent { get; }
+        public Guid? SelectedObjectId { get; }
+        public BalloonData? SelectedBalloon { get; }
+        public IReadOnlyDictionary<Guid, MojiData> MojiDatas { get; }
+        public IReadOnlyDictionary<Guid, BalloonData> Balloons { get; }
+        public IReadOnlyDictionary<Guid, AttachedSymbolData> SymbolModels { get; }
+        public IReadOnlyDictionary<Guid, AttachedSymbolData> Symbols { get; }
     }
 
     public sealed class PageFileDropEventArgs : EventArgs

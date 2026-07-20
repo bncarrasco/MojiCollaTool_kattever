@@ -656,6 +656,39 @@ namespace MojiCollaTool
                 attachedSymbols);
         }
 
+        /// <summary>
+        /// Restores this page in place from a same-identity snapshot.  The
+        /// editor uses this only for rolling back a failed, pre-notification
+        /// synchronization; keeping the page instance is important because
+        /// ProjectSession and the active editor both reference it.
+        /// </summary>
+        internal void RestoreFrom(PageDocument source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            if (source.PageId != PageId) throw new InvalidOperationException("Page identity cannot be changed while restoring a snapshot.");
+            var restored = source.Clone(PageId, preserveObjectIds: true);
+            Name = restored.Name;
+            Order = restored.Order;
+            Canvas.CanvasWidth = restored.Canvas.CanvasWidth;
+            Canvas.CanvasHeight = restored.Canvas.CanvasHeight;
+            Canvas.ImageData1 = restored.Canvas.ImageData1.Clone();
+            Canvas.ImageData2 = restored.Canvas.ImageData2.Clone();
+            Canvas.Image2LocatePosition = restored.Canvas.Image2LocatePosition;
+            Canvas.ImageMarginTop = restored.Canvas.ImageMarginTop;
+            Canvas.ImageMarginLeft = restored.Canvas.ImageMarginLeft;
+            Canvas.ImageMarginBottom = restored.Canvas.ImageMarginBottom;
+            Canvas.ImageMarginRight = restored.Canvas.ImageMarginRight;
+            Canvas.CanvasColor = restored.Canvas.CanvasColor;
+            _mojiDatas.Clear();
+            _mojiDatas.AddRange(restored._mojiDatas.Select(CloneMojiData));
+            _balloons.Clear();
+            _balloons.AddRange(restored._balloons.Select(CloneBalloonData));
+            _attachedSymbols.Clear();
+            _attachedSymbols.AddRange(restored._attachedSymbols.Select(CloneAttachedSymbolData));
+            _objectOrder.Clear();
+            _objectOrder.AddRange(restored._objectOrder);
+        }
+
         internal static CanvasData CloneCanvas(CanvasData source)
         {
             var clone = source.Clone();

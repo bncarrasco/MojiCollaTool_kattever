@@ -2,7 +2,7 @@
 
 ## Result
 
-TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描画・hit test・日本語編集UIへ接続し、single tailの追加／削除、tip／root／width編集、文字link／unlink、typed compositionの一体移動とZ-order、Undo/Redo、保存再読込を実装しました。司令役レビューC130-01～03では、link直後のdocument／live／Canvas順同期、format 2.2重複linkの決定的移行、実UI受入経路と実測値を追加確認しました。
+TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描画・hit test・日本語編集UIへ接続し、single tailの追加／削除、tip／root／width編集、文字link／unlink、typed compositionの一体移動とZ-order、Undo/Redo、保存再読込を実装しました。司令役レビューC130-01～04では、link直後のdocument／live／Canvas順同期、format 2.2重複linkの決定的移行、実UI受入経路、同期rollbackとsemantic event境界を追加確認しました。
 
 ## 対応要件
 
@@ -26,7 +26,7 @@ TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描�
 
 - Main implementation: `e2137363ddbccfd34b636628a72d792a99590f73`
 - Composition-order expectation update: `88d365a4d15e9e9145a8250cffac6c1b7f470c7e`
-- C130-01～03修正＋受入: `a76d26671fe789314d4da1c63a58c7e52bf168d0`
+- C130-01～04修正＋受入: 本報告を含む実装commit（exact hashは完了メッセージに記載）
 - Completion metadata: 本報告更新commit（exact hashは完了メッセージに記載）
 
 ## 変更ファイル
@@ -60,6 +60,7 @@ TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描�
 - link候補は同一pageの文字だけをlegacy ID、ObjectId短縮値、表示例付きで列挙します。
 - `PageDocument`のAdd／Set／Update／Normalize境界で、一つの文字が複数フキダシへlinkされないことを検証します。別フキダシの文字を黙って奪わず、日本語で拒否します。
 - format 2.2のreader／constructor境界だけは互換移行モードとし、canonical `AllObjects`順で最初のballoon linkを保持し、後続重複をunlinkします。dangling link、ID検証、writerのatomic性は厳格なままです。runtimeのAdd／Set／Update／新規linkは重複を拒否します。
+- link／unlinkのvalidation／同期失敗はbefore snapshotからpage instanceをin-place復元し、live data、Canvas child／Z、selectionも再構成します。semantic commit後の`ContentChanged` subscriber例外はcatchせず上位boundaryへ伝播し、失敗statusにはraw `Exception.Message`を出しません。
 - invalid／cross-page／削除済みIDはmodel／visual／historyを変更せず拒否します。
 - link／unlinkは文字の位置、font、縦横、内容を変更しません。文字削除はフキダシを残してunlinkし、フキダシ削除は文字を残します。
 
@@ -75,21 +76,23 @@ TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描�
 - drag開始時にballoonとlinked textをsnapshotし、mousemoveではvisual/model previewだけ、pointer-upのContentChanged 1回で既存ProjectSession snapshot historyへcommitします。gestureごとに固有coalesce keyを使い、短時間の別gestureを統合しません。
 - page/project切替、Undo/Redo後のreload、Disposeでは既存BindPage／RemoveAll boundaryを使い、tail handleとlink候補を再構成・解放します。
 - link／unlinkは`CapturePage`の試行検証後に`ApplyPageOrderToLiveObjects`と`RebuildCanvasObjectOrder`まで同一UI操作内で実行し、通知前からdocument順、live model ZIndex、Canvas.ZIndex、typed child順を一致させます。失敗時はlive linkを復元し、通知・履歴・dirtyを発生させません。
+- C130-04ではfaulting subscriber後もsemantic link／unlinkとhistory／dirtyを保持して例外を伝播し、trial validation failureではdocument／live／Canvas／selection／history／dirtyをbeforeへ戻すことを確認しました。UI statusは固定日本語概要のみです。
 
 ## Verification
 
 - SDK: 6.0.428
 - Debug build: pass、0 warnings／0 errors
-- Debug test: 190 passed／0 failed
+- Debug test: 192 passed／0 failed
 - Release build: pass、0 warnings／0 errors
-- Release test (`--no-build`): 190 passed／0 failed
-- test件数差: 175 baseline + TASK-130専用15 = 190（C130受入6件を追加）
+- Release test (`--no-build`): 192 passed／0 failed
+- test件数差: 175 baseline + TASK-130専用17 = 192（C130-04受入2件を追加）
 - `git diff --check`: pass
 - format: version 2.2を維持。既存2.0／2.1読込、unknown shape、tailなし、日本語project/page/path、text／symbol／balloon／image／exportを含む全suite成功
 - 縦書き: link前後で方向／font／内容を保持するSTA test成功
 - 横書き: composition move／resizeで位置以外のfont／内容を保持するSTA test成功
 - 日本語UI: しっぽ追加／削除、実ComboBox＋`LinkTextButton`／`UnlinkTextButton`、現在状態、4種Z button、invalid／競合拒否を確認
 - C130受入: `RealLinkButtonSynchronizesDocumentLiveZCanvasOrderAndHistory`、`RealZButtonsUseTypedCompositionAndEdgeNoOpDoesNotCreateHistory`、`Version22DuplicateLinksAreMigratedByCanonicalOrderAndRoundTrip`、`PageSwitchRefreshesLinkCandidatesAndDisposeStopsFurtherBinding`、`HiddenBalloonHasNoHandlesAndCannotStartGesture`、`LinkedTextSingleObjectMoveLeavesBalloonGeometryUnchanged`を通過
+- C130-04受入: `LinkNotificationSubscriberExceptionPropagatesAfterSemanticCommit`、`LinkTrialValidationFailureRollsBackEditorDocumentCanvasHistoryDirtyAndStatus`を通過
 - Undo/Redo: add/remove、実UI link/unlink、tail drag、composition move/Z、別gesture分離、redo branch、saved dirty、cancelを確認
 
 ## 性能実測
