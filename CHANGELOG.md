@@ -11,10 +11,11 @@
 ### TASK-140 C140レビュー追補
 
 - 未適用リンクをBindPage・再バインド・保存再読込で暗黙wrapせず、手動編集後も明示適用だけがレイアウトを生成するようにしました。
-- versioned形式のLF・CR・CRLF・混在改行を保持し、FitBalloonのpadding検証を現在の小さい枠から分離しました。
+  - versioned形式のLF・CR・CRLF・混在改行を保持し、FitBalloonのpadding検証を現在の小さい枠から分離しました。
   - 適用途中のdeep rollback、実Apply Button／ComboBox、redo branch、visual hierarchy、24 composition×両modeのPageEditor経路を検証しました。
   - balloon frame resize後の自動レイアウトを無効化し、balloon move・composition move・tail操作では適用済みplanを維持するようにしました。
-  - Debug/Releaseとも209テスト合格、ビルド警告0・エラー0です。version 2.3移行は設計承認待ちです。
+  - versioned形式を2.3へ更新し、2.0〜2.2のlinkをUnappliedへ安全移行、2.3の3 stateを保存・復元、2.4以降を拒否します。
+  - Debug/Releaseとも212テスト合格、ビルド警告0・エラー0です。
 
 ### TASK-130
 
