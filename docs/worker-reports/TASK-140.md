@@ -26,7 +26,7 @@ TASK-140の自動レイアウトを、明示Applyによる一方向操作とし�
 - 前回レビュー修正commit: `faf756cec414bb7fcf65b3a300778c7a62e52065`
 - 今回の実装・テストcommit: `467a62c278ed38d70a69c53f1be9d902b96dfe0c`
 - 未知のLayoutModeを暗黙適用しない安全弁commit: `5a74db3a8c38d7b2b900d11109942c4460d7e3de`
-- 最終記録commit: 文書commit後にfull hashを記録します
+- 最終記録commit（文書commit直前のfull hash）: `2344d700d79937822be7dc933e57b201691cd0fd`
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` = `6.0.428`
 - push / merge / rebase: 実施していません
 
