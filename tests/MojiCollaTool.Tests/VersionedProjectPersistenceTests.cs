@@ -256,7 +256,7 @@ public class VersionedProjectPersistenceTests
     }
 
     [TestMethod]
-    public void Version23PersistsAllThreeLayoutStatesAndManifestVersions()
+    public void Version24PersistsAllThreeLayoutStatesAndManifestVersions()
     {
         using var scope = TemporaryDirectory.Create();
         var archivePath = Path.Combine(scope.Path, "layout-2.3.mctzip");
@@ -267,8 +267,8 @@ public class VersionedProjectPersistenceTests
         using (var archive = ZipFile.OpenRead(archivePath))
         {
             var manifest = XDocument.Load(archive.GetEntry("manifest.xml")!.Open());
-            Assert.AreEqual("2.3", manifest.Root!.Element("FormatVersion")!.Value);
-            Assert.AreEqual("2.3", manifest.Root.Element("MinimumReaderVersion")!.Value);
+            Assert.AreEqual("2.4", manifest.Root!.Element("FormatVersion")!.Value);
+            Assert.AreEqual("2.4", manifest.Root.Element("MinimumReaderVersion")!.Value);
         }
 
         var restored = DataIO.ReadVersionedProject(archivePath);
@@ -332,7 +332,7 @@ public class VersionedProjectPersistenceTests
     }
 
     [TestMethod]
-    public void Version22ReadExplicitApplyThenVersion23SavePreservesLayoutAndCompositionState()
+    public void Version22ReadExplicitApplyThenVersion24SavePreservesLayoutAndCompositionState()
     {
         using var scope = TemporaryDirectory.Create();
         var sourcePath = Path.Combine(scope.Path, "source-2.3.mctzip");
@@ -413,7 +413,7 @@ public class VersionedProjectPersistenceTests
         using (var archive = ZipFile.OpenRead(savedPath))
         {
             var manifest = XDocument.Load(archive.GetEntry("manifest.xml")!.Open());
-            Assert.AreEqual("2.3", manifest.Root!.Element("FormatVersion")!.Value);
+            Assert.AreEqual("2.4", manifest.Root!.Element("FormatVersion")!.Value);
         }
 
         var restored = DataIO.ReadVersionedProject(savedPath);

@@ -140,11 +140,15 @@ namespace MojiCollaTool
         [XmlArray("AttachedSymbols")]
         [XmlArrayItem("AttachedSymbol")]
         public List<AttachedSymbolData> AttachedSymbols { get; set; } = new List<AttachedSymbolData>();
+
+        [XmlArray("BalloonMerges")]
+        [XmlArrayItem("BalloonMerge")]
+        public List<BalloonMergeData> BalloonMerges { get; set; } = new List<BalloonMergeData>();
     }
 
     public static class VersionedProjectFormat
     {
-        public const string CurrentVersion = "2.3";
+        public const string CurrentVersion = "2.4";
         public const string LayoutStateVersion = "2.3";
         public const string ProductName = "MojiCollaTool Katteban";
         public const string ManifestEntryName = "manifest.xml";
@@ -420,6 +424,7 @@ namespace MojiCollaTool
                     Objects = page.CreateObjectSnapshot().ToList(),
                     Balloons = page.Balloons.Select(PageDocument.CloneBalloonData).ToList(),
                     AttachedSymbols = page.AttachedSymbols.Select(PageDocument.CloneAttachedSymbolData).ToList(),
+                    BalloonMerges = page.BalloonMerges.Select(PageDocument.CloneBalloonMergeData).ToList(),
                 };
                 WriteEntry(archive, VersionedProjectFormat.CanonicalPagePath(page.PageId), VersionedProjectFormat.Serialize(VersionedProjectFormat.PageSerializer, pageFile));
                 WriteAssetEntry(archive, preparedImage1);
@@ -687,13 +692,18 @@ namespace MojiCollaTool
                 if (image1 != null) assets.Add(image1);
                 if (image2 != null) assets.Add(image2);
                 var balloons = MigrateLayoutModes(pageFile.Balloons ?? Enumerable.Empty<BalloonData>(), formatVersion);
+                if (formatVersion < Version.Parse("2.4") && pageFile.BalloonMerges?.Count > 0)
+                    throw new InvalidDataException("Balloon merge data requires project format 2.4.");
                 pageDocuments.Add(new PageDocument(
                     pageId,
                     pageFile.Name ?? manifestPage.Name,
                     canvas,
                     pageFile.Objects ?? Enumerable.Empty<MojiData>(),
                     balloons,
-                    pageFile.AttachedSymbols ?? Enumerable.Empty<AttachedSymbolData>()));
+                    pageFile.AttachedSymbols ?? Enumerable.Empty<AttachedSymbolData>(),
+                    formatVersion >= Version.Parse("2.4")
+                        ? pageFile.BalloonMerges ?? Enumerable.Empty<BalloonMergeData>()
+                        : Enumerable.Empty<BalloonMergeData>()));
             }
 
             if (string.IsNullOrWhiteSpace(manifest.ProjectName))

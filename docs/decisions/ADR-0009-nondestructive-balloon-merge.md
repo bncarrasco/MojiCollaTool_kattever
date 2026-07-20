@@ -11,6 +11,7 @@
 - **Persistence:** project formatを2.4へ上げ、2.4 writer／minimum readerでmerge dataをround-tripする。2.0〜2.3はmerge groupなしとして読む。2.4のempty ID、2件未満、primary不在、missing／duplicate member、同一balloonの複数group所属はload前validationで拒否する。2.5以降、unknown major、future minimum readerは従来どおり拒否する。
 - **Clone/delete:** page identityを保持するcloneはmerge ID／member IDを保持し、新規page cloneはmember IDとmerge IDを再生成する。member削除はmerge relationshipを更新し、2件未満になればgroupを削除する。ただしlocked related memberがある非force削除は拒否する。
 - **Performance:** Releaseで24 groupのrefresh/hit-testを測定し、single operation p95 50 ms未満、100 refresh batch 1,500 ms未満を受入目標とする。Debug safety thresholdは3,000 msとする。
+- **Implementation evidence:** TASK-150を`0f9a657ad2a87ad315c81f6cb4887926ad834b9d`で実装し、review修正`8aa9a7431891700821b153a7d074ca7230e505b0`までにDebug/Release 254/254、専用16/16に合格した。Release実測はsingle p95 0.039 ms、24 group×100 batch 62.594 ms。実WPF pointer／DPI／IME／final-pixel目視はNot verified。
 - **Consequences:** 2.4で保存したprojectは2.3以前のreaderでは開けない。旧project読込と元fileを保護するatomic writerは維持される。TASK-230は将来、selection UIを再利用できるが、merge dataやtyped compositionを一般`GroupId`へ暗黙変換しない。
 - **Alternatives rejected:** 焼き込みGeometryは元parameterを失う。既存`IPageObjectData.GroupId`の流用は一般groupとの意味衝突と現行relationship修復の対象になる。style一致だけを許可する案は不要に機能を狭める。
 - **Related:** REQ-BALLOON-MERGE-001、ADR-0003/4/5/7/8、TASK-080/130/140/150/230。

@@ -1,6 +1,6 @@
 # プロジェクト形式と互換性仕様
 
-Status: Current versioned format 2.3 / legacy compatibility maintained
+Status: Current versioned format 2.4 / legacy compatibility maintained
 
 ## 1. 現行公式系形式（コード観測）
 
@@ -43,7 +43,7 @@ readerはInfoのversionを互換判定に使用せず、形式versionやMinimumR
 - zip traversal、重複entry、異常展開sizeの明示検査がない。
 - 日本語path、Unicode filename、欠落entry、破損XMLは自動test未実施。
 
-## 2. 勝手版新形式（Proposed）
+## 2. 勝手版新形式（現行）
 
 拡張子はOQ-FMT-001で未決。containerはzipを継続する。
 
@@ -60,8 +60,8 @@ pages/
 
 最低限、以下を英語内部keyで保持する。
 
-- `FormatVersion`: semanticなmajor/minor。writerの現行値は `2.3`。readerは `2.0`〜`2.3`を受け付け、`2.4`以降と未知majorを拒否する。
-- `MinimumReaderVersion`: readerが安全に開くためのminimum。`2.4`以降は拒否する。
+- `FormatVersion`: semanticなmajor/minor。writerの現行値は `2.4`。readerは `2.0`〜`2.4`を受け付け、`2.5`以降と未知majorを拒否する。
+- `MinimumReaderVersion`: readerが安全に開くためのminimum。`2.5`以降は拒否する。
 - `ProjectId`: UUID。
 - `Product`: `MojiCollaTool Katteban`等の内部識別子。表示名とは分離。
 - `Pages`: `PageId`, `Name`, `Order`, `RelativePath`。
@@ -73,13 +73,20 @@ pages/
 - 順序付き `Objects`。
 - 各objectに `Id`, `Type`, transform, ZIndex, IsLocked。
 - 型別data: text、attached symbol、balloon、tail/link等。
+- page-level relationshipとして、2.4以降は`BalloonMerges`にstable merge ID、primary balloon ID、順序付きmember balloon IDを保存する。これはpage objectや一般`GroupId`ではない。
 - 選択、hover、zoom、open Windowは保存しない。page dirty/historyも保存しない。
 
 ### Layout state compatibility
 
 `TextLinkData.LayoutMode`はversion 2.3で`Unapplied`、`FitTextToBalloon`、`FitBalloonToText`の3 stateを正式保存する。version 2.0〜2.2のlinkは保存値がFitText、FitBalloon、missing、unknownのいずれであってもreaderが`Unapplied`へ移行する。これはTASK-130以前に自動layoutが存在せず、2.2 fieldだけでは旧既定値と明示Applyを判別できないためである。
 
-このmigrationはlayout stateだけを変更し、text content、position、font/style、balloon geometry/style/rotation/tail、padding、minimum font、alignment、relationship、Z、AttachedSymbol、Canvas、assetを変更しない。旧archiveは読込だけでは書き換えず、次回の明示保存時に2.3として出力する。
+このmigrationはlayout stateだけを変更し、text content、position、font/style、balloon geometry/style/rotation/tail、padding、minimum font、alignment、relationship、Z、AttachedSymbol、Canvas、assetを変更しない。旧archiveは読込だけでは書き換えず、次回の明示保存時に2.4として出力する。
+
+### Balloon merge compatibility
+
+version 2.4では、各merge groupを`MergeId`、`PrimaryBalloonId`、2件以上のordered `MemberIds`として保存する。memberのshape、position、size、rotation、style、tail、text link、layout stateは従来どおり各`BalloonData`に保持し、merge／unmergeで書き換えない。
+
+version 2.0〜2.3はmerge collectionなしとして読む。2.4 archiveにempty ID、2件未満、primary不在、missing／duplicate member、同一balloonの複数group所属、project内ID衝突があれば全modelのcommit前に拒否し、silent repairしない。旧archiveと既存working dataは読込失敗で変更しない。
 
 ## 3. Reader policy
 
@@ -91,7 +98,7 @@ pages/
 6. 成功後にだけ新 `ProjectSession`としてworkspaceへ追加する。
 7. 失敗時は既存sessionとWorking/cacheを変更せず、日本語errorと診断logを残す。
 
-未知future **major** versionと2.4以降のfuture **minor** versionはread-only推測せず拒否する。未知optional **minor** fieldはserializer policyとfixtureで安全性を確認してから許容する。
+未知future **major** versionと2.5以降のfuture **minor** versionはread-only推測せず拒否する。未知optional **minor** fieldはserializer policyとfixtureで安全性を確認してから許容する。
 
 ## 4. Writer policy
 
@@ -104,7 +111,7 @@ pages/
 
 file名はUUID directoryを使用し、page名をarchive pathへ直接使用しない。日本語page名はXML値としてUTF-8で保持する。
 
-writerはmanifestの`FormatVersion`と`MinimumReaderVersion`へ`2.3`を出力し、2.3のlayout stateをそのまま保存する。
+writerはmanifestの`FormatVersion`と`MinimumReaderVersion`へ`2.4`を出力し、2.3で定義したlayout stateと2.4のballoon merge relationshipをそのまま保存する。
 
 ## 5. 互換性matrix
 
@@ -113,7 +120,8 @@ writerはmanifestの`FormatVersion`と`MinimumReaderVersion`へ`2.3`を出力し
 | 旧単page mctzip | 読込可（基準、未実行） | 1pageへimport必須 |
 | 勝手版new format 2.0〜2.2 | 読込不可と仮定 | 読込可。layout stateはUnappliedへ安全移行 |
 | 勝手版new format 2.3 | 読込不可と仮定 | 読込可。3 stateをround-trip |
-| 勝手版new format 2.4以降 | 読込不可と仮定 | 安全に拒否 |
+| 勝手版new format 2.4 | 読込不可と仮定 | 読込可。layout 3 stateとballoon mergeをround-trip |
+| 勝手版new format 2.5以降 | 読込不可と仮定 | 安全に拒否 |
 | 勝手版から旧形式export | 未提供 | OQ-FMT-002でDeferred |
 | 未知future major | 不明 | 安全に拒否 |
 
@@ -122,7 +130,7 @@ writerはmanifestの`FormatVersion`と`MinimumReaderVersion`へ`2.3`を出力し
 ## 6. 移行とdata保護
 
 - 旧形式を開いただけでは原fileを書換えない。
-- version 2.0〜2.2を開いただけではarchiveを書換えず、次回の明示保存で2.3へ出力する。
+- version 2.0〜2.3を開いただけではarchiveを書換えず、次回の明示保存で2.4へ出力する。2.0〜2.2のlayout stateだけは読込model上でUnappliedへ安全移行する。
 - 初回保存時は新形式の別file名を既定とし、旧file上書きは明示確認を検討する。
 - 変換warningと非互換点を日本語で表示する。
 - 保存前backup、temp naming、cleanup、disk full/permission/locked fileをfault testする。

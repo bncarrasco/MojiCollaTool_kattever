@@ -15,6 +15,7 @@ namespace MojiCollaTool
         private readonly List<MojiData> _mojiDatas;
         private readonly List<BalloonData> _balloons;
         private readonly List<AttachedSymbolData> _attachedSymbols;
+        private readonly List<BalloonMergeData> _balloonMerges;
         private readonly List<Guid> _objectOrder = new List<Guid>();
 
         public PageDocument(string name)
@@ -62,7 +63,8 @@ namespace MojiCollaTool
             CanvasData canvas,
             IEnumerable<MojiData> mojiDatas,
             IEnumerable<BalloonData> balloons,
-            IEnumerable<AttachedSymbolData> attachedSymbols)
+            IEnumerable<AttachedSymbolData> attachedSymbols,
+            IEnumerable<BalloonMergeData>? balloonMerges = null)
         {
             if (pageId == Guid.Empty) throw new ArgumentException("Page ID must not be empty.", nameof(pageId));
             PageId = pageId;
@@ -76,6 +78,9 @@ namespace MojiCollaTool
                 .ToList();
             _attachedSymbols = (attachedSymbols ?? throw new ArgumentNullException(nameof(attachedSymbols)))
                 .Select(CloneAttachedSymbolData)
+                .ToList();
+            _balloonMerges = (balloonMerges ?? Enumerable.Empty<BalloonMergeData>())
+                .Select(CloneBalloonMergeData)
                 .ToList();
             var allObjects = _mojiDatas.Cast<IPageObjectData>().Concat(_balloons).Concat(_attachedSymbols).ToArray();
             if (allObjects.Length > 0 &&
@@ -162,6 +167,10 @@ namespace MojiCollaTool
         public IReadOnlyList<AttachedSymbolData> AttachedSymbols => new ReadOnlyCollection<AttachedSymbolData>(_attachedSymbols);
 
         public IReadOnlyList<AttachedSymbolData> AttachedSymbolDatas => AttachedSymbols;
+
+        public IReadOnlyList<BalloonMergeData> BalloonMerges => new ReadOnlyCollection<BalloonMergeData>(_balloonMerges);
+
+        public IReadOnlyList<BalloonMergeData> BalloonMergeDatas => BalloonMerges;
 
         /// <summary>
         /// All page objects in canonical page-level drawing order.
@@ -290,8 +299,12 @@ namespace MojiCollaTool
             foreach (var balloon in replacement) balloon.Validate();
             ValidateObjectIds(_mojiDatas, replacement, _attachedSymbols);
             ValidateBalloonTextLinks(_mojiDatas, replacement);
+            var replacementMerges = ReconcileBalloonMergesForMembers(replacement.Select(item => item.ObjectId));
+            ValidateBalloonMerges(replacement, replacementMerges);
             _balloons.Clear();
             _balloons.AddRange(replacement);
+            _balloonMerges.Clear();
+            _balloonMerges.AddRange(replacementMerges);
             RebuildObjectOrderPreservingExisting();
             NormalizeObjectOrder();
         }
@@ -403,8 +416,14 @@ namespace MojiCollaTool
             if (balloon == null) throw new ArgumentNullException(nameof(balloon));
             var matching = _balloons.FirstOrDefault(candidate => ReferenceEquals(candidate, balloon) || candidate.ObjectId == balloon.ObjectId);
             if (matching == null) return false;
+            // This is the public non-force deletion boundary.  A member must
+            // not be removed while any object in its complete typed merge
+            // composition is locked; SetBalloons remains the normalization /
+            // restore path used by validated snapshots.
+            if (!CanMutateBalloonMerge(matching.ObjectId)) return false;
             _balloons.Remove(matching);
             _objectOrder.Remove(matching.ObjectId);
+            ReconcileBalloonMergesAfterRemoval(matching.ObjectId);
             NormalizeObjectOrder();
             return true;
         }
@@ -423,6 +442,144 @@ namespace MojiCollaTool
         }
 
         public bool ContainsBalloon(Guid objectId) => _balloons.Any(balloon => balloon.ObjectId == objectId);
+
+        public BalloonMergeData GetBalloonMerge(Guid mergeId)
+        {
+            return _balloonMerges.SingleOrDefault(merge => merge.MergeId == mergeId)
+                ?? throw new KeyNotFoundException($"Balloon merge was not found: {mergeId}");
+        }
+
+        public BalloonMergeData? FindBalloonMergeByMember(Guid balloonId)
+            => _balloonMerges.SingleOrDefault(merge => merge.MemberIds.Contains(balloonId));
+
+        public bool ContainsBalloonMerge(Guid mergeId) => _balloonMerges.Any(merge => merge.MergeId == mergeId);
+
+        public bool CanMutateBalloonMerge(Guid balloonId)
+        {
+            GetBalloon(balloonId);
+            var merge = FindBalloonMergeByMember(balloonId);
+            var memberIds = merge?.MemberIds ?? new List<Guid> { balloonId };
+            return memberIds.SelectMany(GetSingleBalloonCompositionObjectIds)
+                .All(id => ContainsObject(id) && !GetDocumentObject(id).IsLocked);
+        }
+
+        /// <summary>
+        /// Pairwise merge that flattens existing groups. The selected primary
+        /// group keeps its primary and stable merge ID.
+        /// </summary>
+        public bool MergeBalloons(Guid primaryBalloonId, Guid candidateBalloonId)
+        {
+            GetBalloon(primaryBalloonId);
+            GetBalloon(candidateBalloonId);
+            if (primaryBalloonId == candidateBalloonId) return false;
+            var primaryGroup = FindBalloonMergeByMember(primaryBalloonId);
+            var candidateGroup = FindBalloonMergeByMember(candidateBalloonId);
+            if (primaryGroup != null && ReferenceEquals(primaryGroup, candidateGroup)) return false;
+
+            var affected = (primaryGroup?.MemberIds ?? new List<Guid> { primaryBalloonId })
+                .Concat(candidateGroup?.MemberIds ?? new List<Guid> { candidateBalloonId })
+                .Distinct()
+                .ToList();
+            if (affected.SelectMany(GetSingleBalloonCompositionObjectIds)
+                .Any(id => GetDocumentObject(id).IsLocked)) return false;
+
+            var merged = new BalloonMergeData
+            {
+                MergeId = primaryGroup?.MergeId ?? candidateGroup?.MergeId ?? Guid.NewGuid(),
+                PrimaryBalloonId = primaryGroup?.PrimaryBalloonId ?? primaryBalloonId,
+                MemberIds = affected,
+            };
+            var replacement = _balloonMerges
+                .Where(item => !ReferenceEquals(item, primaryGroup) && !ReferenceEquals(item, candidateGroup))
+                .Select(CloneBalloonMergeData)
+                .Append(merged)
+                .ToList();
+            ValidateBalloonMerges(_balloons, replacement);
+            _balloonMerges.Clear();
+            _balloonMerges.AddRange(replacement);
+            NormalizeObjectOrder();
+            return true;
+        }
+
+        public bool UnmergeBalloons(Guid balloonId)
+        {
+            GetBalloon(balloonId);
+            var merge = FindBalloonMergeByMember(balloonId);
+            if (merge == null) return false;
+            if (merge.MemberIds.SelectMany(GetSingleBalloonCompositionObjectIds)
+                .Any(id => GetDocumentObject(id).IsLocked)) return false;
+            _balloonMerges.Remove(merge);
+            NormalizeObjectOrder();
+            return true;
+        }
+
+        public bool MoveBalloonMerge(Guid balloonId, double deltaX, double deltaY)
+        {
+            if (double.IsNaN(deltaX) || double.IsInfinity(deltaX) ||
+                double.IsNaN(deltaY) || double.IsInfinity(deltaY))
+                throw new InvalidDataException("Balloon merge movement must be finite.");
+            if (deltaX == 0 && deltaY == 0) return false;
+            var merge = FindBalloonMergeByMember(balloonId);
+            if (merge == null) return false;
+            if (!CanMutateBalloonMerge(balloonId)) return false;
+
+            var balloonCandidates = new Dictionary<Guid, BalloonData>();
+            var textCandidates = new Dictionary<Guid, MojiData>();
+            foreach (var memberId in merge.MemberIds)
+            {
+                var balloon = GetBalloon(memberId).Clone();
+                balloon.X += deltaX;
+                balloon.Y += deltaY;
+                if (balloon.Tail != null)
+                {
+                    balloon.Tail.TipX += deltaX;
+                    balloon.Tail.TipY += deltaY;
+                }
+                balloon.Validate();
+                balloonCandidates.Add(memberId, balloon);
+                if (balloon.TextLink?.TextObjectId is Guid textId)
+                {
+                    var text = GetObject(textId).Clone();
+                    text.X += deltaX;
+                    text.Y += deltaY;
+                    RequireFiniteMergeCoordinate(text.X, "Text.X");
+                    RequireFiniteMergeCoordinate(text.Y, "Text.Y");
+                    textCandidates.Add(textId, text);
+                }
+            }
+
+            // Attached symbols move implicitly with their linked parent text.
+            // Validate cloned relationship data before committing any parent
+            // position so a late symbol failure cannot leave a partial move.
+            var movedTextIds = textCandidates.Keys.ToHashSet();
+            foreach (var symbol in _attachedSymbols.Where(item =>
+                !item.IsDetached && item.ParentId.HasValue && movedTextIds.Contains(item.ParentId.Value)))
+            {
+                var candidate = symbol.Clone();
+                candidate.Validate();
+                ValidateAttachedSymbolParent(candidate);
+            }
+
+            foreach (var pair in balloonCandidates) GetBalloon(pair.Key).Copy(pair.Value);
+            foreach (var pair in textCandidates) GetObject(pair.Key).Copy(pair.Value);
+            return true;
+        }
+
+        private static void RequireFiniteMergeCoordinate(double value, string name)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+                throw new InvalidDataException($"Balloon merge {name} must be finite.");
+        }
+
+        public void SetBalloonMerges(IEnumerable<BalloonMergeData> merges)
+        {
+            if (merges == null) throw new ArgumentNullException(nameof(merges));
+            var replacement = merges.Select(CloneBalloonMergeData).ToList();
+            ValidateBalloonMerges(_balloons, replacement);
+            _balloonMerges.Clear();
+            _balloonMerges.AddRange(replacement);
+            NormalizeObjectOrder();
+        }
 
         /// <summary>
         /// Atomically updates a balloon model. The original remains unchanged when validation fails.
@@ -562,6 +719,15 @@ namespace MojiCollaTool
 
         public IReadOnlyList<Guid> GetBalloonCompositionObjectIds(Guid balloonId)
         {
+            GetBalloon(balloonId);
+            var merge = FindBalloonMergeByMember(balloonId);
+            return merge == null
+                ? GetSingleBalloonCompositionObjectIds(balloonId)
+                : merge.MemberIds.SelectMany(GetSingleBalloonCompositionObjectIds).ToArray();
+        }
+
+        private IReadOnlyList<Guid> GetSingleBalloonCompositionObjectIds(Guid balloonId)
+        {
             var balloon = GetBalloon(balloonId);
             var ids = new List<Guid> { balloon.ObjectId };
             if (balloon.TextLink != null && _mojiDatas.Any(text => text.ObjectId == balloon.TextLink.TextObjectId))
@@ -586,9 +752,15 @@ namespace MojiCollaTool
         private List<List<Guid>> BuildObjectOrderBlocks()
         {
             var blockByObject = new Dictionary<Guid, IReadOnlyList<Guid>>();
-            foreach (var balloon in _balloons)
+            var mergedBalloonIds = _balloonMerges.SelectMany(item => item.MemberIds).ToHashSet();
+            foreach (var merge in _balloonMerges)
             {
-                var composition = GetBalloonCompositionObjectIds(balloon.ObjectId);
+                var composition = merge.MemberIds.SelectMany(GetSingleBalloonCompositionObjectIds).ToArray();
+                foreach (var id in composition) blockByObject[id] = composition;
+            }
+            foreach (var balloon in _balloons.Where(item => !mergedBalloonIds.Contains(item.ObjectId)))
+            {
+                var composition = GetSingleBalloonCompositionObjectIds(balloon.ObjectId);
                 foreach (var id in composition) blockByObject[id] = composition;
             }
 
@@ -603,16 +775,17 @@ namespace MojiCollaTool
             var emitted = new HashSet<Guid>();
             foreach (var objectId in _objectOrder)
             {
-                if (!emitted.Add(objectId)) continue;
+                if (emitted.Contains(objectId)) continue;
                 if (!blockByObject.TryGetValue(objectId, out var composition))
                 {
+                    emitted.Add(objectId);
                     blocks.Add(new List<Guid> { objectId });
                     continue;
                 }
 
-                var block = composition.Where(emitted.Add).ToList();
-                block.Insert(0, objectId);
-                blocks.Add(CanonicalizeComposition(block, composition));
+                var block = composition.Where(id => !emitted.Contains(id)).ToList();
+                foreach (var id in block) emitted.Add(id);
+                blocks.Add(block);
             }
             return blocks;
         }
@@ -684,6 +857,7 @@ namespace MojiCollaTool
                 MigrateDuplicateBalloonTextLinks();
             }
             ValidateBalloonTextLinks(_mojiDatas, _balloons);
+            ValidateBalloonMerges(_balloons, _balloonMerges);
             var knownIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId)
                 .Concat(_balloons.Select(item => item.ObjectId))
                 .Concat(_attachedSymbols.Select(item => item.ObjectId)));
@@ -740,15 +914,17 @@ namespace MojiCollaTool
             IEnumerable<MojiData> objects;
             IEnumerable<BalloonData> balloons;
             IEnumerable<AttachedSymbolData> attachedSymbols;
+            IEnumerable<BalloonMergeData> balloonMerges;
             if (preserveObjectIds)
             {
                 objects = _mojiDatas;
                 balloons = _balloons;
                 attachedSymbols = _attachedSymbols;
+                balloonMerges = _balloonMerges;
             }
             else
             {
-                (objects, balloons, attachedSymbols) = CloneObjectsWithRemappedRelationships();
+                (objects, balloons, attachedSymbols, balloonMerges) = CloneObjectsWithRemappedRelationships();
             }
             return new PageDocument(
                 pageId ?? Guid.NewGuid(),
@@ -756,7 +932,8 @@ namespace MojiCollaTool
                 Canvas.LegacyData,
                 objects,
                 balloons,
-                attachedSymbols);
+                attachedSymbols,
+                balloonMerges);
         }
 
         /// <summary>
@@ -788,6 +965,8 @@ namespace MojiCollaTool
             _balloons.AddRange(restored._balloons.Select(CloneBalloonData));
             _attachedSymbols.Clear();
             _attachedSymbols.AddRange(restored._attachedSymbols.Select(CloneAttachedSymbolData));
+            _balloonMerges.Clear();
+            _balloonMerges.AddRange(restored._balloonMerges.Select(CloneBalloonMergeData));
             _objectOrder.Clear();
             _objectOrder.AddRange(restored._objectOrder);
         }
@@ -826,6 +1005,12 @@ namespace MojiCollaTool
             return source.Clone();
         }
 
+        internal static BalloonMergeData CloneBalloonMergeData(BalloonMergeData source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            return source.Clone();
+        }
+
         internal static IPageObjectData ClonePageObject(IPageObjectData source)
         {
             return source switch
@@ -837,7 +1022,9 @@ namespace MojiCollaTool
             };
         }
 
-        private (IEnumerable<MojiData> MojiDatas, IEnumerable<BalloonData> Balloons, IEnumerable<AttachedSymbolData> AttachedSymbols) CloneObjectsWithRemappedRelationships()
+        private (IEnumerable<MojiData> MojiDatas, IEnumerable<BalloonData> Balloons,
+            IEnumerable<AttachedSymbolData> AttachedSymbols, IEnumerable<BalloonMergeData> BalloonMerges)
+            CloneObjectsWithRemappedRelationships()
         {
             var clones = _mojiDatas.Select(mojiData => mojiData.CloneAsNewObject()).ToArray();
             var balloonClones = _balloons.Select(balloon => balloon.CloneAsNewObject()).ToArray();
@@ -860,7 +1047,14 @@ namespace MojiCollaTool
                 }
             }
 
-            return (clones, balloonClones, symbolClones);
+            var mergeClones = _balloonMerges.Select(merge => new BalloonMergeData
+            {
+                MergeId = Guid.NewGuid(),
+                PrimaryBalloonId = objectIds[merge.PrimaryBalloonId],
+                MemberIds = merge.MemberIds.Select(id => objectIds[id]).ToList(),
+            }).ToArray();
+
+            return (clones, balloonClones, symbolClones, mergeClones);
         }
 
         private void RebuildObjectOrderPreservingExisting()
@@ -878,6 +1072,55 @@ namespace MojiCollaTool
 
             _objectOrder.Clear();
             _objectOrder.AddRange(preserved);
+        }
+
+        private List<BalloonMergeData> ReconcileBalloonMergesForMembers(IEnumerable<Guid> memberIds)
+        {
+            var available = memberIds.ToHashSet();
+            var result = new List<BalloonMergeData>();
+            foreach (var source in _balloonMerges)
+            {
+                var candidate = source.Clone();
+                candidate.MemberIds = candidate.MemberIds.Where(available.Contains).ToList();
+                if (candidate.MemberIds.Count < 2) continue;
+                if (!candidate.MemberIds.Contains(candidate.PrimaryBalloonId))
+                    candidate.PrimaryBalloonId = candidate.MemberIds[0];
+                result.Add(candidate);
+            }
+            return result;
+        }
+
+        private void ReconcileBalloonMergesAfterRemoval(Guid balloonId)
+        {
+            var merge = FindBalloonMergeByMember(balloonId);
+            if (merge == null) return;
+            merge.MemberIds.Remove(balloonId);
+            if (merge.MemberIds.Count < 2)
+            {
+                _balloonMerges.Remove(merge);
+                return;
+            }
+            if (merge.PrimaryBalloonId == balloonId) merge.PrimaryBalloonId = merge.MemberIds[0];
+        }
+
+        private static void ValidateBalloonMerges(
+            IEnumerable<BalloonData> balloons,
+            IEnumerable<BalloonMergeData> merges)
+        {
+            var balloonIds = balloons.Select(item => item.ObjectId).ToHashSet();
+            var mergeIds = new HashSet<Guid>();
+            var groupedBalloonIds = new HashSet<Guid>();
+            foreach (var merge in merges)
+            {
+                merge.Validate(balloonIds);
+                if (!mergeIds.Add(merge.MergeId))
+                    throw new InvalidDataException("Duplicate balloon merge ID.");
+                foreach (var memberId in merge.MemberIds)
+                {
+                    if (!groupedBalloonIds.Add(memberId))
+                        throw new InvalidDataException("A balloon cannot belong to more than one merge group.");
+                }
+            }
         }
 
         private static void ValidateObjectIds(
@@ -942,13 +1185,18 @@ namespace MojiCollaTool
 
         private void CanonicalizeBalloonCompositions()
         {
-            foreach (var balloon in _balloons.Where(item => item.TextLink != null))
+            var mergedIds = _balloonMerges.SelectMany(item => item.MemberIds).ToHashSet();
+            var compositions = _balloonMerges
+                .Select(merge => (IReadOnlyList<Guid>)merge.MemberIds.SelectMany(GetSingleBalloonCompositionObjectIds).ToArray())
+                .Concat(_balloons.Where(item => !mergedIds.Contains(item.ObjectId) && item.TextLink != null)
+                    .Select(item => GetSingleBalloonCompositionObjectIds(item.ObjectId)))
+                .ToArray();
+            foreach (var composition in compositions)
             {
-                var composition = GetBalloonCompositionObjectIds(balloon.ObjectId);
                 var members = composition.ToHashSet();
-                var balloonIndex = _objectOrder.IndexOf(balloon.ObjectId);
-                if (balloonIndex < 0) continue;
-                var insertionIndex = _objectOrder.Take(balloonIndex).Count(objectId => !members.Contains(objectId));
+                var anchorIndex = _objectOrder.IndexOf(composition[0]);
+                if (anchorIndex < 0) continue;
+                var insertionIndex = _objectOrder.Take(anchorIndex).Count(objectId => !members.Contains(objectId));
                 _objectOrder.RemoveAll(members.Contains);
                 _objectOrder.InsertRange(Math.Min(insertionIndex, _objectOrder.Count), composition);
             }
