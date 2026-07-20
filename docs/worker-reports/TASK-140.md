@@ -25,6 +25,7 @@ UIではmode、alignment、明示Applyを追加しました。locked/hidden/inva
 - 開始時status: clean
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` = `6.0.428`
 - push / merge / rebase: 実行していません
+- 実装commit: `fdbf417`（local only）
 
 ## 変更ファイル
 
@@ -42,7 +43,8 @@ UIではmode、alignment、明示Applyを追加しました。locked/hidden/inva
 
 - Debug build: pass、警告0・エラー0
 - Debug test: 195 passed、0 failed
-- Release build/test: 最終確認前
+- Release build: pass、警告0・エラー0
+- Release test: 195 passed、0 failed
 - `git diff --check`: pass
 - 自動検証: basic wrap、CRLF、surrogate/combining/ZWJ、縦書き、minimum font、bounded cache、FullText不変、FitTextToBalloon一履歴Undo/Redo
 - 手動WPF pointer/DPI/IME/final-pixel: Not verified
