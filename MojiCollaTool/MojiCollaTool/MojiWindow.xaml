@@ -178,7 +178,7 @@
                                 <ComboBoxItem Content="半濁点" Tag="゚"/>
                             </ComboBox>
                             <TextBox x:Name="AttachedSymbolTextBox" Width="100" MaxLength="256" Margin="5,0,0,0" Text="!"/>
-                            <Button Content="追加" Margin="5,0,0,0" Click="AttachedSymbolAddButton_Click"/>
+                            <Button x:Name="AttachedSymbolAddButton" Content="追加" Margin="5,0,0,0" Click="AttachedSymbolAddButton_Click"/>
                         </StackPanel>
                         <TextBlock x:Name="AttachedSymbolErrorTextBlock" Foreground="IndianRed" TextWrapping="Wrap"/>
                         <ListBox x:Name="AttachedSymbolListBox" Height="70" Margin="0,5,0,0" DisplayMemberPath="SymbolData.Text" SelectionChanged="AttachedSymbolListBox_SelectionChanged" PreviewMouseLeftButtonUp="AttachedSymbolListBox_PreviewMouseLeftButtonUp"/>

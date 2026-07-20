@@ -485,14 +485,7 @@ namespace MojiCollaTool
             // atomic on rejection.
             if (blocks[currentIndex].Any(id => GetDocumentObject(id).IsLocked)) return false;
 
-            var targetIndex = operation switch
-            {
-                ObjectOrderOperation.BringToFront => blocks.Count - 1,
-                ObjectOrderOperation.BringForward => Math.Min(blocks.Count - 1, currentIndex + 1),
-                ObjectOrderOperation.SendBackward => Math.Max(0, currentIndex - 1),
-                ObjectOrderOperation.SendToBack => 0,
-                _ => throw new ArgumentOutOfRangeException(nameof(operation)),
-            };
+            var targetIndex = GetObjectOrderTargetIndex(currentIndex, blocks.Count, operation);
             if (targetIndex == currentIndex) return false;
 
             var selected = blocks[currentIndex];
@@ -502,6 +495,20 @@ namespace MojiCollaTool
             _objectOrder.AddRange(blocks.SelectMany(block => block));
             NormalizeObjectOrder();
             return true;
+        }
+
+        /// <summary>
+        /// Reports whether a visible, editable caller can perform the supplied
+        /// operation without mutating the page.  UI availability uses this
+        /// same canonical block and edge calculation as MoveObjectOrder.
+        /// </summary>
+        public bool CanMoveObjectOrder(Guid objectId, ObjectOrderOperation operation)
+        {
+            GetDocumentObject(objectId);
+            var blocks = BuildObjectOrderBlocks();
+            var currentIndex = blocks.FindIndex(block => block.Contains(objectId));
+            if (currentIndex < 0 || blocks[currentIndex].Any(id => GetDocumentObject(id).IsLocked)) return false;
+            return GetObjectOrderTargetIndex(currentIndex, blocks.Count, operation) != currentIndex;
         }
 
         /// <summary>
@@ -593,6 +600,19 @@ namespace MojiCollaTool
                 blocks.Add(CanonicalizeComposition(block, composition));
             }
             return blocks;
+        }
+
+        private static int GetObjectOrderTargetIndex(int currentIndex, int blockCount, ObjectOrderOperation operation)
+        {
+            if (blockCount <= 0) return currentIndex;
+            return operation switch
+            {
+                ObjectOrderOperation.BringToFront => blockCount - 1,
+                ObjectOrderOperation.BringForward => Math.Min(blockCount - 1, currentIndex + 1),
+                ObjectOrderOperation.SendBackward => Math.Max(0, currentIndex - 1),
+                ObjectOrderOperation.SendToBack => 0,
+                _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+            };
         }
 
         /// <summary>

@@ -12,6 +12,7 @@ namespace MojiCollaTool
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
             if (symbol == null) throw new ArgumentNullException(nameof(symbol));
+            if (symbol.ParentId is Guid parentId && session.Document.GetPage(pageId).GetDocumentObject(parentId).IsLocked) return symbol.ObjectId;
             var id = symbol.ObjectId;
             session.ExecutePage(pageId, page => page.AddAttachedSymbol(symbol), description);
             return id;
@@ -21,12 +22,18 @@ namespace MojiCollaTool
             string description = "付加記号編集", string? coalesceKey = null)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+            var page = session.Document.GetPage(pageId);
+            var symbol = page.GetAttachedSymbol(symbolId);
+            if (symbol.IsLocked || (symbol.ParentId is Guid parentId && page.GetDocumentObject(parentId).IsLocked)) return;
             session.ExecutePage(pageId, page => page.UpdateAttachedSymbol(symbolId, update), description, coalesceKey);
         }
 
         public static void Remove(ProjectSession session, Guid pageId, Guid symbolId, string description = "付加記号削除")
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+            var page = session.Document.GetPage(pageId);
+            var symbol = page.GetAttachedSymbol(symbolId);
+            if (symbol.IsLocked || (symbol.ParentId is Guid parentId && page.GetDocumentObject(parentId).IsLocked)) return;
             session.ExecutePage(pageId, page =>
             {
                 if (!page.RemoveAttachedSymbol(symbolId)) throw new InvalidOperationException("Attached symbol was not found.");

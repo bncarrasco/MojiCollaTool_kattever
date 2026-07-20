@@ -22,6 +22,7 @@ namespace MojiCollaTool
             if (session == null) throw new ArgumentNullException(nameof(session));
             var page = session.Document.GetPage(pageId);
             if (!page.ContainsBalloon(balloonId)) return false;
+            if (page.GetBalloon(balloonId).IsLocked) return false;
             session.ExecutePage(pageId, target => target.RemoveBalloon(target.GetBalloon(balloonId)), "フキダシ削除");
             return true;
         }
@@ -31,24 +32,31 @@ namespace MojiCollaTool
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
             if (update == null) throw new ArgumentNullException(nameof(update));
+            if (session.Document.GetPage(pageId).GetBalloon(balloonId).IsLocked) return;
             session.ExecutePage(pageId, page => page.UpdateBalloon(balloonId, update), description, coalesceKey);
         }
 
         public static void SetTail(ProjectSession session, Guid pageId, Guid balloonId, BalloonTailData? tail)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+            if (session.Document.GetPage(pageId).GetBalloon(balloonId).IsLocked) return;
             session.ExecutePage(pageId, page => page.SetBalloonTail(balloonId, tail), "フキダシしっぽ変更");
         }
 
         public static void LinkText(ProjectSession session, Guid pageId, Guid balloonId, Guid textObjectId, TextLinkData? link = null)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+            var page = session.Document.GetPage(pageId);
+            if (page.GetBalloon(balloonId).IsLocked || page.GetObject(textObjectId).IsLocked) return;
             session.ExecutePage(pageId, page => page.LinkBalloonText(balloonId, textObjectId, link), "フキダシ文字リンク");
         }
 
         public static void UnlinkText(ProjectSession session, Guid pageId, Guid balloonId)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+            var page = session.Document.GetPage(pageId);
+            var balloon = page.GetBalloon(balloonId);
+            if (balloon.IsLocked || (balloon.TextLink != null && page.GetObject(balloon.TextLink.TextObjectId).IsLocked)) return;
             session.ExecutePage(pageId, page => page.UnlinkBalloonText(balloonId), "フキダシ文字リンク解除");
         }
 

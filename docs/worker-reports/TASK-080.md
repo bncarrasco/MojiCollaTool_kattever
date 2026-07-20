@@ -7,7 +7,8 @@ TASK-080を実装完了。文字、フキダシ、付加記号で共通利用で
 - 対象ブランチ: `feature/TASK-080-zorder-lock`
 - 対象worktree: `F:/github/MojiCollaTool-worktrees/TASK-080`
 - 開始HEAD: `33c3f1d3c1575763484a379cb4fb3dde0fa4dcda`
-- 実装コミット: `c0a6f00`
+- 修正開始HEAD: `6c02fe2e719e8c101606984240d23e30f1774bf5`
+- 実装コミット: `TBD`
 - 検証報告・台帳更新: 実装コミット後の文書コミット
 - push / merge / rebase: 実施していない
 
@@ -18,6 +19,14 @@ TASK-080を実装完了。文字、フキダシ、付加記号で共通利用で
 - `REQ-UI-JA-001`: ツールバーと右クリックメニューを日本語化し、ロック中の拒否メッセージも日本語にした。
 - `REQ-UNDO-001`: 成功した順序変更・ロック変更は各1履歴エントリとし、no-op／拒否では履歴、dirty、通知を追加しない。
 - ADR-0003/4: UUID、canonical `_objectOrder`、`ZIndex`、`IsLocked` と既存Undo/Redo方針を維持した。
+
+## 司令役レビュー Round 1 対応
+
+- `C080-01`: linked textと非detach付加記号を含むcomposition全memberをgeometry移動開始時に検査し、locked memberがあれば開始を拒否。gesture途中のlock変更はUpdate／Commitでbefore snapshotへcancelし、lock状態を保持して履歴・dirty・通知を増やさない。balloon単独のresize／tailは変更対象に応じて継続可能とした。
+- `C080-02`: `MojiWindow`のtext／numeric／combo／check／全色／format読込／削除／付加記号CRUDを共通lock guardとcontrol enabled stateへ集約。開いたwindowへlock／unlockを即時反映し、`TryApplyLoadedFormat`をproduction helperとして分離した。
+- `C080-03`: `BalloonCommands`のUpdate／Remove／SetTail／Link／Unlink、`AttachedSymbolCommands`のAdd／Update／Remove／Reanchor、PageEditorのlink／attached symbol／gesture経路で対象lockを検証し、拒否時は0 history・dirty不変とした。raw `PageDocument` mutationはserializer／capture用primitiveとして保持した。
+- `C080-04`: `PageDocument.CanMoveObjectOrder`を共通availability計算として追加し、toolbar／context menuへoperation別の端判定とblock全member lock判定を同一適用。selected object自身のlock操作はcomposition内別memberのlockから独立させた。
+- `C080-05`: TASK-080専用testを7件から12件へ拡張し、実XAML toolbar／context menu、3 object type、gesture atomicity、MojiWindow迂回、semantic command拒否、selection lifecycle／Dispose、saved dirty／0履歴境界をproduction経路で検証した。既存2.0〜2.2互換・2.3保存・横書き／縦書きsuiteも全suiteで再確認した。
 
 ## 順序・ロックの挙動
 
@@ -31,11 +40,12 @@ TASK-080を実装完了。文字、フキダシ、付加記号で共通利用で
 
 - SDK: `6.0.428`
 - Debug build: 成功、警告0、エラー0
-- Debug test: `219/219` 合格、失敗0
+- Debug test: `224/224` 合格、失敗0
 - Release build: 成功、警告0、エラー0
-- Release no-build test: `219/219` 合格、失敗0
-- TASK-080性能（Debug）: mixed objects 100件、order p95 `1.987 ms`、100操作 `166.141 ms`
-- TASK-080性能（Release）: mixed objects 100件、order p95 `1.592 ms`、100操作 `128.023 ms`
+- Release no-build test: `224/224` 合格、失敗0
+- TASK-080専用test: Debug／Release各 `12/12` 合格
+- TASK-080性能（Debug）: mixed objects 100件、order p95 `2.006 ms`、100操作 `169.153 ms`
+- TASK-080性能（Release）: mixed objects 100件、order p95 `1.305 ms`、100操作 `103.476 ms`
 - 性能閾値: p95 50 ms未満、100操作 1000 ms未満
 - `git diff --check`: 合格
 
@@ -43,6 +53,6 @@ TASK-080を実装完了。文字、フキダシ、付加記号で共通利用で
 
 ## 影響範囲・ロールバック
 
-主な影響範囲は `PageDocument`、`PageEditorControl`、文字／付加記号／フキダシのロック保護、共通オブジェクトコマンド、TASK-080テストおよび検証ドキュメントである。後続のTASK-200、TASK-210、TASK-230は共通コマンドと `ObjectOrderOperation` を利用できる。
+主な変更fileは `PageDocument.cs`、`PageEditorControl.xaml.cs`、`MojiPanel.cs`、`MojiWindow.xaml`／`.cs`、`BalloonCommands.cs`、`AttachedSymbolCommands.cs`、`TASK080ZOrderLockTests.cs`である。後続のTASK-200、TASK-210、TASK-230は共通コマンドと `ObjectOrderOperation` を利用できる。
 
 ロールバック時はTASK-080の実装コミットと報告コミットを対象に戻し、保存形式2.3の既存読み書きとTASK-130互換APIを維持すること。

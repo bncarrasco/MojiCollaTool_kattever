@@ -6,6 +6,7 @@
 
 - 文字・フキダシ・付加記号に共通の「最前面へ／前面へ／背面へ／最背面へ」とロック／ロック解除を追加しました。
 - linked composition と unlinked text＋付加記号を一つのblockとして扱い、Undo/Redo、2.3保存、右クリックのロック解除経路を維持します。
+- C080-01〜05の追補として、locked compositionのgesture原子拒否、開いたMojiWindowの全編集入口guard、semantic command guard、端位置を含むtoolbar／context menu availability、受入testを補完しました。
 
 ### TASK-140
 
