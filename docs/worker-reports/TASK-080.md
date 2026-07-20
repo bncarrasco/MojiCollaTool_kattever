@@ -8,7 +8,7 @@ TASK-080を実装完了。文字、フキダシ、付加記号で共通利用で
 - 対象worktree: `F:/github/MojiCollaTool-worktrees/TASK-080`
 - 開始HEAD: `33c3f1d3c1575763484a379cb4fb3dde0fa4dcda`
 - 修正開始HEAD: `6c02fe2e719e8c101606984240d23e30f1774bf5`
-- 実装コミット: `TBD`
+- 実装コミット: `b6cc90bae3f05d2a9342003221f95775bb7a6641`
 - 検証報告・台帳更新: 実装コミット後の文書コミット
 - push / merge / rebase: 実施していない
 
