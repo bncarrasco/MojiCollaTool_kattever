@@ -35,7 +35,7 @@ ADR-0005／ADR-0008でversion 2.3移行をAcceptedとしました。writerは`Fo
 - 未知のLayoutModeを暗黙適用しない安全弁commit: `5a74db3a8c38d7b2b900d11109942c4460d7e3de`
 - C140-14 resize修正・回帰test commit: `a54177d527f79e0ef06556c1ac81c39a5a9d5044`
 - C140-15 version 2.3 migration実装・互換test commit: `44c45dd5b9ef3bb2cf13dc54280ca182934bc6d1`
-- C140-14文書commit（今回の最終記録直前のfull hash）: `a366e79125736eb09f7c34660801a39110cd25de`
+- C140-15文書commit（今回の最終記録直前のfull hash）: `a81758e7fad2795189ff47423db47568a0edb35d`
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` = `6.0.428`
 - push / merge / rebase: 実施していません
 
