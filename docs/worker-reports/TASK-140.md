@@ -23,7 +23,7 @@ TASK-140 now provides a deterministic, visual-only, grapheme-aware layout plan. 
 - Branch: `feature/TASK-140-auto-text-layout`
 - Functional start HEAD: `6adc3c9affd1cc72fec3dfc7633e8794bdb05b3c`
 - Previous implementation commits retained: `fdbf417` and `96b1629f5f9b8663558644f5c1bb9689f7f76c22`
-- Review-fix commit: recorded in the final handoff after commit
+- Review-fix commit: `faf756c3bfca72dc740ca3a3596bd198b99b9744`
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` = `6.0.428`
 - Push, merge, and rebase: not performed
 
