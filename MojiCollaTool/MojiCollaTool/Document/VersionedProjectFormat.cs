@@ -144,7 +144,8 @@ namespace MojiCollaTool
 
     public static class VersionedProjectFormat
     {
-        public const string CurrentVersion = "2.2";
+        public const string CurrentVersion = "2.3";
+        public const string LayoutStateVersion = "2.3";
         public const string ProductName = "MojiCollaTool Katteban";
         public const string ManifestEntryName = "manifest.xml";
         public const int MaxArchiveEntries = 4096;
@@ -632,7 +633,7 @@ namespace MojiCollaTool
 
         private static VersionedProjectReadResult ReadProject(ZipArchive archive, VersionedProjectManifest manifest)
         {
-            VersionedProjectFormat.ParseSupportedVersion(manifest.FormatVersion, nameof(manifest.FormatVersion));
+            var formatVersion = VersionedProjectFormat.ParseSupportedVersion(manifest.FormatVersion, nameof(manifest.FormatVersion));
             VersionedProjectFormat.ParseMinimumReaderVersion(manifest.MinimumReaderVersion, nameof(manifest.MinimumReaderVersion));
 
             if (!Guid.TryParse(manifest.ProjectId, out var projectId) || projectId == Guid.Empty)
@@ -685,12 +686,13 @@ namespace MojiCollaTool
                 var image2 = ReadAsset(archive, pageFile.Image2Path, pageId, 2, canvas.ImageData2);
                 if (image1 != null) assets.Add(image1);
                 if (image2 != null) assets.Add(image2);
+                var balloons = MigrateLayoutModes(pageFile.Balloons ?? Enumerable.Empty<BalloonData>(), formatVersion);
                 pageDocuments.Add(new PageDocument(
                     pageId,
                     pageFile.Name ?? manifestPage.Name,
                     canvas,
                     pageFile.Objects ?? Enumerable.Empty<MojiData>(),
-                    pageFile.Balloons ?? Enumerable.Empty<BalloonData>(),
+                    balloons,
                     pageFile.AttachedSymbols ?? Enumerable.Empty<AttachedSymbolData>()));
             }
 
@@ -700,6 +702,19 @@ namespace MojiCollaTool
             }
 
             return new VersionedProjectReadResult(new ProjectDocument(projectId, manifest.ProjectName, pageDocuments), assets);
+        }
+
+        private static IReadOnlyList<BalloonData> MigrateLayoutModes(IEnumerable<BalloonData> balloons, Version formatVersion)
+        {
+            var migrated = balloons.ToList();
+            if (formatVersion >= Version.Parse(VersionedProjectFormat.LayoutStateVersion)) return migrated;
+
+            foreach (var balloon in migrated)
+            {
+                if (balloon.TextLink != null) balloon.TextLink.LayoutMode = BalloonTextLayoutMode.Unapplied;
+            }
+
+            return migrated;
         }
 
         private static VersionedProjectAssetContent? ReadAsset(ZipArchive archive, string? path, Guid pageId, int imageNumber, ImageData? imageData)

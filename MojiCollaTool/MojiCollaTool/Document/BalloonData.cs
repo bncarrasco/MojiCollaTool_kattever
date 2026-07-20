@@ -125,7 +125,10 @@ namespace MojiCollaTool
             get => LayoutMode.ToString();
             set
             {
-                LayoutMode = Enum.TryParse(value, ignoreCase: true, out BalloonTextLayoutMode parsed)
+                LayoutMode = Enum.TryParse(value, ignoreCase: true, out BalloonTextLayoutMode parsed) &&
+                    (parsed == BalloonTextLayoutMode.Unapplied ||
+                     parsed == BalloonTextLayoutMode.FitTextToBalloon ||
+                     parsed == BalloonTextLayoutMode.FitBalloonToText)
                     ? parsed
                     : BalloonTextLayoutMode.Unapplied;
             }
