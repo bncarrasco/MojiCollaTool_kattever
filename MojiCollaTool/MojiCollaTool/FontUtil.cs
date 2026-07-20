@@ -11,6 +11,9 @@ namespace MojiCollaTool
 {
     public class FontUtil
     {
+        private static readonly Lazy<SortedDictionary<string, FontFamily>> FontFamiliesCache =
+            new(EnumerateFontFamilies);
+
         /// <summary>
         /// フォント一覧のテキストボックス
         /// </summary>
@@ -47,6 +50,9 @@ namespace MojiCollaTool
         /// </summary>
         /// <returns></returns>
         public static SortedDictionary<string, FontFamily> GetFontFamilies()
+            => FontFamiliesCache.Value;
+
+        private static SortedDictionary<string, FontFamily> EnumerateFontFamilies()
         {
             //今のPCで使っている言語(日本語)のCulture取得
             //var language =

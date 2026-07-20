@@ -1,6 +1,8 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -28,7 +30,11 @@ namespace MojiCollaTool
         /// </summary>
         public bool IsHideOnly { get; set; } = true;
 
+        internal ScrollViewer AttachedSymbolSettingsViewer => AttachedSymbolSettingsScrollViewer;
+        internal Expander AttachedSymbolSettingsExpander => AttachedSymbolSettingsExpanderControl;
+
         private bool _runEvent = false;
+        private bool _updatingAttachedSymbolUi;
 
         public MojiWindow(MojiPanel mojiPanel)
         {
@@ -37,6 +43,7 @@ namespace MojiCollaTool
             InitializeComponent();
 
             FontFamilyComboBox.ItemsSource = FontUtil.GetFontTextBlocks();
+            AttachedSymbolFontFamilyComboBox.ItemsSource = FontUtil.GetFontTextBlocks();
 
             ShowTopMostCheckBox.IsChecked = mojiPanel.ShowTopmost;
         }
@@ -105,7 +112,60 @@ namespace MojiCollaTool
             BackgroundBoxBorderColorButton.Background = new SolidColorBrush(mojiData.BackgroundBoxBorderColor);
             BackgroundBoxBorderThicknessTextBox.SetValue((int)mojiData.BackgroundBoxBorderThickness);
 
+            LoadAttachedSymbolsToWindow();
+
             _runEvent = true;
+        }
+
+        private AttachedSymbolVisual? SelectedAttachedSymbol => AttachedSymbolListBox.SelectedItem as AttachedSymbolVisual;
+
+        private void LoadAttachedSymbolsToWindow(AttachedSymbolVisual? preferred = null)
+        {
+            _updatingAttachedSymbolUi = true;
+            try
+            {
+                var graphemes = _mojiPanel.MojiData.Graphemes
+                    .Select(item => new GraphemeChoice(item.Index, item.Text))
+                    .ToArray();
+                AttachedSymbolGraphemeComboBox.ItemsSource = graphemes;
+                var parentSymbols = _mojiPanel.PageEditor.AttachedSymbolVisuals
+                    .Where(item => item.SymbolData.ParentId == _mojiPanel.MojiData.ObjectId && !item.SymbolData.IsDetached)
+                    .ToArray();
+                AttachedSymbolListBox.ItemsSource = parentSymbols;
+                var selectedId = preferred?.ObjectId ?? _mojiPanel.PageEditor.SelectedAttachedSymbolId;
+                var selected = selectedId.HasValue
+                    ? parentSymbols.FirstOrDefault(item => item.ObjectId == selectedId.Value)
+                    : null;
+                AttachedSymbolListBox.SelectedItem = selected;
+                if (selected == null)
+                {
+                    if (graphemes.Length > 0) AttachedSymbolGraphemeComboBox.SelectedIndex = 0;
+                    AttachedSymbolTextBox.Text = "!";
+                    AttachedSymbolSelectedTextBlock.Text = string.Empty;
+                    AttachedSymbolFontStatusTextBlock.Text = string.Empty;
+                    return;
+                }
+
+                AttachedSymbolGraphemeComboBox.SelectedValue = selected.SymbolData.GraphemeAnchor;
+                AttachedSymbolSelectedTextBlock.Text = selected.SymbolData.Text;
+                AttachedSymbolOffsetXTextBox.Text = selected.SymbolData.OffsetX.ToString(CultureInfo.InvariantCulture);
+                AttachedSymbolOffsetYTextBox.Text = selected.SymbolData.OffsetY.ToString(CultureInfo.InvariantCulture);
+                AttachedSymbolScaleTextBox.Text = selected.SymbolData.Scale.ToString(CultureInfo.InvariantCulture);
+                AttachedSymbolRotationTextBox.Text = selected.SymbolData.Rotation.ToString(CultureInfo.InvariantCulture);
+                AttachedSymbolFontSizeTextBox.Text = selected.SymbolData.FontSize.ToString(CultureInfo.InvariantCulture);
+                AttachedSymbolForeColorTextBox.Text = $"#{selected.SymbolData.ForeColorArgb:X8}";
+                AttachedSymbolInheritFontCheckBox.IsChecked = selected.SymbolData.Inherit.HasFlag(AttachedSymbolInheritance.Font);
+                AttachedSymbolInheritColorCheckBox.IsChecked = selected.SymbolData.Inherit.HasFlag(AttachedSymbolInheritance.ForeColor);
+                AttachedSymbolInheritBorderCheckBox.IsChecked = selected.SymbolData.Inherit.HasFlag(AttachedSymbolInheritance.Border);
+                AttachedSymbolInheritDecorationCheckBox.IsChecked = selected.SymbolData.Inherit.HasFlag(AttachedSymbolInheritance.Decoration);
+                AttachedSymbolIncludeSpacingCheckBox.IsChecked = selected.SymbolData.IncludeInCharacterSpacing;
+                AttachedSymbolFontFamilyComboBox.SelectedValue = selected.SymbolData.FontFamilyName;
+                AttachedSymbolFontStatusTextBlock.Text = selected.FontStatus;
+            }
+            finally
+            {
+                _updatingAttachedSymbolUi = false;
+            }
         }
 
         public void UpdateXY(double x, double y)
@@ -257,6 +317,163 @@ namespace MojiCollaTool
             });
         }
 
+        private void AttachedSymbolGraphemeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updatingAttachedSymbolUi || AttachedSymbolGraphemeComboBox == null || AttachedSymbolGraphemeComboBox.SelectedValue is not int) return;
+        }
+
+        private void AttachedSymbolCandidateComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updatingAttachedSymbolUi || AttachedSymbolCandidateComboBox == null || AttachedSymbolTextBox == null ||
+                AttachedSymbolCandidateComboBox.SelectedItem is not ComboBoxItem item) return;
+            AttachedSymbolTextBox.Text = item.Tag?.ToString() ?? item.Content?.ToString() ?? string.Empty;
+        }
+
+        private void AttachedSymbolAddButton_Click(object sender, RoutedEventArgs e)
+        {
+            AttachedSymbolErrorTextBlock.Text = string.Empty;
+            if (AttachedSymbolGraphemeComboBox.SelectedValue is not int graphemeIndex)
+            {
+                AttachedSymbolErrorTextBlock.Text = "対象書記素を指定してください。";
+                return;
+            }
+            if (!TryAddAttachedSymbolFromUi(graphemeIndex, AttachedSymbolTextBox.Text, out var error))
+            {
+                AttachedSymbolErrorTextBlock.Text = error;
+                return;
+            }
+            AttachedSymbolErrorTextBlock.Text = string.Empty;
+        }
+
+        internal bool TryAddAttachedSymbolFromUi(int graphemeIndex, string text, out string error)
+        {
+            error = string.Empty;
+            if (string.IsNullOrEmpty(text))
+            {
+                error = "付加記号を入力してください。";
+                return false;
+            }
+            if (text.Length > 256)
+            {
+                error = "付加記号は256文字以内で入力してください。";
+                return false;
+            }
+            if (graphemeIndex < 0 || graphemeIndex >= _mojiPanel.MojiData.GraphemeCount)
+            {
+                error = "対象書記素の位置が範囲外です。";
+                return false;
+            }
+            if (!_mojiPanel.PageEditor.MojiPanels.Any(panel => panel.MojiData.ObjectId == _mojiPanel.MojiData.ObjectId))
+            {
+                error = "親文字が見つかりません。";
+                return false;
+            }
+
+            try
+            {
+                var visual = _mojiPanel.PageEditor.AddAttachedSymbol(_mojiPanel.MojiData.ObjectId, graphemeIndex, text);
+                LoadAttachedSymbolsToWindow(visual);
+                return true;
+            }
+            catch (InvalidDataException)
+            {
+                error = "付加記号の入力値が不正です。";
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                error = "付加記号を追加できません。対象文字と親を確認してください。";
+                return false;
+            }
+        }
+
+        private void AttachedSymbolListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updatingAttachedSymbolUi || AttachedSymbolListBox == null) return;
+            if (SelectedAttachedSymbol != null)
+                _mojiPanel.PageEditor.SelectAttachedSymbolFromUi(SelectedAttachedSymbol);
+            LoadAttachedSymbolsToWindow(SelectedAttachedSymbol);
+        }
+
+        internal void HandleAttachedSymbolListItemClickFromUi()
+        {
+            if (SelectedAttachedSymbol == null) return;
+            _mojiPanel.PageEditor.SelectAttachedSymbolFromUi(SelectedAttachedSymbol);
+            LoadAttachedSymbolsToWindow(SelectedAttachedSymbol);
+        }
+
+        private void AttachedSymbolListBox_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+            => HandleAttachedSymbolListItemClickFromUi();
+
+        private void AttachedSymbolPropertyTextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_updatingAttachedSymbolUi || AttachedSymbolListBox == null || SelectedAttachedSymbol == null) return;
+            if (!TryReadDouble(AttachedSymbolOffsetXTextBox.Text, out var offsetX) ||
+                !TryReadDouble(AttachedSymbolOffsetYTextBox.Text, out var offsetY) ||
+                !TryReadDouble(AttachedSymbolScaleTextBox.Text, out var scale) ||
+                !TryReadDouble(AttachedSymbolRotationTextBox.Text, out var rotation) || scale <= 0) return;
+            _ = int.TryParse(AttachedSymbolFontSizeTextBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var fontSize);
+            if (!TryReadArgb(AttachedSymbolForeColorTextBox.Text, out var foreColorArgb)) return;
+            var id = SelectedAttachedSymbol.ObjectId;
+            _mojiPanel.PageEditor.UpdateAttachedSymbol(id, symbol =>
+            {
+                symbol.OffsetX = offsetX;
+                symbol.OffsetY = offsetY;
+                symbol.Scale = scale;
+                symbol.Rotation = rotation;
+                symbol.FontSize = Math.Max(0, fontSize);
+                symbol.ForeColorArgb = foreColorArgb;
+            }, "付加記号編集", id.ToString("D"));
+            AttachedSymbolFontStatusTextBlock.Text = SelectedAttachedSymbol.FontStatus;
+        }
+
+        private void AttachedSymbolInheritanceChanged(object sender, RoutedEventArgs e)
+        {
+            if (_updatingAttachedSymbolUi || AttachedSymbolListBox == null || SelectedAttachedSymbol == null) return;
+            var id = SelectedAttachedSymbol.ObjectId;
+            _mojiPanel.PageEditor.UpdateAttachedSymbol(id, symbol =>
+            {
+                symbol.Inherit = SetFlag(symbol.Inherit, AttachedSymbolInheritance.Font, AttachedSymbolInheritFontCheckBox.IsChecked == true);
+                symbol.Inherit = SetFlag(symbol.Inherit, AttachedSymbolInheritance.ForeColor, AttachedSymbolInheritColorCheckBox.IsChecked == true);
+                symbol.Inherit = SetFlag(symbol.Inherit, AttachedSymbolInheritance.Border, AttachedSymbolInheritBorderCheckBox.IsChecked == true);
+                symbol.Inherit = SetFlag(symbol.Inherit, AttachedSymbolInheritance.Decoration, AttachedSymbolInheritDecorationCheckBox.IsChecked == true);
+                symbol.IncludeInCharacterSpacing = AttachedSymbolIncludeSpacingCheckBox.IsChecked == true;
+            }, "付加記号継承設定", id.ToString("D"));
+            AttachedSymbolFontStatusTextBlock.Text = SelectedAttachedSymbol.FontStatus;
+        }
+
+        private void AttachedSymbolFontFamilyComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_updatingAttachedSymbolUi || AttachedSymbolFontFamilyComboBox == null || AttachedSymbolListBox == null || SelectedAttachedSymbol == null) return;
+            if (AttachedSymbolFontFamilyComboBox.SelectedValue is not string fontName) return;
+            var id = SelectedAttachedSymbol.ObjectId;
+            _mojiPanel.PageEditor.UpdateAttachedSymbol(id, symbol => symbol.FontFamilyName = fontName,
+                "付加記号フォント変更", id.ToString("D"));
+            AttachedSymbolFontStatusTextBlock.Text = SelectedAttachedSymbol.FontStatus;
+        }
+
+        private void AttachedSymbolRemoveButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (SelectedAttachedSymbol == null) return;
+            _mojiPanel.PageEditor.RemoveAttachedSymbol(SelectedAttachedSymbol.ObjectId);
+            LoadAttachedSymbolsToWindow();
+        }
+
+        private static bool TryReadDouble(string text, out double value)
+            => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) ||
+               double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value);
+
+        private static bool TryReadArgb(string text, out uint value)
+        {
+            var normalized = text.Trim();
+            if (normalized.StartsWith("#", StringComparison.Ordinal)) normalized = normalized.Substring(1);
+            if (normalized.Length == 6) normalized = "FF" + normalized;
+            return uint.TryParse(normalized, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
+        }
+
+        private static AttachedSymbolInheritance SetFlag(AttachedSymbolInheritance value, AttachedSymbolInheritance flag, bool enabled)
+            => enabled ? value | flag : value & ~flag;
+
         private void ShowTopMostCheckBox_Checked(object sender, RoutedEventArgs e)
         {
             if (ShowTopMostCheckBox.IsChecked.HasValue == false) return;
@@ -318,5 +535,18 @@ namespace MojiCollaTool
                 MainWindow.ShowError("文字フォーマット読み出しエラー", ex);
             }
         }
+    }
+
+    internal sealed class GraphemeChoice
+    {
+        public GraphemeChoice(int index, string text)
+        {
+            Index = index;
+            Text = text;
+        }
+
+        public int Index { get; }
+        public string Text { get; }
+        public string DisplayText => $"{Index}: {Text}";
     }
 }

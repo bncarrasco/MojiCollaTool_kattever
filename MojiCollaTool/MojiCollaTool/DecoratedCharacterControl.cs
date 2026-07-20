@@ -36,6 +36,14 @@ namespace MojiCollaTool
         /// </summary>
         public char Character { get; set; }
 
+        /// <summary>
+        /// The complete grapheme rendered by this control. Character is kept
+        /// for legacy callers and contains the first UTF-16 code unit.
+        /// </summary>
+        public string GraphemeText { get; }
+
+        public int GraphemeIndex { get; set; } = -1;
+
         // Create a collection of child visual objects.
         private readonly VisualCollection _children = null!;
 
@@ -50,12 +58,21 @@ namespace MojiCollaTool
         private readonly static RotateTransform tategaki90DegRotate = new RotateTransform(90);
 
         public DecoratedCharacterControl(char character, MojiData mojiData)
+            : this(character.ToString(), mojiData)
         {
-            Character = character;
+        }
+
+        public DecoratedCharacterControl(string graphemeText, MojiData mojiData)
+        {
+            if (string.IsNullOrEmpty(graphemeText)) throw new ArgumentException("Grapheme text is required.", nameof(graphemeText));
+            if (mojiData == null) throw new ArgumentNullException(nameof(mojiData));
+
+            GraphemeText = graphemeText;
+            Character = graphemeText[0];
 
             //  フォーマットされた描画用文字を作成する
             FormattedText formattedText = new FormattedText(
-                character.ToString(),   //  文字
+                graphemeText,   //  書記素クラスタ全体
                 CultureInfo.GetCultureInfo("ja-JP"),    //  文字文化、日本人しか使用しないと思うので日本語固定で良い
                 FlowDirection.LeftToRight,  //  日本語、英語ともに左から右の配置で問題ない
                 new Typeface(   //  文字の表示形式を示すクラスらしい
@@ -115,15 +132,15 @@ namespace MojiCollaTool
                     Margin = new Thickness(0, 0, 0, mojiData.CharacterMargin);
 
                     //  縦書きの場合、かっこや点などの記号を回転させる
-                    if (TATEGAKI_SHIFT_TARGET_CHARS.Contains(character))
+                    if (graphemeText.Length == 1 && TATEGAKI_SHIFT_TARGET_CHARS.Contains(graphemeText[0]))
                     {
                         RenderTransform = new TranslateTransform(Width / 2, -Height / 2);
                     }
-                    else if(TATEGAKI_SHIFT_TARGET_CHARS_SMALL.Contains(character))
+                    else if(graphemeText.Length == 1 && TATEGAKI_SHIFT_TARGET_CHARS_SMALL.Contains(graphemeText[0]))
                     {
                         RenderTransform = new TranslateTransform(Width / 8, -Height / 14);
                     }
-                    else if (TATEGAKI_90DEG_ROTATE_TARGET_CHARS.Contains(character))
+                    else if (graphemeText.Length == 1 && TATEGAKI_90DEG_ROTATE_TARGET_CHARS.Contains(graphemeText[0]))
                     {
                         RenderTransformOrigin = tategakiTransformOrigin;
                         RenderTransform = tategaki90DegRotate;

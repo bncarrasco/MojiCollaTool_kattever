@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### TASK-100
+
+- 本文をUnicode書記素単位で描画し、親文字へ `!`、`?`、`!?` などの付加記号をem基準の位置・倍率・回転で追加・編集できるようにしました。
+- 付加記号のフォント・色・縁取り継承、システムフォントfallback、縦書き／横書き追従、親文字編集時の再アンカー、保存・Undo/Redoを追加しました。
+- 付加記号のドラッグは操作完了時に1件の履歴として記録し、capture lossでは編集前へ戻します。
+- detached付加記号を可視visualと分離して保持し、親削除・ページ切替・保存再読込でも失わないようにしました。追加時の検証とCaptureの試行検証を原子的に行い、不正入力でUI／文書／履歴が変化しないようにしました。
+- 濁点・半濁点・装飾継承・文字間隔設定、実スクロール領域、非表示visual抑止、完全grapheme文字列pool、gesture単位のdrag履歴を追加しました。
+- 受入テストを20件へ拡張し、ParentId別の実UI一覧CRUD、追加直後canonical ZIndex、親回転local offset／drag、同一行再クリック、Expander折りたたみ、重なる座標のmixed実描画Z-orderと保存再読込、相互排他的selection、入力拒否、2種類の認識済みフォントの横／縦配置、UI経路の履歴・dirty状態・redo branch、24個の付加記号refresh／drag性能を自動検証しました。
+
 ### TASK-120
 
 - 4種のフキダシgeometryと上限付きLRU cache、未知shapeの矩形fallbackを追加。

@@ -32,6 +32,10 @@ namespace MojiCollaTool
 
         public MojiWindow? MojiWindow { get; set; }
 
+        public PageEditorControl PageEditor => pageEditor;
+
+        public IReadOnlyDictionary<int, DecoratedCharacterControl> GraphemeVisuals => graphemeControls;
+
         /// <summary>
         /// 常に前面に表示するかどうかのフラグ
         /// </summary>
@@ -41,7 +45,6 @@ namespace MojiCollaTool
         /// 背景配置用のグリッド
         /// </summary>
         private Grid backgroundGrid = new Grid();
-
         /// <summary>
         /// 文字列を配置するパネル
         /// </summary>
@@ -56,7 +59,7 @@ namespace MojiCollaTool
         /// 文字オブジェクトを再利用のためのオブジェクトプール
         /// </summary>
         private DecoratedCharacterControlTotalPool decoratedCharacterControlTotalPool = new DecoratedCharacterControlTotalPool();
-
+        private readonly Dictionary<int, DecoratedCharacterControl> graphemeControls = new();
         /// <summary>
         /// 前回のパネルの幅
         /// 縦書きで開業が起きた際に、元の場所に戻すために使用する
@@ -110,7 +113,6 @@ namespace MojiCollaTool
             stackPanel.VerticalAlignment = VerticalAlignment.Center;
             stackPanel.HorizontalAlignment = HorizontalAlignment.Center;
             backgroundGrid.Children.Add(stackPanel);
-
             MouseDown += MojiPanel_MouseDown;
             MouseUp += MojiPanel_MouseUp;
             MouseMove += MojiPanel_MouseMove;
@@ -201,6 +203,7 @@ namespace MojiCollaTool
 
             MojiWindow = new MojiWindow(this);
             MojiWindow.Closed += MojiWindow_Closed;
+            MojiWindow.LoadMojiDataToWindow(MojiData);
         }
 
         private void MojiWindow_Closed(object? sender, EventArgs e)
@@ -253,6 +256,7 @@ namespace MojiCollaTool
         {
             //  文字パネルの位置を設定する
             Margin = new Thickness(MojiData.X, MojiData.Y, 0, 0);
+            pageEditor.RefreshAttachedSymbolsForParent(this);
         }
 
         /// <summary>
@@ -275,6 +279,7 @@ namespace MojiCollaTool
 
             //  文字オブジェクトプールの使用状況をリセットする
             decoratedCharacterControlTotalPool.ResetUsedCounter();
+            graphemeControls.Clear();
 
             //  文字パネルの位置を設定する
             Margin = new Thickness(MojiData.X, MojiData.Y, 0, 0);
@@ -292,8 +297,20 @@ namespace MojiCollaTool
                     break;
             }
 
-            //  改行ごとに分ける
-            var lines = MojiData.GetTextLines();
+            // 改行と本文は書記素単位で分ける。char列にするとサロゲート
+            // pair、結合文字、ZWJ sequenceが分割されてしまう。
+            var lines = new List<List<GraphemeCluster>> { new List<GraphemeCluster>() };
+            foreach (var grapheme in GraphemeService.Segment(MojiData.FullText))
+            {
+                if (grapheme.Text == "\r\n" || grapheme.Text == "\r" || grapheme.Text == "\n")
+                {
+                    lines.Add(new List<GraphemeCluster>());
+                }
+                else
+                {
+                    lines.Last().Add(grapheme);
+                }
+            }
 
             List<Panel> linePanels = new List<Panel>();
 
@@ -319,18 +336,18 @@ namespace MojiCollaTool
                         break;
                 }
 
-                var characters = new List<Char>(line);
-
                 //  空の行だった場合、配置されずにずれるため、全角スペースを入れておく
-                if (characters.Count <= 0)
+                if (line.Count <= 0)
                 {
-                    characters.Add('　');
+                    var placeholder = decoratedCharacterControlTotalPool.GetDecoratedCharacterControl('　', MojiData);
+                    linePanel.Children.Add(placeholder);
                 }
-
-                foreach (var character in characters)
+                else foreach (var grapheme in line)
                 {
                     //  縦書きのために、１文字ずつ文字を作成する
-                    DecoratedCharacterControl decoratedCharacterControl = decoratedCharacterControlTotalPool.GetDecoratedCharacterControl(character, MojiData);
+                    var decoratedCharacterControl = decoratedCharacterControlTotalPool.GetDecoratedCharacterControl(grapheme.Text, MojiData);
+                    decoratedCharacterControl.GraphemeIndex = grapheme.Index;
+                    graphemeControls[grapheme.Index] = decoratedCharacterControl;
 
                     //  行パネルに追加する
                     linePanel.Children.Add(decoratedCharacterControl);
@@ -412,6 +429,46 @@ namespace MojiCollaTool
                 //  縦横切り替えでウォーキングが際限なくずれるのが面倒なため
                 previousWidth = 0;
             }
+
+            pageEditor.RefreshAttachedSymbolsForParent(this);
         }
+
+        public Rect GetGraphemeAnchorBounds(int graphemeIndex)
+        {
+            return GetGraphemeAnchorBounds(graphemeIndex, backgroundGrid);
+        }
+
+        public Rect GetGraphemeAnchorBounds(int graphemeIndex, Visual relativeTo)
+        {
+            if (!graphemeControls.TryGetValue(graphemeIndex, out var control)) return Rect.Empty;
+            if (!backgroundGrid.IsAncestorOf(control))
+                return Rect.Empty;
+            var size = new Size(Math.Max(1, control.ActualWidth > 0 ? control.ActualWidth : control.Width),
+                Math.Max(1, control.ActualHeight > 0 ? control.ActualHeight : control.Height));
+            var localBounds = control.TransformToVisual(backgroundGrid).TransformBounds(new Rect(new Point(0, 0), size));
+            if (ReferenceEquals(relativeTo, backgroundGrid)) return localBounds;
+            if (relativeTo.IsAncestorOf(backgroundGrid))
+            {
+                try { return backgroundGrid.TransformToVisual(relativeTo).TransformBounds(localBounds); }
+                catch (InvalidOperationException) { }
+            }
+
+            // ContentControl templates are not materialized in headless/unit-test hosts. In that
+            // case the text grid is still measurable, so map its logical bounds through the
+            // persisted parent position and rotation used by the canvas.
+            if (ReferenceEquals(relativeTo, pageEditor.Canvas))
+            {
+                var panelSize = new Size(
+                    Math.Max(1, backgroundGrid.ActualWidth > 0 ? backgroundGrid.ActualWidth : backgroundGrid.DesiredSize.Width),
+                    Math.Max(1, backgroundGrid.ActualHeight > 0 ? backgroundGrid.ActualHeight : backgroundGrid.DesiredSize.Height));
+                if (MojiData.IsRotateActive)
+                    localBounds = new RotateTransform(MojiData.RotateAngle, panelSize.Width / 2, panelSize.Height / 2)
+                        .TransformBounds(localBounds);
+                return new Rect(MojiData.X + localBounds.X, MojiData.Y + localBounds.Y,
+                    localBounds.Width, localBounds.Height);
+            }
+            return Rect.Empty;
+        }
+
     }
 }
