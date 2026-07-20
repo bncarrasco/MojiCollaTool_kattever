@@ -1136,6 +1136,8 @@ namespace MojiCollaTool
             {
                 if (balloon.BalloonData.TextLink is not TextLinkData link) continue;
                 if (link.LayoutMode == BalloonTextLayoutMode.Unapplied) continue;
+                if (link.LayoutMode != BalloonTextLayoutMode.FitTextToBalloon &&
+                    link.LayoutMode != BalloonTextLayoutMode.FitBalloonToText) continue;
                 var panel = _mojiPanels.FirstOrDefault(item => item.MojiData.ObjectId == link.TextObjectId);
                 if (panel == null) continue;
                 var request = TextLayoutRequest.From(panel.MojiData, link, balloon.BalloonData);
