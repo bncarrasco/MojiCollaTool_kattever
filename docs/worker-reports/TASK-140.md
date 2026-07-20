@@ -34,7 +34,7 @@ ADR候補はversion 2.3への移行です。2.0〜2.2は全linkを`Unapplied`へ
 - 今回の実装・テストcommit: `467a62c278ed38d70a69c53f1be9d902b96dfe0c`
 - 未知のLayoutModeを暗黙適用しない安全弁commit: `5a74db3a8c38d7b2b900d11109942c4460d7e3de`
 - C140-14 resize修正・回帰test commit: `a54177d527f79e0ef06556c1ac81c39a5a9d5044`
-- 最終記録commit（文書commit直前のfull hash）: `2344d700d79937822be7dc933e57b201691cd0fd`
+- C140-14文書commit（今回の最終記録直前のfull hash）: `a366e79125736eb09f7c34660801a39110cd25de`
 - SDK: `C:\Users\user\.dotnet\dotnet.exe --version` = `6.0.428`
 - push / merge / rebase: 実施していません
 
