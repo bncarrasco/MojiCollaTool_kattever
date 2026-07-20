@@ -223,7 +223,13 @@ Status: Initial baseline
 
 ### REQ-BALLOON-MERGE-001 非破壊フキダシ合体
 
-- 明示操作で合体/解除し、元図形を保持して内側線を隠す。REQ-BALLOON-002/GROUP依存。自動合体はしない。
+- 明示操作で2件以上のフキダシを合体／解除し、各memberのshape、位置、size、rotation、style、tail、text link、layout stateを変更せず保持する。自動合体はしない。
+- 合体表示は選択中の基準フキダシをprimaryとし、そのfill／stroke／stroke thicknessをunion外形へ使用する。styleが異なるmemberも拒否せず、解除時には各member固有styleへ完全に戻る。
+- body geometryはunionし、overlap部分の内側strokeを表示しない。非overlapは離れた複数領域として安全に表示する。tailは各memberのsingle-tail dataを保持して描画する。
+- 合体memberと各memberのlinked text／非detached付加記号をballoon専用typed compositionとして扱い、移動とZ-orderを一体化する。一般group、multi-select、nested groupとは別概念であり、TASK-230は推奨だが必須依存ではない。
+- merge／unmerge／group move／Z-orderは1 Undoとし、memberまたはtyped composition内にlocked objectがあれば原子的に拒否する。合体中の個別resize／tail編集は解除後に行う。
+- 2.4形式でmerge group ID、primary ID、ordered member IDsを保存する。2.0〜2.3はmergeなしとして読込み、invalid／duplicate／missing memberを持つ2.4 dataは全体を拒否する。
+- **依存:** REQ-BALLOON-002、REQ-ZORDER-001、REQ-LOCK-001、REQ-UNDO-001。REQ-GROUP-001は将来統合候補であり必須ではない。
 
 ### REQ-BALLOON-TAILS-001 複数しっぽ
 

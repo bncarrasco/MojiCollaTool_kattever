@@ -242,10 +242,10 @@ flowchart TD
 ### TASK-150 非破壊フキダシ合体
 
 - **目的・価値・優先度:** 明示合体/解除で元shape保持。P3。
-- **要件:** REQ-BALLOON-MERGE-001。**依存:** 130,230推奨。**後続:** なし。
-- **Scope:** composite data、inner stroke suppression、cache/Undo。**Out:** auto merge。
+- **要件:** REQ-BALLOON-MERGE-001。**必須依存:** 080,130,140。**推奨のみ:** 230。**後続:** なし。
+- **Scope:** page-level balloon merge data、primary＋ordered member、union geometry／cache、inner stroke suppression、group move／Z／lock、明示merge/unmerge UI、Undo、2.4 round-trip。**Out:** auto merge、一般group／multi-select、nested merge、合体中の個別resize／tail編集。
 - **予想file:** balloon geometry/model/UI/tests。format/UI影響大。
-- **受入:** 合体解除で元parameter復元、overlap/non-overlap安全。
+- **受入:** pairwise操作で2件以上へ拡張可能、合体解除で全member parameter完全復元、style不一致とoverlap/non-overlapを決定的に表示、tail/link/layout保持、typed composition move/Z/lock、1 Undo、2.0〜2.4互換、invalid data原子拒否、geometry性能閾値。
 - **検証/rollback:** geometry/round-trip/perf/manual。feature registration revert。
 - **Branch/worktree:** `feature/TASK-150-balloon-merge` / `TASK-150`。
 

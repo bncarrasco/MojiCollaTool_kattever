@@ -123,7 +123,7 @@ pages/
 - `TextLinkData`: TextObjectId、layout mode、padding、minimum font size、alignment。
 - 本体/しっぽ/linked textをpage上では1つのcompositionとして選択・Z変更する。
 - Geometryは入力parameterをkeyにcacheし、drag中は簡易Geometry、終了後に確定Geometryを作る。
-- 合体は元図形IDと合成parameterを保持する非破壊明示operationとし、初期スコープ外にする。
+- 合体は元図形IDと合成parameterを保持する非破壊明示operationとし、TASK-150でballoon専用typed compositionとして実装する。一般groupとは分離する。
 
 ## 9. 自動レイアウト
 
