@@ -89,7 +89,11 @@ namespace MojiCollaTool
                 _objectOrder.AddRange(_mojiDatas.Select(mojiData => mojiData.ObjectId));
                 _objectOrder.AddRange(_balloons.Select(balloon => balloon.ObjectId));
             }
-            NormalizeObjectOrder();
+            // Version 2.2 archives written before TASK-130 could contain more
+            // than one balloon linked to the same text.  The constructor is
+            // the format-boundary where that legacy state is repaired; all
+            // subsequent mutations use the strict validator below.
+            NormalizeObjectOrder(migrateDuplicateLinks: true);
         }
 
         public PageDocument(
@@ -527,7 +531,7 @@ namespace MojiCollaTool
         /// Makes list order the canonical drawing order and repairs IDs from
         /// legacy XML that did not contain the new identity fields.
         /// </summary>
-        public void NormalizeObjectOrder()
+        public void NormalizeObjectOrder(bool migrateDuplicateLinks = false)
         {
             var objectIds = new HashSet<Guid>();
             foreach (var mojiData in _mojiDatas)
@@ -572,6 +576,10 @@ namespace MojiCollaTool
             }
 
             ReconcileRelationships(objectIds);
+            if (migrateDuplicateLinks)
+            {
+                MigrateDuplicateBalloonTextLinks();
+            }
             ValidateBalloonTextLinks(_mojiDatas, _balloons);
             var knownIds = new HashSet<Guid>(_mojiDatas.Select(item => item.ObjectId)
                 .Concat(_balloons.Select(item => item.ObjectId))
@@ -766,6 +774,27 @@ namespace MojiCollaTool
                 var textId = balloon.TextLink!.TextObjectId;
                 if (!textIds.Contains(textId)) throw new InvalidDataException("Balloon text link target was not found on this page.");
                 if (!linkedTextIds.Add(textId)) throw new InvalidDataException("A text object cannot be linked to more than one balloon.");
+            }
+        }
+
+        private void MigrateDuplicateBalloonTextLinks()
+        {
+            var order = _objectOrder
+                .Select((objectId, index) => (objectId, index))
+                .ToDictionary(item => item.objectId, item => item.index);
+            var linkedTextIds = new HashSet<Guid>();
+            foreach (var balloon in _balloons
+                .Where(item => item.TextLink != null)
+                .OrderBy(item => order.TryGetValue(item.ObjectId, out var index) ? index : int.MaxValue))
+            {
+                var textId = balloon.TextLink!.TextObjectId;
+                if (!linkedTextIds.Add(textId))
+                {
+                    // Keep the first link in canonical drawing order.  This
+                    // is deterministic even when the archive's list order
+                    // differs from its persisted ZIndex values.
+                    balloon.TextLink = null;
+                }
             }
         }
 

@@ -415,10 +415,22 @@ namespace MojiCollaTool
             if (_selectedBalloon.BalloonData.TextLink?.TextObjectId == textObjectId)
                 return SetBalloonStatus("選択した文字は既にリンクされています。", false);
 
-            _selectedBalloon.BalloonData.TextLink = new TextLinkData { TextObjectId = textObjectId };
-            RefreshBalloonTools($"文字 ID:{panel.MojiData.Id} をリンクしました。");
-            RaiseContentChanged("フキダシ文字リンク");
-            return true;
+            var previousLink = _selectedBalloon.BalloonData.TextLink?.Clone();
+            try
+            {
+                _selectedBalloon.BalloonData.TextLink = new TextLinkData { TextObjectId = textObjectId };
+                SynchronizeBoundPageAfterLinkMutation();
+                RefreshBalloonTools($"文字 ID:{panel.MojiData.Id} をリンクしました。");
+                RaiseContentChanged("フキダシ文字リンク");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _selectedBalloon.BalloonData.TextLink = previousLink;
+                RefreshBalloonTools("文字リンクに失敗しました。");
+                SetBalloonStatus($"文字リンクに失敗しました: {ex.Message}", false);
+                return false;
+            }
         }
 
         internal bool UnlinkSelectedBalloon()
@@ -427,10 +439,32 @@ namespace MojiCollaTool
                 return SetBalloonStatus("フキダシを選択してください。", false);
             if (_selectedBalloon.BalloonData.TextLink == null)
                 return SetBalloonStatus("選択中のフキダシに文字リンクはありません。", false);
-            _selectedBalloon.BalloonData.TextLink = null;
-            RefreshBalloonTools("文字リンクを解除しました。");
-            RaiseContentChanged("フキダシ文字リンク解除");
-            return true;
+            var previousLink = _selectedBalloon.BalloonData.TextLink.Clone();
+            try
+            {
+                _selectedBalloon.BalloonData.TextLink = null;
+                SynchronizeBoundPageAfterLinkMutation();
+                RefreshBalloonTools("文字リンクを解除しました。");
+                RaiseContentChanged("フキダシ文字リンク解除");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _selectedBalloon.BalloonData.TextLink = previousLink;
+                RefreshBalloonTools("文字リンク解除に失敗しました。");
+                SetBalloonStatus($"文字リンク解除に失敗しました: {ex.Message}", false);
+                return false;
+            }
+        }
+
+        private void SynchronizeBoundPageAfterLinkMutation()
+        {
+            if (_boundPage == null) return;
+            // CapturePage validates a complete trial document before touching
+            // the bound page, then refreshes model ZIndex and Canvas.Children.
+            CapturePage(_boundPage);
+            ApplyPageOrderToLiveObjects();
+            RebuildCanvasObjectOrder();
         }
 
         internal bool MoveSelectedBalloonComposition(BalloonCompositionOrder operation)

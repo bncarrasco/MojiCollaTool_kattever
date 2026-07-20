@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Xml.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace MojiCollaTool.Tests;
@@ -109,7 +111,6 @@ public class TASK130BalloonTailLinkTests
         var second = new BalloonData();
         var page = new PageDocument("01", new[] { text }, new[] { first, second });
         page.LinkBalloonText(first.ObjectId, text.ObjectId);
-
         CollectionAssert.AreEqual(new[] { first.ObjectId, text.ObjectId, second.ObjectId },
             page.AllObjects.Select(item => item.ObjectId).ToArray());
         Assert.ThrowsException<InvalidOperationException>(() => page.LinkBalloonText(second.ObjectId, text.ObjectId));
@@ -127,6 +128,75 @@ public class TASK130BalloonTailLinkTests
         Assert.IsTrue(session.Document.Pages[0].ContainsObject(text.ObjectId));
         Assert.IsTrue(session.Undo());
         Assert.AreEqual(text.ObjectId, session.Document.Pages[0].GetBalloon(first.ObjectId).TextLink!.TextObjectId);
+    }
+
+    [TestMethod]
+    public void Version22DuplicateLinksAreMigratedByCanonicalOrderAndRoundTrip()
+    {
+        var unrelated = new MojiData { Id = 1, FullText = "前置文字" };
+        var text = new MojiData { Id = 2, FullText = "リンク対象" };
+        var first = new BalloonData { X = 40, Y = 40 };
+        var second = new BalloonData { X = 300, Y = 40 };
+        var symbol = new AttachedSymbolData { ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "★" };
+        var page = new PageDocument(Guid.NewGuid(), "01", new CanvasData(),
+            new[] { unrelated, text }, new[] { first, second }, new[] { symbol });
+        page.LinkBalloonText(first.ObjectId, text.ObjectId);
+        var duplicatePage = new PageDocument(Guid.NewGuid(), "duplicate", new CanvasData(),
+            new[] { unrelated, text }, new[]
+            {
+                new BalloonData { ObjectId = first.ObjectId, TextLink = new TextLinkData { TextObjectId = text.ObjectId } },
+                new BalloonData { ObjectId = second.ObjectId, TextLink = new TextLinkData { TextObjectId = text.ObjectId } },
+            }, new[] { symbol });
+        Assert.IsNull(duplicatePage.GetBalloon(second.ObjectId).TextLink);
+        var project = new ProjectDocument(Guid.NewGuid(), "重複リンク移行", new[] { page });
+        var path = Path.Combine(Path.GetTempPath(), $"task130-duplicate-{Guid.NewGuid():N}.mctzip");
+        try
+        {
+            DataIO.WriteVersionedProject(path, project);
+            using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+            {
+                var entryName = VersionedProjectFormat.CanonicalPagePath(page.PageId);
+                var entry = archive.GetEntry(entryName)!;
+                XDocument document;
+                using (var stream = entry.Open()) document = XDocument.Load(stream);
+                var balloons = document.Root!.Element("Balloons")!.Elements("Balloon").ToArray();
+                var firstXml = balloons.Single(item => (string?)item.Element("ObjectId") == first.ObjectId.ToString("D"));
+                var secondXml = balloons.Single(item => (string?)item.Element("ObjectId") == second.ObjectId.ToString("D"));
+                secondXml.Element("TextLink")?.Remove();
+                secondXml.Add(new XElement(firstXml.Element("TextLink")!));
+                entry.Delete();
+                var replacement = archive.CreateEntry(entryName);
+                using var writer = new StreamWriter(replacement.Open());
+                document.Save(writer);
+            }
+
+            var restored = DataIO.ReadVersionedProject(path);
+            var restoredPage = restored.Pages.Single();
+            Assert.AreEqual(text.ObjectId, restoredPage.GetBalloon(first.ObjectId).TextLink!.TextObjectId);
+            Assert.IsNull(restoredPage.GetBalloon(second.ObjectId).TextLink);
+            CollectionAssert.AreEqual(
+                page.AllObjects.Select(item => item.ObjectId).ToArray(),
+                restoredPage.AllObjects.Select(item => item.ObjectId).ToArray());
+            Assert.AreEqual("重複リンク移行", restored.Name);
+            Assert.AreEqual("リンク対象", restoredPage.GetObject(text.ObjectId).FullText);
+
+            var roundTrip = Path.Combine(Path.GetTempPath(), $"task130-duplicate-roundtrip-{Guid.NewGuid():N}.mctzip");
+            try
+            {
+                DataIO.WriteVersionedProject(roundTrip, restored);
+                var reloaded = DataIO.ReadVersionedProject(roundTrip);
+                Assert.IsNull(reloaded.Pages.Single().GetBalloon(second.ObjectId).TextLink);
+                Assert.AreEqual(text.ObjectId, reloaded.Pages.Single().GetBalloon(first.ObjectId).TextLink!.TextObjectId);
+            }
+            finally
+            {
+                if (File.Exists(roundTrip)) File.Delete(roundTrip);
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
     }
 
     [TestMethod]
@@ -164,6 +234,183 @@ public class TASK130BalloonTailLinkTests
             editor.RestoreViewState(100, balloon.ObjectId);
             Assert.AreEqual(0, editor.ResizeHandleVisuals.Count);
             Assert.AreEqual(0, editor.TailHandleVisuals.Count);
+        });
+    }
+
+    [TestMethod]
+    public void RealLinkButtonSynchronizesDocumentLiveZCanvasOrderAndHistory()
+    {
+        RunOnSta(() =>
+        {
+            var unrelatedText = new MojiData { Id = 1, FullText = "前置" };
+            var linkedText = new MojiData { Id = 2, FullText = "本文" };
+            var balloon = new BalloonData { X = 80, Y = 60 };
+            var unrelatedBalloon = new BalloonData { X = 420, Y = 60 };
+            var symbol = new AttachedSymbolData { ParentId = linkedText.ObjectId, GraphemeAnchor = 0, Text = "★" };
+            var page = new PageDocument("01");
+            page.AddMojiData(unrelatedText);
+            page.AddBalloon(balloon);
+            page.AddMojiData(linkedText);
+            page.AddAttachedSymbol(symbol);
+            page.AddBalloon(unrelatedBalloon);
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "p", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+            session.MarkSaved();
+            editor.RestoreViewState(100, balloon.ObjectId);
+
+            var combo = (ComboBox)editor.FindName("TextLinkComboBox")!;
+            combo.SelectedItem = combo.Items.Cast<TextLinkCandidate>().Single(item => item.ObjectId == linkedText.ObjectId);
+            ((Button)editor.FindName("LinkTextButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.AreEqual(1, session.UndoCount);
+            Assert.IsTrue(session.IsDirty);
+            Assert.AreEqual(linkedText.ObjectId, session.ActivePage!.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
+            AssertLiveOrderAndZ(editor, session.ActivePage!);
+
+            Assert.IsTrue(session.Undo());
+            editor.UnbindPage();
+            editor.BindPage(session.ActivePage!, null);
+            Assert.IsNull(session.ActivePage!.GetBalloon(balloon.ObjectId).TextLink);
+            AssertLiveOrderAndZ(editor, session.ActivePage!);
+
+            Assert.IsTrue(session.Redo());
+            editor.UnbindPage();
+            editor.BindPage(session.ActivePage!, null);
+            Assert.AreEqual(linkedText.ObjectId, session.ActivePage!.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
+            AssertLiveOrderAndZ(editor, session.ActivePage!);
+
+            combo = (ComboBox)editor.FindName("TextLinkComboBox")!;
+            ((Button)editor.FindName("UnlinkTextButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.IsNull(session.ActivePage!.GetBalloon(balloon.ObjectId).TextLink);
+            Assert.IsTrue(session.IsDirty);
+            Assert.IsTrue(session.Undo());
+            editor.UnbindPage();
+            editor.BindPage(session.ActivePage!, null);
+            Assert.AreEqual(linkedText.ObjectId, session.ActivePage!.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
+            editor.RestoreViewState(100, balloon.ObjectId);
+            ((Button)editor.FindName("AddTailButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.IsFalse(session.CanRedo, "new edit after unlink undo must discard redo branch");
+        });
+    }
+
+    [TestMethod]
+    public void RealZButtonsUseTypedCompositionAndEdgeNoOpDoesNotCreateHistory()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { Id = 1, FullText = "本文" };
+            var balloon = new BalloonData { TextLink = new TextLinkData { TextObjectId = text.ObjectId } };
+            var page = new PageDocument("01", new[] { text }, new[] { balloon, new BalloonData() });
+            page.LinkBalloonText(balloon.ObjectId, text.ObjectId);
+            using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "p", new[] { page }));
+            using var editor = new PageEditorControl();
+            editor.BindPage(session.ActivePage!, null);
+            editor.ContentChanged += (_, _) =>
+            {
+                editor.CapturePage();
+                session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+            };
+            editor.RestoreViewState(100, balloon.ObjectId);
+
+            var front = (Button)editor.FindName("BringToFrontButton")!;
+            var forward = (Button)editor.FindName("BringForwardButton")!;
+            var backward = (Button)editor.FindName("SendBackwardButton")!;
+            var back = (Button)editor.FindName("SendToBackButton")!;
+            front.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            AssertLiveOrderAndZ(editor, session.ActivePage!);
+            var afterFront = session.UndoCount;
+            front.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual(afterFront, session.UndoCount, "front edge no-op must not add history");
+            forward.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual(afterFront, session.UndoCount, "forward edge no-op must not add history");
+            back.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            AssertLiveOrderAndZ(editor, session.ActivePage!);
+            var afterBack = session.UndoCount;
+            backward.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual(afterBack, session.UndoCount, "backward edge no-op must not add history");
+            Assert.IsTrue(session.Undo());
+            Assert.IsTrue(session.Redo());
+            Assert.IsFalse(session.CanRedo);
+        });
+    }
+
+    [TestMethod]
+    public void PageSwitchRefreshesLinkCandidatesAndDisposeStopsFurtherBinding()
+    {
+        RunOnSta(() =>
+        {
+            var page1Text = new MojiData { Id = 1, FullText = "ページ1" };
+            var page2Text = new MojiData { Id = 2, FullText = "ページ2" };
+            var page1 = new PageDocument("ページ1", new[] { page1Text }, new[] { new BalloonData() });
+            var page2 = new PageDocument("ページ2", new[] { page2Text }, new[] { new BalloonData() });
+            using var editor = new PageEditorControl();
+            editor.BindPage(page1, null);
+            editor.RestoreViewState(100, page1.Balloons.Single().ObjectId);
+            var combo = (ComboBox)editor.FindName("TextLinkComboBox")!;
+            Assert.AreEqual(page1Text.ObjectId, combo.Items.Cast<TextLinkCandidate>().Single().ObjectId);
+            editor.BindPage(page2, null);
+            editor.RestoreViewState(100, page2.Balloons.Single().ObjectId);
+            Assert.AreEqual(page2Text.ObjectId, combo.Items.Cast<TextLinkCandidate>().Single().ObjectId);
+            editor.BindPage(page1, null);
+            editor.RestoreViewState(100, page1.Balloons.Single().ObjectId);
+            Assert.AreEqual(page1Text.ObjectId, combo.Items.Cast<TextLinkCandidate>().Single().ObjectId);
+            editor.Dispose();
+            Assert.ThrowsException<ObjectDisposedException>(() => editor.BindPage(page2, null));
+        });
+    }
+
+    [TestMethod]
+    public void HiddenBalloonHasNoHandlesAndCannotStartGesture()
+    {
+        RunOnSta(() =>
+        {
+            var balloon = new BalloonData { Tail = new BalloonTailData { TipX = 120, TipY = 220, RootParameter = .5, Width = 20 } };
+            using var editor = new PageEditorControl();
+            editor.BindPage(new PageDocument("01", new[] { balloon }), null);
+            editor.RestoreViewState(100, balloon.ObjectId);
+            var live = editor.BalloonVisuals.Single();
+            live.BalloonData.IsVisible = false;
+            editor.RestoreViewState(100, balloon.ObjectId);
+            Assert.AreEqual(0, editor.ResizeHandleVisuals.Count);
+            Assert.AreEqual(0, editor.TailHandleVisuals.Count);
+            Assert.IsFalse(editor.BeginBalloonGesture(balloon.ObjectId, new Point(0, 0)));
+        });
+    }
+
+    [TestMethod]
+    public void LinkedTextSingleObjectMoveLeavesBalloonGeometryUnchanged()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { Id = 1, FullText = "単体移動", X = 100, Y = 80 };
+            var balloon = new BalloonData
+            {
+                X = 40,
+                Y = 40,
+                Tail = new BalloonTailData { TipX = 180, TipY = 250, RootParameter = .5, Width = 22 },
+                TextLink = new TextLinkData { TextObjectId = text.ObjectId },
+            };
+            using var editor = new PageEditorControl();
+            editor.BindPage(new PageDocument("01", new[] { text }, new[] { balloon }), null);
+            var panel = editor.MojiPanels.Single();
+            var liveBalloon = editor.BalloonVisuals.Single();
+            var beforeBalloon = liveBalloon.BalloonData.Clone();
+            var beforeText = panel.MojiData.Clone();
+            panel.MojiData.X += 35;
+            panel.MojiData.Y -= 12;
+            panel.UpdateXYView();
+            panel.NotifyContentChanged("位置変更", panel.MojiData.ObjectId.ToString("D"));
+            Assert.AreEqual(beforeText.X + 35, panel.MojiData.X);
+            Assert.AreEqual(beforeText.Y - 12, panel.MojiData.Y);
+            Assert.AreEqual(beforeBalloon.X, liveBalloon.BalloonData.X);
+            Assert.AreEqual(beforeBalloon.Y, liveBalloon.BalloonData.Y);
+            Assert.AreEqual(beforeBalloon.Tail!.Tip, liveBalloon.BalloonData.Tail!.Tip);
         });
     }
 
@@ -370,11 +617,58 @@ public class TASK130BalloonTailLinkTests
                 new Rect(0, 0, 240, 140), new Point(120 + iteration, 150), factory);
         stopwatch.Stop();
         var rootDragMs = stopwatch.Elapsed.TotalMilliseconds;
-        TestContext?.WriteLine($"balloons=24; tail-refresh-hit-2400-ms={refreshMs:F3}; root-drag-40-ms={rootDragMs:F3}; cache={factory.CacheCount}");
+        var compositionPage = new PageDocument("composition-perf");
+        var compositionIds = new List<Guid>();
+        for (var index = 0; index < 24; index++)
+        {
+            var text = new MojiData { Id = index + 1, FullText = $"本文{index}" };
+            var balloon = new BalloonData();
+            compositionPage.AddBalloon(balloon);
+            compositionPage.AddMojiData(text);
+            compositionPage.LinkBalloonText(balloon.ObjectId, text.ObjectId);
+            compositionIds.Add(balloon.ObjectId);
+        }
+        stopwatch.Restart();
+        for (var iteration = 0; iteration < 200; iteration++)
+        {
+            var id = compositionIds[iteration % compositionIds.Count];
+            compositionPage.MoveBalloonComposition(id,
+                iteration % 2 == 0 ? BalloonCompositionOrder.BringForward : BalloonCompositionOrder.SendBackward);
+        }
+        stopwatch.Stop();
+        var compositionMoveMs = stopwatch.Elapsed.TotalMilliseconds;
+        TestContext?.WriteLine($"balloons=24; tail-refresh-hit-2400-ms={refreshMs:F3}; root-drag-40-ms={rootDragMs:F3}; composition-block-move-200-ms={compositionMoveMs:F3}; cache={factory.CacheCount}");
 
         Assert.IsTrue(refreshMs < 3000, $"tail refresh/hit took {refreshMs:F3} ms");
         Assert.IsTrue(rootDragMs < 3000, $"root drag took {rootDragMs:F3} ms");
+        Assert.IsTrue(compositionMoveMs < 3000, $"composition block moves took {compositionMoveMs:F3} ms");
         Assert.IsTrue(factory.CacheCount <= factory.CacheCapacity);
+    }
+
+    private static void AssertLiveOrderAndZ(PageEditorControl editor, PageDocument page)
+    {
+        var childIds = editor.Canvas.Children.OfType<UIElement>()
+            .Where(child => child is MojiPanel || child is BalloonVisual || child is AttachedSymbolVisual)
+            .Select(child => child switch
+            {
+                MojiPanel panel => panel.MojiData.ObjectId,
+                BalloonVisual balloon => balloon.ObjectId,
+                AttachedSymbolVisual symbol => symbol.ObjectId,
+                _ => Guid.Empty,
+            })
+            .ToArray();
+        CollectionAssert.AreEqual(page.AllObjects.Select(item => item.ObjectId).ToArray(), childIds);
+        foreach (var item in page.AllObjects)
+        {
+            UIElement visual = item switch
+            {
+                MojiData moji => editor.MojiPanels.Single(panel => panel.MojiData.ObjectId == moji.ObjectId),
+                BalloonData balloon => editor.BalloonVisuals.Single(visual => visual.ObjectId == balloon.ObjectId),
+                AttachedSymbolData symbol => editor.AttachedSymbolVisuals.Single(visual => visual.ObjectId == symbol.ObjectId),
+                _ => throw new AssertFailedException("Unknown page object type"),
+            };
+            Assert.AreEqual(item.ZIndex, Canvas.GetZIndex(visual), item.ObjectId.ToString());
+        }
     }
 
     private static void AssertFinite(Rect bounds)

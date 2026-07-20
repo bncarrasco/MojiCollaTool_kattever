@@ -2,7 +2,7 @@
 
 ## Result
 
-TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描画・hit test・日本語編集UIへ接続し、single tailの追加／削除、tip／root／width編集、文字link／unlink、typed compositionの一体移動とZ-order、Undo/Redo、保存再読込を実装しました。
+TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描画・hit test・日本語編集UIへ接続し、single tailの追加／削除、tip／root／width編集、文字link／unlink、typed compositionの一体移動とZ-order、Undo/Redo、保存再読込を実装しました。司令役レビューC130-01～03では、link直後のdocument／live／Canvas順同期、format 2.2重複linkの決定的移行、実UI受入経路と実測値を追加確認しました。
 
 ## 対応要件
 
@@ -26,7 +26,7 @@ TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描�
 
 - Main implementation: `e2137363ddbccfd34b636628a72d792a99590f73`
 - Composition-order expectation update: `88d365a4d15e9e9145a8250cffac6c1b7f470c7e`
-- Completion metadata commit: 本報告を含む後続commit（exact hashは完了メッセージに記載）
+- C130-01～03修正＋受入: 本報告を含む最終commit（exact hashは完了メッセージに記載）
 
 ## 変更ファイル
 
@@ -58,6 +58,7 @@ TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描�
 
 - link候補は同一pageの文字だけをlegacy ID、ObjectId短縮値、表示例付きで列挙します。
 - `PageDocument`のAdd／Set／Update／Normalize境界で、一つの文字が複数フキダシへlinkされないことを検証します。別フキダシの文字を黙って奪わず、日本語で拒否します。
+- format 2.2のreader／constructor境界だけは互換移行モードとし、canonical `AllObjects`順で最初のballoon linkを保持し、後続重複をunlinkします。dangling link、ID検証、writerのatomic性は厳格なままです。runtimeのAdd／Set／Update／新規linkは重複を拒否します。
 - invalid／cross-page／削除済みIDはmodel／visual／historyを変更せず拒否します。
 - link／unlinkは文字の位置、font、縦横、内容を変更しません。文字削除はフキダシを残してunlinkし、フキダシ削除は文字を残します。
 
@@ -72,36 +73,38 @@ TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描�
 
 - drag開始時にballoonとlinked textをsnapshotし、mousemoveではvisual/model previewだけ、pointer-upのContentChanged 1回で既存ProjectSession snapshot historyへcommitします。gestureごとに固有coalesce keyを使い、短時間の別gestureを統合しません。
 - page/project切替、Undo/Redo後のreload、Disposeでは既存BindPage／RemoveAll boundaryを使い、tail handleとlink候補を再構成・解放します。
+- link／unlinkは`CapturePage`の試行検証後に`ApplyPageOrderToLiveObjects`と`RebuildCanvasObjectOrder`まで同一UI操作内で実行し、通知前からdocument順、live model ZIndex、Canvas.ZIndex、typed child順を一致させます。失敗時はlive linkを復元し、通知・履歴・dirtyを発生させません。
 
 ## Verification
 
 - SDK: 6.0.428
 - Debug build: pass、0 warnings／0 errors
-- Debug test: 184 passed／0 failed
+- Debug test: 190 passed／0 failed
 - Release build: pass、0 warnings／0 errors
-- Release test (`--no-build`): 184 passed／0 failed
-- test件数差: 175 baseline + TASK-130専用9 = 184
+- Release test (`--no-build`): 190 passed／0 failed
+- test件数差: 175 baseline + TASK-130専用15 = 190（C130受入6件を追加）
 - `git diff --check`: pass
 - format: version 2.2を維持。既存2.0／2.1読込、unknown shape、tailなし、日本語project/page/path、text／symbol／balloon／image／exportを含む全suite成功
 - 縦書き: link前後で方向／font／内容を保持するSTA test成功
 - 横書き: composition move／resizeで位置以外のfont／内容を保持するSTA test成功
-- 日本語UI: しっぽ追加／削除、文字link／unlink、現在状態、4種Z操作、invalid／競合拒否を確認
-- Undo/Redo: add/remove、link/unlink、tail drag、composition move/Z、別gesture分離、redo branch、saved dirty、cancelを確認
+- 日本語UI: しっぽ追加／削除、実ComboBox＋`LinkTextButton`／`UnlinkTextButton`、現在状態、4種Z button、invalid／競合拒否を確認
+- C130受入: `RealLinkButtonSynchronizesDocumentLiveZCanvasOrderAndHistory`、`RealZButtonsUseTypedCompositionAndEdgeNoOpDoesNotCreateHistory`、`Version22DuplicateLinksAreMigratedByCanonicalOrderAndRoundTrip`、`PageSwitchRefreshesLinkCandidatesAndDisposeStopsFurtherBinding`、`HiddenBalloonHasNoHandlesAndCannotStartGesture`、`LinkedTextSingleObjectMoveLeavesBalloonGeometryUnchanged`を通過
+- Undo/Redo: add/remove、実UI link/unlink、tail drag、composition move/Z、別gesture分離、redo branch、saved dirty、cancelを確認
 
 ## 性能実測
 
-Release、同一process内の自動計測:
+同一process内の自動計測。対象は24 balloon、tail refresh/hit 100反復（2,400回）、Monologue root parameter 40回、linked composition block move 200回。各閾値は3,000 ms:
 
-- 24 balloonを100反復したtail geometry生成＋hit test（2,400回）: `421.482 ms`、閾値`3,000 ms`
-- Monologue root drag parameter計算40回: `0.212 ms`、閾値`3,000 ms`
+- Debug: tail refresh/hit `598.761 ms`、root drag `0.009 ms`、composition block move `83.906 ms`
+- Release: tail refresh/hit `424.342 ms`、root drag `0.224 ms`、composition block move `84.613 ms`
 - geometry cache count: `4`、capacity `256`以下
 
-参考Debug実測はtail refresh/hit `579.953 ms`、root drag `0.019 ms`でした。mousemoveごとの全page visual再生成と無制限cacheは追加していません。
+mousemoveごとの全page visual再生成と無制限cacheは追加していません。
 
 ## 手動未確認
 
 - 実GUIでのpointer capture、OS DPI別の最終pixel、antialias、root seamの目視: `Not verified`
-- 自動STA testでevent boundary、実Canvas hit、zoom handle、rotation、保存再読込は確認済みですが、上記を目視成功扱いにはしていません。
+- 自動STA testでevent boundary、実Canvas hit、zoom handle、rotation、保存再読込、typed Canvas順は確認済みですが、実マウスpointer capture／OS DPI／最終pixelは目視成功扱いにしていません。`LinkedTextSingleObjectMoveLeavesBalloonGeometryUnchanged`は既存MojiPanelの単体移動・commit boundaryを通した数値確認であり、物理マウス移動そのものはNot verifiedです。
 
 ## 既知問題・逸脱・ADR候補
 
