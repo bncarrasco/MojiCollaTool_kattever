@@ -26,8 +26,8 @@ TASK-130を完了しました。既存`BalloonTailData`／`TextLinkData`を描�
 
 - Main implementation: `e2137363ddbccfd34b636628a72d792a99590f73`
 - Composition-order expectation update: `88d365a4d15e9e9145a8250cffac6c1b7f470c7e`
-- Completion metadata: 本報告更新commit（exact hashは完了メッセージに記載）
-- C130-01～05修正＋受入: 本報告を含む実装commit（exact hashは完了メッセージに記載）
+- C130-01～05修正＋受入: `fb18ed373f037dc042e5b18b8a6142e01a6a291e`
+- Completion metadata: 本報告更新commit（最終hashは完了メッセージに記載）
 
 ## 変更ファイル
 
