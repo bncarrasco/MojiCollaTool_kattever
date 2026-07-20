@@ -474,7 +474,7 @@ namespace MojiCollaTool
         {
             return new LinkMutationSnapshot(
                 _boundPage?.Clone(_boundPage.PageId, preserveObjectIds: true),
-                CanvasData.Clone(),
+                PageDocument.CloneCanvas(CanvasData),
                 ScalePercent,
                 SelectedObjectId,
                 _selectedBalloon?.BalloonData.Clone(),
@@ -493,7 +493,7 @@ namespace MojiCollaTool
                 if (_boundPage != null && snapshot.Page != null)
                 {
                     _boundPage.RestoreFrom(snapshot.Page);
-                    CanvasData = snapshot.Canvas.Clone();
+                    CanvasData = PageDocument.CloneCanvas(snapshot.Canvas);
                     UpdateCanvas();
                     foreach (var panel in _mojiPanels)
                     {

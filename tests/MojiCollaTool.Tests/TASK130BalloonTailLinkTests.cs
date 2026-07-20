@@ -471,10 +471,27 @@ public class TASK130BalloonTailLinkTests
             var selected = new BalloonData();
             var invalidBefore = new BalloonData();
             var page = new PageDocument("01", new[] { text }, new[] { selected, invalidBefore });
+            page.Canvas.CanvasWidth = 1234;
+            page.Canvas.CanvasHeight = 987;
+            page.Canvas.ImageData1.OriginalWidth = 111;
+            page.Canvas.ImageData1.OriginalHeight = 222;
+            page.Canvas.ImageData1.ModifiedWidth = 101;
+            page.Canvas.ImageData1.ModifiedHeight = 202;
+            page.Canvas.ImageData2.OriginalWidth = 333;
+            page.Canvas.ImageData2.OriginalHeight = 444;
+            page.Canvas.ImageData2.ModifiedWidth = 303;
+            page.Canvas.ImageData2.ModifiedHeight = 404;
+            page.Canvas.Image2LocatePosition = LocatePosition.Bottom;
+            page.Canvas.ImageMarginTop = 11;
+            page.Canvas.ImageMarginLeft = 22;
+            page.Canvas.ImageMarginBottom = 33;
+            page.Canvas.ImageMarginRight = 44;
+            page.Canvas.CanvasColor = Color.FromArgb(0xE1, 0x12, 0x34, 0x56);
             using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "p", new[] { page }));
             using var editor = new PageEditorControl();
             editor.BindPage(session.ActivePage!, null);
             editor.RestoreViewState(100, selected.ObjectId);
+            var expectedCanvas = PageDocument.CloneCanvas(editor.CanvasData);
             var invalidId = Guid.NewGuid();
             editor.BalloonVisuals.Single(visual => visual.ObjectId == invalidBefore.ObjectId).BalloonData.TextLink =
                 new TextLinkData { TextObjectId = invalidId };
@@ -523,6 +540,11 @@ public class TASK130BalloonTailLinkTests
             Assert.IsNull(session.ActivePage!.GetBalloon(selected.ObjectId).TextLink);
             Assert.AreEqual(selected.ObjectId, editor.SelectedBalloonId);
             Assert.AreEqual("文字リンクに失敗しました。", ((TextBlock)editor.FindName("BalloonStatusTextBlock")!).Text);
+            AssertCanvasDataEqual(expectedCanvas, editor.CanvasData);
+            AssertCanvasDataEqual(expectedCanvas, session.ActivePage!.Canvas.ToLegacyData());
+            editor.BalloonVisuals.Single(visual => visual.ObjectId == invalidBefore.ObjectId).BalloonData.TextLink = null;
+            editor.CapturePage();
+            AssertCanvasDataEqual(expectedCanvas, session.ActivePage!.Canvas.ToLegacyData());
             AssertLiveOrderAndZ(editor, session.ActivePage!);
         });
     }
@@ -756,6 +778,28 @@ public class TASK130BalloonTailLinkTests
         Assert.IsTrue(rootDragMs < 3000, $"root drag took {rootDragMs:F3} ms");
         Assert.IsTrue(compositionMoveMs < 3000, $"composition block moves took {compositionMoveMs:F3} ms");
         Assert.IsTrue(factory.CacheCount <= factory.CacheCapacity);
+    }
+
+    private static void AssertCanvasDataEqual(CanvasData expected, CanvasData actual)
+    {
+        Assert.AreEqual(expected.CanvasWidth, actual.CanvasWidth);
+        Assert.AreEqual(expected.CanvasHeight, actual.CanvasHeight);
+        Assert.AreEqual(expected.Image2LocatePosition, actual.Image2LocatePosition);
+        Assert.AreEqual(expected.ImageMarginTop, actual.ImageMarginTop);
+        Assert.AreEqual(expected.ImageMarginLeft, actual.ImageMarginLeft);
+        Assert.AreEqual(expected.ImageMarginBottom, actual.ImageMarginBottom);
+        Assert.AreEqual(expected.ImageMarginRight, actual.ImageMarginRight);
+        Assert.AreEqual(expected.CanvasColor, actual.CanvasColor);
+        AssertImageDataEqual(expected.ImageData1, actual.ImageData1);
+        AssertImageDataEqual(expected.ImageData2, actual.ImageData2);
+    }
+
+    private static void AssertImageDataEqual(ImageData expected, ImageData actual)
+    {
+        Assert.AreEqual(expected.OriginalWidth, actual.OriginalWidth);
+        Assert.AreEqual(expected.OriginalHeight, actual.OriginalHeight);
+        Assert.AreEqual(expected.ModifiedWidth, actual.ModifiedWidth);
+        Assert.AreEqual(expected.ModifiedHeight, actual.ModifiedHeight);
     }
 
     private static void AssertLiveOrderAndZ(PageEditorControl editor, PageDocument page)
