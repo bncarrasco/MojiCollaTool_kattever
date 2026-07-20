@@ -719,8 +719,61 @@ public sealed class TASK080ZOrderLockTests
             panel.RaiseEvent(mouseDown);
 
             Assert.AreEqual(text.ObjectId, editor.SelectedObjectId);
+            Assert.IsFalse(panel.IsMouseCaptured);
+            Assert.AreEqual(
+                "関連する付加記号がロック中のため、文字を移動できません。",
+                ((TextBlock)editor.FindName("BalloonStatusTextBlock")!).Text);
             Assert.IsFalse(panel.CommitDrag());
             Assert.AreEqual(10d, panel.MojiData.X);
+        });
+    }
+
+    [TestMethod]
+    public void TextDeletionIndependentlyRefusesLockedSymbolAndLockedLinkedBalloon()
+    {
+        RunOnSta(() =>
+        {
+            foreach (var lockedTarget in new[] { "symbol", "balloon" })
+            {
+                var text = new MojiData { FullText = lockedTarget };
+                var balloon = new BalloonData { IsLocked = lockedTarget == "balloon" };
+                var symbol = new AttachedSymbolData
+                {
+                    ParentId = text.ObjectId,
+                    GraphemeAnchor = 0,
+                    Text = "!",
+                    IsLocked = lockedTarget == "symbol",
+                };
+                var page = new PageDocument(lockedTarget, new[] { text }, new[] { balloon });
+                page.AddAttachedSymbol(symbol);
+                page.LinkBalloonText(balloon.ObjectId, text.ObjectId);
+                using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "project", new[] { page }));
+                using var editor = new PageEditorControl();
+                editor.BindPage(page, null);
+                editor.ContentChanged += (_, _) =>
+                {
+                    editor.CapturePage();
+                    session.MarkChanged(page.PageId, editor.ContentChangeDescription, editor.ContentChangeCoalesceKey);
+                };
+                session.MarkSaved();
+                var notifications = 0;
+                editor.ContentChanged += (_, _) => notifications++;
+                var panel = editor.MojiPanels.Single();
+
+                editor.RemoveMojiPanel(panel);
+
+                Assert.AreSame(panel, editor.MojiPanels.Single());
+                Assert.AreEqual(text.ObjectId, page.GetBalloon(balloon.ObjectId).TextLink!.TextObjectId);
+                Assert.AreEqual(text.ObjectId, page.GetAttachedSymbol(symbol.ObjectId).ParentId);
+                Assert.AreEqual(0, session.UndoCount);
+                Assert.IsFalse(session.IsDirty);
+                Assert.AreEqual(0, notifications);
+                Assert.AreEqual(
+                    lockedTarget == "symbol"
+                        ? "関連する付加記号がロック中のため、文字を削除できません。"
+                        : "リンク中のフキダシがロック中のため、文字を削除できません。",
+                    ((TextBlock)editor.FindName("BalloonStatusTextBlock")!).Text);
+            }
         });
     }
 
@@ -871,6 +924,8 @@ public sealed class TASK080ZOrderLockTests
         Assert.AreEqual(0.5, sourcePage.GetAttachedSymbol(symbol.ObjectId).OffsetX);
         Assert.AreEqual(text.ObjectId, sourcePage.GetAttachedSymbol(symbol.ObjectId).ParentId);
         Assert.AreEqual(beforeUndo + 2, session.UndoCount);
+        session.MarkSaved();
+        Assert.IsFalse(session.IsDirty);
 
         var beforeRejectedUndo = session.UndoCount;
         var rejectedCalls = 0;
@@ -892,7 +947,76 @@ public sealed class TASK080ZOrderLockTests
             }));
         Assert.AreEqual(1, exceptionCalls);
         Assert.AreEqual(beforeRejectedUndo, session.UndoCount);
+        Assert.IsFalse(session.IsDirty);
         Assert.AreEqual(text.ObjectId, sourcePage.GetAttachedSymbol(symbol.ObjectId).ParentId);
+    }
+
+    [TestMethod]
+    public void ValidatedCandidateFailureCoalescingUndoRedoAndNestedAliasesAreIsolated()
+    {
+        var text = new MojiData { FullText = "linked" };
+        var balloon = new BalloonData
+        {
+            X = 10,
+            Tail = new BalloonTailData { Width = 20 },
+            TextLink = new TextLinkData { TextObjectId = text.ObjectId, Padding = 2 },
+        };
+        var page = new PageDocument("candidate", new[] { text }, new[] { balloon });
+        using var session = new ProjectSession(new ProjectDocument(Guid.NewGuid(), "project", new[] { page }));
+        var sourcePage = session.Document.GetPage(page.PageId);
+        session.MarkSaved();
+        var beforeUndo = session.UndoCount;
+        var before = sourcePage.GetBalloon(balloon.ObjectId).Clone();
+
+        Assert.ThrowsException<InvalidDataException>(() =>
+            BalloonCommands.Update(session, page.PageId, balloon.ObjectId, candidate =>
+            {
+                candidate.X = 999;
+                candidate.Tail!.TailId = Guid.Empty;
+            }, coalesceKey: "candidate"));
+        Assert.AreEqual(before.X, sourcePage.GetBalloon(balloon.ObjectId).X);
+        Assert.AreEqual(before.Tail!.TailId, sourcePage.GetBalloon(balloon.ObjectId).Tail!.TailId);
+        Assert.AreEqual(beforeUndo, session.UndoCount);
+        Assert.IsFalse(session.IsDirty);
+
+        BalloonData? evaluatedCandidate = null;
+        BalloonCommands.Update(session, page.PageId, balloon.ObjectId, candidate =>
+        {
+            evaluatedCandidate = candidate;
+            candidate.X = 30;
+            candidate.Tail!.Width = 40;
+            candidate.TextLink!.Padding = 6;
+        }, coalesceKey: "candidate");
+        Assert.IsNotNull(evaluatedCandidate);
+        var committed = sourcePage.GetBalloon(balloon.ObjectId);
+        Assert.AreNotSame(evaluatedCandidate, committed);
+        Assert.AreNotSame(evaluatedCandidate!.Tail, committed.Tail);
+        Assert.AreNotSame(evaluatedCandidate.TextLink, committed.TextLink);
+        evaluatedCandidate.Tail!.Width = 400;
+        evaluatedCandidate.TextLink!.Padding = 60;
+        Assert.AreEqual(40d, committed.Tail!.Width);
+        Assert.AreEqual(6d, committed.TextLink!.Padding);
+
+        BalloonCommands.Update(session, page.PageId, balloon.ObjectId,
+            candidate => candidate.X = 50, coalesceKey: "candidate");
+        Assert.AreEqual(beforeUndo + 1, session.UndoCount);
+        Assert.AreEqual(50d, sourcePage.GetBalloon(balloon.ObjectId).X);
+        Assert.AreEqual(40d, sourcePage.GetBalloon(balloon.ObjectId).Tail!.Width);
+        Assert.AreEqual(6d, sourcePage.GetBalloon(balloon.ObjectId).TextLink!.Padding);
+        Assert.IsTrue(session.IsDirty);
+
+        Assert.IsTrue(session.Undo());
+        var undonePage = session.Document.GetPage(page.PageId);
+        Assert.AreEqual(before.X, undonePage.GetBalloon(balloon.ObjectId).X);
+        Assert.AreEqual(before.Tail.Width, undonePage.GetBalloon(balloon.ObjectId).Tail!.Width);
+        Assert.AreEqual(before.TextLink!.Padding, undonePage.GetBalloon(balloon.ObjectId).TextLink!.Padding);
+        Assert.IsFalse(session.IsDirty);
+        Assert.IsTrue(session.Redo());
+        var redonePage = session.Document.GetPage(page.PageId);
+        Assert.AreEqual(50d, redonePage.GetBalloon(balloon.ObjectId).X);
+        Assert.AreEqual(40d, redonePage.GetBalloon(balloon.ObjectId).Tail!.Width);
+        Assert.AreEqual(6d, redonePage.GetBalloon(balloon.ObjectId).TextLink!.Padding);
+        Assert.IsTrue(session.IsDirty);
     }
 
     private static void AssertProductionOrderAction(TestObjectKind kind, ObjectOrderOperation operation, bool useContextMenu)
