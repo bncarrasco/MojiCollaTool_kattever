@@ -444,6 +444,14 @@ public sealed class TASK080ZOrderLockTests
             Assert.IsFalse(editor.TryLinkSelectedBalloon(newText.ObjectId));
             Assert.IsFalse(editor.RemoveBalloon(balloon.ObjectId));
             Assert.AreEqual(oldText.ObjectId, editor.BalloonVisuals.Single().BalloonData.TextLink!.TextObjectId);
+
+            var notifications = 0;
+            editor.ContentChanged += (_, _) => notifications++;
+            editor.BalloonVisuals.Single().BalloonData.TextLink = new TextLinkData { TextObjectId = Guid.NewGuid() };
+            Assert.IsFalse(editor.TryLinkSelectedBalloon(newText.ObjectId));
+            Assert.IsFalse(editor.UnlinkSelectedBalloon());
+            Assert.IsFalse(editor.RemoveBalloon(balloon.ObjectId));
+            Assert.AreEqual(0, notifications);
         });
 
         sessionPage.SetObjectLocked(oldText.ObjectId, false);
@@ -573,6 +581,49 @@ public sealed class TASK080ZOrderLockTests
         Assert.IsFalse(AttachedSymbolCommands.TryAdd(session, page.PageId, invalid, out var invalidId));
         Assert.AreEqual(Guid.Empty, invalidId);
         Assert.AreEqual(afterSuccess, session.UndoCount);
+    }
+
+    [TestMethod]
+    public void ContextMenusDetachNonVacuouslyAcrossTextRemovalAndExplicitUnbind()
+    {
+        RunOnSta(() =>
+        {
+            var text = new MojiData { FullText = "parent" };
+            var balloon = new BalloonData();
+            var symbol = new AttachedSymbolData { ParentId = text.ObjectId, GraphemeAnchor = 0, Text = "!" };
+            var page = new PageDocument("lifecycle", new[] { text }, new[] { balloon });
+            page.AddAttachedSymbol(symbol);
+            using var editor = new PageEditorControl();
+            editor.BindPage(page, null);
+            var panel = editor.MojiPanels.Single();
+            var balloonVisual = editor.BalloonVisuals.Single();
+            var symbolVisual = editor.AttachedSymbolVisuals.Single();
+            var panelMenu = panel.ContextMenu!;
+            var balloonMenu = balloonVisual.ContextMenu!;
+            var symbolMenu = symbolVisual.ContextMenu!;
+            var notifications = 0;
+            editor.ContentChanged += (_, _) => notifications++;
+
+            editor.RemoveMojiPanel(panel);
+            Assert.IsNull(panel.ContextMenu);
+            Assert.IsNull(symbolVisual.ContextMenu);
+            Assert.IsNotNull(balloonVisual.ContextMenu);
+            var afterRemoval = notifications;
+            panelMenu.Items.OfType<MenuItem>().Single(item => (string)item.Header == "ロック")
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            symbolMenu.Items.OfType<MenuItem>().Single(item => (string)item.Header == "ロック")
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.AreEqual(afterRemoval, notifications);
+
+            editor.UnbindPage();
+            Assert.IsNull(balloonVisual.ContextMenu);
+            balloonMenu.Items.OfType<MenuItem>().Single(item => (string)item.Header == "ロック")
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.AreEqual(afterRemoval, notifications);
+            Assert.IsFalse(panelMenu.IsOpen);
+            Assert.IsFalse(balloonMenu.IsOpen);
+            Assert.IsFalse(symbolMenu.IsOpen);
+        });
     }
 
     [TestMethod]
