@@ -19,7 +19,7 @@ Status: Initial baseline
 - **依存:** なし。
 - **受け入れ条件:** 新規UIレビューで意図しない英語文言が0件。入力文字列は改変しない。
 - **非対象・影響:** 識別子と内部キーの日本語化はしない。UI影響あり、形式影響なし。
-- **未決・仮定・検証:** 技術略語（ID/RGB等）の許容範囲はOQ-UI-001。XAML/C#文字列走査と手動確認。
+- **決定・検証:** ID、RGB、PNG、JPEG、DPI、IME、UI、URL、UUID、XML、ZIP、OK等の技術略語・format名は英語表記を許可する。一般英単語、説明文、操作名は日本語化する。XAML/C#文字列走査と手動確認を行う。
 
 ### REQ-FORK-001 非公式フォーク表記
 
@@ -136,10 +136,11 @@ Status: Initial baseline
 ### REQ-CLIPBOARD-001 クリップボード画像読込
 
 - **価値・詳細:** 画像を新規ページまたは現在背景として読み込み、既存背景確認、透明画像、サイズ、例外を安全に扱う。
+- **取得優先順位:** clipboardに複数形式がある場合は、PNG、DIB、Bitmap／BitmapSourceの順に、有効にdecodeできる最初の画像を採用する。
 - **依存:** REQ-PAGE-001、REQ-UNDO-001。
 - **受け入れ条件:** 画像なし時は日本語メッセージ、例外時もアプリ継続、置換はUndo可能。
 - **非対象・影響:** 完成画像のclipboard書出しは後順位。UI影響あり、形式は背景画像として影響。
-- **未決・仮定・検証:** DIB/PNG優先順位はOQ-CLIP-001。Windows clipboard手動・統合テスト。
+- **決定・検証:** OQ-CLIP-001の優先順位をWindows clipboard fixture、STA統合test、alpha・DPI・pixel寸法で検証する。
 
 ### REQ-EXPORT-001 ページ画像出力
 
@@ -209,11 +210,11 @@ Status: Initial baseline
 
 ### REQ-SELECT-001 複数選択
 
-- **詳細:** 複数オブジェクトの一体移動・整列準備を提供する。REQ-OBJECT-001/UNDO依存。選択状態は保存しない仮案。範囲選択UIは未決。縦横手動確認。
+- **詳細:** `Ctrl+クリック`で独立したtop-level compositionを複数選択し、再クリックで個別解除する。選択状態は保存しない。投げ縄・矩形範囲選択は初期版の対象外とする。複数選択を一体移動、削除、複製、group化の入力として使用し、REQ-OBJECT-001／REQ-UNDO-001に従って縦書き・横書きとfocus競合を検証する。
 
 ### REQ-GROUP-001 一般グループ化
 
-- **詳細:** グループ化/解除、グループ単位Z/lock/移動を提供する。REQ-SELECT-001依存。フキダシ内部リンクとは別の明示groupとして保存する仮案。Undo/round-tripテスト。
+- **詳細:** REQ-SELECT-001で選択したcompositionを明示的な一般groupとして保存し、group化／解除、一体移動、Z-order、lock、削除、複製を提供する。初期版はflat groupだけを許可し、nested group、group全体resize／rotation、alignment UIは対象外とする。文字link、非detached付加記号、フキダシlink、`BalloonMergeData`は既存typed compositionを維持し、一般groupへ暗黙変換しない。Undo／Redo、clone、削除、round-trip、invalid relationshipの原子拒否を検証する。
 
 ### REQ-OPS-001 基本キーボード操作
 
@@ -225,19 +226,25 @@ Status: Initial baseline
 
 - 明示操作で2件以上のフキダシを合体／解除し、各memberのshape、位置、size、rotation、style、tail、text link、layout stateを変更せず保持する。自動合体はしない。
 - 合体表示は選択中の基準フキダシをprimaryとし、そのfill／stroke／stroke thicknessをunion外形へ使用する。styleが異なるmemberも拒否せず、解除時には各member固有styleへ完全に戻る。
-- body geometryはunionし、overlap部分の内側strokeを表示しない。非overlapは離れた複数領域として安全に表示する。tailは各memberのsingle-tail dataを保持して描画する。
+- body geometryはunionし、overlap部分の内側strokeを表示しない。非overlapは離れた複数領域として安全に表示する。TASK-150では各memberのsingle-tail dataを保持して描画し、TASK-160導入後は全memberの全tailを保持して描画する。
 - 合体memberと各memberのlinked text／非detached付加記号をballoon専用typed compositionとして扱い、移動とZ-orderを一体化する。一般group、multi-select、nested groupとは別概念であり、TASK-230は推奨だが必須依存ではない。
-- merge／unmerge／group move／Z-orderは1 Undoとし、memberまたはtyped composition内にlocked objectがあれば原子的に拒否する。合体中の個別resize／tail編集は解除後に行う。
+- merge／unmerge／group move／Z-orderは1 Undoとし、memberまたはtyped composition内にlocked objectがあれば原子的に拒否する。合体中のmember body個別resizeは解除後に行う。TASK-150時点ではtail handle編集も解除後に行うが、TASK-160導入後は合体処理完了後の状態で各memberの各tailを個別選択・編集できる。
 - 2.4形式でmerge group ID、primary ID、ordered member IDsを保存する。2.0〜2.3はmergeなしとして読込み、invalid／duplicate／missing memberを持つ2.4 dataは全体を拒否する。
 - **依存:** REQ-BALLOON-002、REQ-ZORDER-001、REQ-LOCK-001、REQ-UNDO-001。REQ-GROUP-001は将来統合候補であり必須ではない。
 
 ### REQ-BALLOON-TAILS-001 複数しっぽ
 
-- 1フキダシに複数しっぽを保存・編集する。基本しっぽ実績後に着手する。
+- 1フキダシにordered collectionとして0本以上のしっぽを保存し、各tailへstable TailId、先端、根元、幅を保持する。
+- UIでtailを個別選択し、追加、先端／根元／幅編集、削除、順序変更を提供する。各semantic操作は1 Undoとし、locked typed compositionでは原子的に拒否する。
+- 旧形式のsingle tailは1要素collectionへ移行し、tailなしは空collectionへ移行する。clone、保存再読込、日本語path、未知version、失敗時の元file保護を検証する。
+- `BalloonMergeData`に属するフキダシでも、merge操作が正常完了した後はmergeを維持したまま各memberの各tailを個別編集できる。編集結果はunion visualとhit testへ即時反映する。member bodyの個別resizeは禁止を維持する。
+- merged tailの追加／編集／削除は対象tailだけでなくmerge typed composition全体をlock preflightし、失敗時はmodel、visual、selection、history、dirtyを変更しない。
 
-### REQ-BACKGROUND-FX-001 背景枠外側効果
+### REQ-BACKGROUND-FX-001 文字背景ボックスの第2枠線・外側ぼかし
 
-- 第2縁取り、外側blur/glow、色、太さ、不透明度を追加する。既存二重縁取り再利用を調査する。
+- 対象は文字objectの背景ボックスだけとし、canvas背景色、page背景画像、フキダシには適用しない。
+- 通常枠線の外側へ第2枠線を描画し、色、太さ、不透明度、blur／glow半径を設定できる。半径0は硬い第2枠線とし、offset付きshadowは初期版の対象外とする。
+- effectは選択範囲とhit testを拡張しないが、canvas内のPNG／JPEG出力へ反映する。設定変更はUndo可能で、保存再読込と縦書き／横書きを検証する。
 
 ### REQ-SNAP-001 簡易スナップ
 

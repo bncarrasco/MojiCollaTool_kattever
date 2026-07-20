@@ -35,7 +35,7 @@ flowchart TD
   T120 --> T130[TASK-130 Tail/Text link]
   T130 --> T140[TASK-140 Auto layout]
   T130 --> T150[TASK-150 Non-destructive merge]
-  T130 --> T160[TASK-160 Multiple tails]
+  T150 --> T160[TASK-160 Multiple tails]
   T070 --> T210[TASK-210 Keyboard operations]
   T060 --> T230[TASK-230 Multi-select/Group]
   T070 --> T230
@@ -242,8 +242,8 @@ flowchart TD
 ### TASK-150 非破壊フキダシ合体
 
 - **目的・価値・優先度:** 明示合体/解除で元shape保持。P3。
-- **要件:** REQ-BALLOON-MERGE-001。**必須依存:** 080,130,140。**推奨のみ:** 230。**後続:** なし。
-- **Scope:** page-level balloon merge data、primary＋ordered member、union geometry／cache、inner stroke suppression、group move／Z／lock、明示merge/unmerge UI、Undo、2.4 round-trip。**Out:** auto merge、一般group／multi-select、nested merge、合体中の個別resize／tail編集。
+- **要件:** REQ-BALLOON-MERGE-001。**必須依存:** 080,130,140。**推奨のみ:** 230。**後続:** 160。
+- **Scope:** page-level balloon merge data、primary＋ordered member、union geometry／cache、inner stroke suppression、group move／Z／lock、明示merge/unmerge UI、Undo、2.4 round-trip。**Out:** auto merge、一般group／multi-select、nested merge、合体中の個別resize／tail編集。合体完了後の個別tail編集はTASK-160で追補する。
 - **予想file:** balloon geometry/model/UI/tests。format/UI影響大。
 - **受入:** pairwise操作で2件以上へ拡張可能、合体解除で全member parameter完全復元、style不一致とoverlap/non-overlapを決定的に表示、tail/link/layout保持、typed composition move/Z/lock、1 Undo、2.0〜2.4互換、invalid data原子拒否、geometry性能閾値。
 - **検証/rollback:** geometry/round-trip/perf/manual。feature registration revert。
@@ -252,27 +252,27 @@ flowchart TD
 ### TASK-160 複数しっぽ
 
 - **目的・価値・優先度:** 1本実装を複数へ拡張。P3。
-- **要件:** REQ-BALLOON-TAILS-001。**依存:** 130。**後続:** なし。
-- **Scope:** tail collection、個別選択、order/delete。format/UI影響あり。
-- **受入/検証:** 0..n tail round-trip/Undo/hit test/manual。collection change revert。
+- **要件:** REQ-BALLOON-TAILS-001。**依存:** 150。**後続:** なし。
+- **Scope:** stable TailIdを持つordered tail collection、個別選択／追加／tip／root／width／order／delete、single-tail migration、保存形式、合体完了後のmember別tail編集。合体中のbody個別resizeは対象外。
+- **受入/検証:** 0..n tail round-trip、旧single-tail移行、全tail描画／hit、merge visual即時更新、lock原子拒否、1 Undo、cancel／Undo／Redo、clone、性能、縦横manual。collection変更失敗時はmodel／visual／selection／history／dirtyを復元する。
 - **Branch/worktree:** `feature/TASK-160-multiple-balloon-tails` / `TASK-160`。
 
 ### TASK-170 クリップボード画像読込
 
 - **目的・価値・優先度:** background取得を高速化。P1。
 - **要件:** REQ-CLIPBOARD-001。**依存:** 030,070。**後続:** なし。
-- **Scope:** clipboard adapter、新page/replace choices、alpha/DPI/error、Undo。
+- **Scope:** clipboard adapter、PNG→DIB→Bitmap／BitmapSource優先取得、新page/replace choices、alpha/DPI/error、Undo。
 - **予想file:** image service、PageEditor/shell UI/tests。UI競合中。
 - **受入:** imageなし日本語message、exception継続、既存背景確認、round-trip。
 - **検証/rollback:** Windows STA integration/manual。adapter/UI revert。
 - **Branch/worktree:** `feature/TASK-170-clipboard-image` / `TASK-170`。
 
-### TASK-180 背景枠の外側縁取り・blur
+### TASK-180 文字背景ボックスの第2枠線・外側ぼかし
 
-- **目的・価値・優先度:** 背景frameの追加表現。P2。
+- **目的・価値・優先度:** 文字背景ボックスへ軽量な追加表現を提供する。P2。
 - **要件:** REQ-BACKGROUND-FX-001。**依存:** 140。**後続:** なし。
-- **Scope:** second stroke/glow parameters/render/UI、既存code再利用。format/UI影響あり。
-- **受入:** radius 0で硬い第2stroke、opacity、performance/round-trip。
+- **Scope:** 文字背景ボックス専用のsecond stroke／glow parameters、render、UI、Undo、保存。canvas背景色、背景画像、フキダシ、offset shadow、hit領域拡張は対象外。既存code再利用を調査する。
+- **受入:** radius 0で硬い第2stroke、色／太さ／opacity／blur、PNG/JPEG出力、performance、round-trip、縦横表示。
 - **検証/rollback:** render/manual縦横/build。properties/render revert。
 - **Branch/worktree:** `feature/TASK-180-background-outer-effect` / `TASK-180`。
 
@@ -300,9 +300,9 @@ flowchart TD
 
 - **目的・価値・優先度:** mixed language解消。P1。
 - **要件:** REQ-UI-JA-001。**依存:** 190B。**後続:** なし。
-- **Scope:** window title、Moji ID、Before/After、filter、information等のinventoryと修正。**Out:** internal identifiers。
+- **Scope:** window title、Before/After、filter、information等の一般英語UIをinventoryして日本語化する。ID、RGB、PNG、JPEG、DPI、IME、UI、URL、UUID、XML、ZIP、OK等の技術略語・format名は英語表示を許可する。**Out:** internal identifiers。
 - **予想file:** XAML/CS全般。UI競合高、formatなし。
-- **受入:** approved technical abbreviations以外の英語UI 0件。
+- **受入:** 技術略語・format名以外の意図しない英語UI 0件。ユーザー入力、file名、font名、固有名詞は改変しない。
 - **検証/rollback:** string scan/build/manual。localization commit revert。
 - **Branch/worktree:** `feature/TASK-200-japanese-ui` / `TASK-200`。
 
@@ -326,9 +326,9 @@ flowchart TD
 
 - **目的・価値・優先度:** 一体移動・group化。P2。
 - **要件:** REQ-SELECT-001, REQ-GROUP-001。**依存:** 060,070。**後続:** 220,150推奨。
-- **Scope:** multi-select、group/ungroup、group transform/Z/lock、保存。**Out:** lasso/layer panel。
+- **Scope:** `Ctrl+クリック`multi-select、再クリック解除、flat group／ungroup、一体move／Z／lock／delete／duplicate、保存。選択状態は保存しない。**Out:** lasso／矩形範囲選択、layer panel、nested group、group resize／rotation、alignment UI。
 - **予想file:** PageEditor/object model/serializer/UI/tests。競合高。
-- **受入:** nested policy明記、Undo/round-trip、balloon compositionと混同しない。
+- **受入:** flat groupだけを許可し、既存text／attached symbol／balloon link／balloon merge compositionを壊さない。各操作1 Undo、lock原子拒否、clone／delete／round-trip／invalid group拒否、縦横focusを確認する。
 - **検証/rollback:** build/test/manual縦横。group feature revert。
 - **Branch/worktree:** `feature/TASK-230-multi-select-group` / `TASK-230`。
 

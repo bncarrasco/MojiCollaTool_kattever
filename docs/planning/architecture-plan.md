@@ -85,7 +85,7 @@ Commandと小さいMementoの混合方式を推奨する。
 - page object collection順をcanonical orderとし、serialize時にZIndexを正規化する。
 - 「最前面/前面/背面/最背面」は同じcontainer内だけで作用する。
 - フキダシ本体・しっぽ・文字linkは `BalloonGroup`の内部描画順を別途固定し、page-level ZIndexはgroupを1単位として扱う。
-- 一般groupは後続Should要件で、balloon linkと同一概念へ無理に統合しない。
+- 一般groupは`Ctrl+クリック`で選択したtop-level compositionを対象とするflatな明示groupとし、選択状態は保存せずgroup relationshipだけを保存する。nested group、group resize／rotation、range selectionは初期版で行わない。balloon link／mergeと同一概念へ統合しない。
 - lock中は通常hit testとcommand対象から除外し、明示的な解除導線だけを残す。
 
 ## 6. 保存形式
@@ -119,7 +119,7 @@ pages/
 ## 8. フキダシ
 
 - `BalloonData`: ShapeKind、Bounds、Fill、Stroke、StrokeThickness。
-- `BalloonTailData`: TailId、tip、root parameter、width。基本版は1件、modelは将来複数を許容可能にする。
+- `BalloonTailData`: TailId、tip、root parameter、width。TASK-160でordered collectionへ拡張し、旧single tailを0件または1件のcollectionへ移行する。merge完了後もmember別tail編集を許可し、body個別resize禁止とは分離する。
 - `TextLinkData`: TextObjectId、layout mode、padding、minimum font size、alignment。
 - 本体/しっぽ/linked textをpage上では1つのcompositionとして選択・Z変更する。
 - Geometryは入力parameterをkeyにcacheし、drag中は簡易Geometry、終了後に確定Geometryを作る。
@@ -138,6 +138,7 @@ feedback loopを避けるため、modeが責任方向を決める。
 ## 10. クリップボードと画像
 
 - clipboard accessはinterfaceで包み、STA/WPF固有処理をadapterへ隔離する。
+- formatはPNG、DIB、Bitmap／BitmapSourceの順に、有効にdecodeできる最初の画像を採用する。
 - image dataをmemory streamへcloneしてclipboard lifetimeから切り離す。
 - 「新しいページ」「現在背景を置換」を明示し、置換は1 Undo transactionとする。
 - alpha、DPI、pixel寸法を正規化する既存 `ImageUtil`との境界をテストする。
@@ -146,6 +147,7 @@ feedback loopを避けるため、modeが責任方向を決める。
 
 - active pageだけを完全visualizeし、inactive page/projectはdocument中心に保持する。
 - per-character BlurEffectの既存問題を計測し、機能追加と描画全面変更を同じtaskにしない。
+- 文字背景ボックスの外側effectは第2枠線と全周blurだけを対象とし、canvas背景／背景画像／フキダシやhit領域を変更しない。
 - Geometry cacheに上限を設け、font/style/DPI/text elementをkeyにする。
 - historyはentry/byte上限、project closeでcache/history/window参照を解放する。
 
