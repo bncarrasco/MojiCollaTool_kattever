@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### TASK-150
+
+- 2件以上のフキダシを、元のshape・位置・style・しっぽ・文字リンク・自動レイアウト状態を保持したまま一つの外形として合体／解除できるようにしました。
+- 重なったbodyは外周だけを描画し、離れた領域や各しっぽも正確に選択できます。合体中は全member、リンク文字、付加記号を一体移動し、個別のサイズ・しっぽ編集は解除後に行います。
+- 合体groupを一つの重なり順blockとして扱い、lock、Undo/Redo、dirty、ページ切替へ対応しました。
+- versioned project形式を2.4へ更新し、合体groupを保存・復元します。2.0〜2.3は合体なしとして読み、invalid 2.4 dataと2.5以降は既存dataを変更せず拒否します。
+
 ### TASK-080
 
 - 文字・フキダシ・付加記号に共通の「最前面へ／前面へ／背面へ／最背面へ」とロック／ロック解除を追加しました。
@@ -23,7 +30,7 @@
   - versioned形式のLF・CR・CRLF・混在改行を保持し、FitBalloonのpadding検証を現在の小さい枠から分離しました。
   - 適用途中のdeep rollback、実Apply Button／ComboBox、redo branch、visual hierarchy、24 composition×両modeのPageEditor経路を検証しました。
   - balloon frame resize後の自動レイアウトを無効化し、balloon move・composition move・tail操作では適用済みplanを維持するようにしました。
-  - versioned形式を2.3へ更新し、2.0〜2.2のlinkをUnappliedへ安全移行、2.3の3 stateを保存・復元、2.4以降を拒否します。
+  - version 2.3で、2.0〜2.2のlinkをUnappliedへ安全移行し、3 stateを保存・復元するようにしました。現行2.4でも3 stateを維持し、2.5以降を拒否します。
   - Debug/Releaseとも212テスト合格、ビルド警告0・エラー0です。
 
 ### TASK-130
