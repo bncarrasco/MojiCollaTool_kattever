@@ -43,6 +43,8 @@ flowchart TD
   T190A --> T190B[TASK-190B Application fork branding]
   T020 --> T190B
   T190B --> T200[TASK-200 Japanese UI normalization]
+  T170 --> T250[TASK-250 Local alpha package]
+  T200 --> T250
   T140 --> T180[TASK-180 Background outer effects]
 ```
 
@@ -331,6 +333,15 @@ flowchart TD
 - **受入:** flat groupだけを許可し、既存text／attached symbol／balloon link／balloon merge compositionを壊さない。各操作1 Undo、lock原子拒否、clone／delete／round-trip／invalid group拒否、縦横focusを確認する。
 - **検証/rollback:** build/test/manual縦横。group feature revert。
 - **Branch/worktree:** `feature/TASK-230-multi-select-group` / `TASK-230`。
+
+### TASK-250 local α版パッケージ
+
+- **目的・価値・優先度:** TASK-170までのレビュー済み機能を、依存runtime込みの試用可能なWindows x64 α版として再現可能にまとめる。P1。
+- **要件:** REQ-ALPHA-PACKAGE-001。**依存:** 170,200。**後続:** 公開releaseは別owner decision。
+- **Scope:** `eng/package-alpha.ps1`、self-contained folder publish、package manifest／build情報、日本語`README-ALPHA.md`、ZIP、SHA-256、内容allowlist／denylist監査、fresh展開、起動smoke。`artifacts/alpha`はGit非追跡。**Out:** installer、single-file、署名、公開／upload／push、SDK／framework／保存形式／product機能変更。
+- **受入:** clean tracked HEADからSDK 6.0.428でDebug/Release buildとtestを通過し、`win-x64 --self-contained true`のfolder ZIPを生成する。license／notice／README／build commitを同梱し、AI指示、source、test、obj、credentialを含めない。SHA-256再計算一致、fresh directory展開、exe起動3秒以上・異常終了なしを確認する。
+- **Review/Done:** `alpha-release-policy.md`を適用する。根本動作不能、security、crash、data破損・消失、無限loop／hangだけをrelease-blockingとし、非致命的な改善・UI粗さ・manual／test不足は技術的負債としてrelease noteへ記録する。
+- **Branch/worktree:** `feature/TASK-250-alpha-package` / `TASK-250`。
 
 ## 3. 共通完了条件
 

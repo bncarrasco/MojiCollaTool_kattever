@@ -36,6 +36,7 @@
 | TASK-190B | Complete | `feature/TASK-190B-app-branding` | `F:/github/MojiCollaTool-worktrees/TASK-190B` | `1e64a71`（develop） | `d727b8b` | FORK,UI,DEPS | - | Debug/Release pass (0 warnings, 0 errors) | Debug/Release 73 passed | publish pass、Debug/Release/publishへLICENSE類同梱確認。AssemblyTitle、Company/Authors、4 ColorSelector noticesを確認 | Integrated to `develop` at `b80402e`; commander reverified integrated state 81/81 | なし | TASK-200 |
 | TASK-200 | Dependency ready | `feature/TASK-200-japanese-ui` | 未作成 | `develop`（T060/T190B統合後HEAD） | - | UI | - | Not run | Not run | Not verified | Worker prompt/worktree準備待ち | TASK-050/TASK-070とXAML/CS競合 | 単独lane候補 |
 | TASK-210/220/230 | Planned | - | - | - | - | OPS,SNAP,SELECT,GROUP | ADR-0003/4 | Not run | Not run | Not verified | - | task-breakdown参照 | future |
+| TASK-250 | Kickoff preparation | `feature/TASK-250-alpha-package` | `F:/github/MojiCollaTool-worktrees/TASK-250` | `46c5fc43a95f9328fe5eb88d79b2526e244af959` | - | REQ-ALPHA-PACKAGE-001 | - | Not run | Not run | Not verified | α severity policy適用。正式worktree作成済み、ownership activation確認待ち | safe.directory未承認 | local α package |
 
 ### TASK-070 follow-up handoff
 

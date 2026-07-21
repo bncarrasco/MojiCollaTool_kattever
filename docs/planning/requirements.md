@@ -175,6 +175,15 @@ Status: Initial baseline
 - **非対象・影響:** 非Windowsビルドは対象外。UI/形式影響なし。
 - **未決・仮定・検証:** .NET 6継続かLTS更新かOQ-BUILD-001。CI/ローカルビルド。
 
+### REQ-ALPHA-PACKAGE-001 Windows x64 α版パッケージ
+
+- **価値・詳細:** レビュー済みTASK-170までの機能を、.NET Desktop Runtimeの事前導入を要求しないWindows x64 self-containedのportable folder ZIPとしてlocal生成できるようにする。
+- **依存:** REQ-NFR-BUILD-001、REQ-NFR-TEST-001、REQ-FORK-001、REQ-NFR-DEPS-001、TASK-170、TASK-200。
+- **受け入れ条件:** repository標準SDK 6.0.428から再現可能なscriptでpublishし、ZIPとSHA-256を生成する。展開後の`MojiCollaTool.exe`をfresh directoryから起動してsmoke確認し、package manifestと実内容を照合する。
+- **同梱:** 実行に必要なruntime／application files、`LICENSE`、`THIRD-PARTY-NOTICES.md`、日本語の`README-ALPHA.md`、source commitを含むbuild情報。local AI reference、source、test、obj、credential、未追跡memoは含めない。
+- **非対象・影響:** installer、single-file化、署名、公開、upload、Git push、framework／SDK更新、assembly version変更は対象外。生成物は`artifacts/alpha`配下のGit非追跡fileとする。
+- **Done判定:** `alpha-release-policy.md`に従い、致命的問題がなければ非blockingなmanual未検証・UIの粗さ・test不足はrelease noteへ技術的負債として記録してpackage生成を止めない。
+
 ### REQ-NFR-TEST-001 テスト可能性
 
 - **価値・詳細:** 文書モデル、serializer、command、layoutをWPF Window起動なしで自動テスト可能にする。
@@ -264,4 +273,4 @@ Status: Initial baseline
 
 ## 6. 要件と主要タスクの追跡
 
-完全な割当は `task-breakdown.md`を原典とする。Must要件は少なくともTASK-000, 005, 010, 020, 025, 030, 040, 041, 050, 060, 070, 080, 090, 100, 110, 120, 130, 140, 170, 190A, 190B, 200へ割り当てる。
+完全な割当は `task-breakdown.md`を原典とする。Must要件は少なくともTASK-000, 005, 010, 020, 025, 030, 040, 041, 050, 060, 070, 080, 090, 100, 110, 120, 130, 140, 170, 190A, 190B, 200, 250へ割り当てる。
