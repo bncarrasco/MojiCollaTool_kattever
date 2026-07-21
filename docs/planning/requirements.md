@@ -228,7 +228,7 @@ Status: Initial baseline
 - 合体表示は選択中の基準フキダシをprimaryとし、そのfill／stroke／stroke thicknessをunion外形へ使用する。styleが異なるmemberも拒否せず、解除時には各member固有styleへ完全に戻る。
 - body geometryはunionし、overlap部分の内側strokeを表示しない。非overlapは離れた複数領域として安全に表示する。TASK-150では各memberのsingle-tail dataを保持して描画し、TASK-160導入後は全memberの全tailを保持して描画する。
 - 合体memberと各memberのlinked text／非detached付加記号をballoon専用typed compositionとして扱い、移動とZ-orderを一体化する。一般group、multi-select、nested groupとは別概念であり、TASK-230は推奨だが必須依存ではない。
-- merge／unmerge／group move／Z-orderは1 Undoとし、memberまたはtyped composition内にlocked objectがあれば原子的に拒否する。合体中のmember body個別resizeは解除後に行う。TASK-150時点ではtail handle編集も解除後に行うが、TASK-160導入後は合体処理完了後の状態で各memberの各tailを個別選択・編集できる。
+- merge／unmerge／group move／Z-orderは1 Undoとし、memberまたはtyped composition内にlocked objectがあれば原子的に拒否する。TASK-160導入後、合体状態のbody resizeはmerge group全体に対する単一操作だけを許可し、member bodyの個別resizeは許可しない。合体解除後は各member bodyを個別resizeできる。TASK-150時点ではtail handle編集も解除後に行うが、TASK-160導入後は合体処理完了後の状態で各memberの各tailを個別選択・編集できる。
 - 2.4形式でmerge group ID、primary ID、ordered member IDsを保存する。2.0〜2.3はmergeなしとして読込み、invalid／duplicate／missing memberを持つ2.4 dataは全体を拒否する。
 - **依存:** REQ-BALLOON-002、REQ-ZORDER-001、REQ-LOCK-001、REQ-UNDO-001。REQ-GROUP-001は将来統合候補であり必須ではない。
 
@@ -237,7 +237,8 @@ Status: Initial baseline
 - 1フキダシにordered collectionとして0本以上のしっぽを保存し、各tailへstable TailId、先端、根元、幅を保持する。
 - UIでtailを個別選択し、追加、先端／根元／幅編集、削除、順序変更を提供する。各semantic操作は1 Undoとし、locked typed compositionでは原子的に拒否する。
 - 旧形式のsingle tailは1要素collectionへ移行し、tailなしは空collectionへ移行する。clone、保存再読込、日本語path、未知version、失敗時の元file保護を検証する。
-- `BalloonMergeData`に属するフキダシでも、merge操作が正常完了した後はmergeを維持したまま各memberの各tailを個別編集できる。編集結果はunion visualとhit testへ即時反映する。member bodyの個別resizeは禁止を維持する。
+- `BalloonMergeData`に属するフキダシでも、merge操作が正常完了した後はmergeを維持したまま各memberの各tailを個別編集できる。編集結果はunion visualとhit testへ即時反映する。
+- 合体状態ではmember bodyの個別resizeを許可せず、merge group全体の外形に対するresizeだけを1操作として提供する。合体解除後は元の各memberへ戻り、各bodyを個別resizeできる。group resize／unmergeはtyped composition全体をlock preflightし、成功時はそれぞれ1 Undoとする。
 - merged tailの追加／編集／削除は対象tailだけでなくmerge typed composition全体をlock preflightし、失敗時はmodel、visual、selection、history、dirtyを変更しない。
 
 ### REQ-BACKGROUND-FX-001 文字背景ボックスの第2枠線・外側ぼかし

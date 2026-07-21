@@ -253,8 +253,8 @@ flowchart TD
 
 - **目的・価値・優先度:** 1本実装を複数へ拡張。P3。
 - **要件:** REQ-BALLOON-TAILS-001。**依存:** 150。**後続:** なし。
-- **Scope:** stable TailIdを持つordered tail collection、個別選択／追加／tip／root／width／order／delete、single-tail migration、保存形式、合体完了後のmember別tail編集。合体中のbody個別resizeは対象外。
-- **受入/検証:** 0..n tail round-trip、旧single-tail移行、全tail描画／hit、merge visual即時更新、lock原子拒否、1 Undo、cancel／Undo／Redo、clone、性能、縦横manual。collection変更失敗時はmodel／visual／selection／history／dirtyを復元する。
+- **Scope:** stable TailIdを持つordered tail collection、個別選択／追加／tip／root／width／order／delete、single-tail migration、保存形式、合体完了後のmember別tail編集、合体全体のbody resize、合体解除後のmember別body resize。合体状態でのmember body個別resizeは対象外。
+- **受入/検証:** 0..n tail round-trip、旧single-tail移行、全tail描画／hit、merge visual即時更新、合体全体resizeでは全member compositionを一つの操作として扱うこと、合体状態でmember個別resizeを拒否すること、解除後は各memberを個別resizeできること、lock原子拒否、各semantic操作1 Undo、cancel／Undo／Redo、clone、性能、縦横manual。collection／group resize／unmerge失敗時はmodel／visual／selection／history／dirtyを復元する。
 - **Branch/worktree:** `feature/TASK-160-multiple-balloon-tails` / `TASK-160`。
 
 ### TASK-170 クリップボード画像読込

@@ -22,7 +22,7 @@
 | OQ-LAYOUT-001 | 改行・禁則の初期範囲 | LAYOUT,140 | 単純measure / 基本禁則 / 高度組版 | まず明示改行＋基本wrap、禁則は計測後 | User/TASK-140前 | Open |
 | OQ-CLIP-001 | clipboard format優先順位 | CLIPBOARD,170 | PNG / DIB / BitmapSource | PNG→DIB→Bitmap／BitmapSourceの順 | User | Decided |
 | OQ-GROUP-001 | 初期multi-select／一般groupの操作範囲 | SELECT/GROUP,230 | flat / nested、click / range、moveのみ / transform | Ctrl+click、flat group、group保存、move／Z／lock／delete／duplicate。range、resize、rotationは対象外 | User | Decided |
-| OQ-TAIL-001 | 合体中の複数tail編集 | BALLOON-TAILS,160 | unmerge必須 / merge維持で個別編集 | merge完了後は各memberの各tailを個別編集可能。body個別resizeは禁止継続 | User | Decided |
+| OQ-TAIL-001 | 合体中の複数tail編集とbody resize | BALLOON-TAILS,160 | unmerge必須 / merge維持で個別編集、resizeなし / group全体resize | merge完了後は各memberの各tailを個別編集可能。body resizeはmerge group全体だけ可能。unmerge後はmember別resize可能 | User | Decided |
 | OQ-BGFX-001 | 外側effectの対象とhit範囲 | BACKGROUND-FX,180 | 文字背景 / canvas / image、hit拡張有無 | 文字背景ボックスだけ。第2枠線／全周blur、hit範囲は拡張しない | User | Decided |
 | OQ-EXPORT-001 | 一括出力file名 | EXPORT,050 | index-page / page名 / prompt | zero-padded index＋sanitized page名 | User/TASK-050前 | Temporarily decided |
 | OQ-LICENSE-001 | WpfColorPicker由来と必要notice | FORK/DEPS,190A | Apache source一致 / 独自 / 不明 | 一次sourceとdiffで確認、断定しない | Worker/TASK-190A | Open |

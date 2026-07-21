@@ -119,7 +119,7 @@ pages/
 ## 8. フキダシ
 
 - `BalloonData`: ShapeKind、Bounds、Fill、Stroke、StrokeThickness。
-- `BalloonTailData`: TailId、tip、root parameter、width。TASK-160でordered collectionへ拡張し、旧single tailを0件または1件のcollectionへ移行する。merge完了後もmember別tail編集を許可し、body個別resize禁止とは分離する。
+- `BalloonTailData`: TailId、tip、root parameter、width。TASK-160でordered collectionへ拡張し、旧single tailを0件または1件のcollectionへ移行する。merge完了後もmember別tail編集を許可する。bodyはmerge group全体だけをresize可能とし、member別resizeはunmerge後に許可する。
 - `TextLinkData`: TextObjectId、layout mode、padding、minimum font size、alignment。
 - 本体/しっぽ/linked textをpage上では1つのcompositionとして選択・Z変更する。
 - Geometryは入力parameterをkeyにcacheし、drag中は簡易Geometry、終了後に確定Geometryを作る。
